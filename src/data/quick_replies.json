@@ -1,0 +1,30 @@
+[
+  {
+    "trigger": "早",
+    "reply": "[CQ:face,id=147,raw=&#91;object Object&#93;]"
+  },
+  {
+    "trigger": "晚安",
+    "reply": "晚安，好梦"
+  },
+  {
+    "trigger": "ping",
+    "reply": "pong"
+  },
+  {
+    "trigger": "珞樱真可爱",
+    "reply": "哼，还用你说😤"
+  },
+  {
+    "trigger": "珞樱",
+    "reply": "我在这！"
+  },
+  {
+    "trigger":"来自中原一群伙伴",
+    "reply":"结庐东南山~"
+  },
+  {
+    "trigger":"旱",
+    "reply":"[CQ:face,id=424,raw=&#91;object Object&#93;]"
+  }
+]
