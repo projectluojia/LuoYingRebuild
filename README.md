@@ -1,4 +1,4 @@
-#Warning: In this branch, vibe coding is frequently used.
+# Warning: In this branch, vibe coding is frequently used.
 # 珞樱 Luoying Bot V2 开发者参考文档
 
 珞樱（Luoying）是一个面向 QQ 群聊场景的智能 Agent 机器人项目。
