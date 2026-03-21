@@ -137,10 +137,15 @@ class CodingAgentSkill(BaseSkill):
             send_script,
         ]
 
+        # AIGC: 编程子 Agent 模型支持本地/远程双配置切换
+        coding_model_name = settings.ollama_coding_model if settings.use_local_ollama else settings.coding_model
+        coding_api_key = settings.ollama_api_key if settings.use_local_ollama else settings.coding_api_key
+        coding_base_url = settings.ollama_base_url if settings.use_local_ollama else settings.coding_base_url
+
         model = ChatOpenAI(
-            model=settings.coding_model,
-            api_key=settings.coding_api_key,
-            base_url=settings.coding_base_url,
+            model=coding_model_name,
+            api_key=coding_api_key,
+            base_url=coding_base_url,
             temperature=0.2,
         )
 
