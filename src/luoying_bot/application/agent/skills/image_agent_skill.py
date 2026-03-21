@@ -197,10 +197,15 @@ class ImageAgentSkill(BaseSkill):
             answer_about_images,
         ]
 
+        # AIGC: 图片子 Agent 模型支持本地/远程双配置切换
+        image_model_name = settings.ollama_image_model if settings.use_local_ollama else settings.image_model
+        image_api_key = settings.ollama_api_key if settings.use_local_ollama else settings.image_api_key
+        image_base_url = settings.ollama_base_url if settings.use_local_ollama else settings.image_base_url
+
         model = ChatOpenAI(
-            model=settings.openai_model,
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url,
+            model=image_model_name,
+            api_key=image_api_key,
+            base_url=image_base_url,
             temperature=0.6,
         )
 

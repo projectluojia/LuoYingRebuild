@@ -6,6 +6,12 @@ from typing import List
 from dotenv import load_dotenv
 load_dotenv()
 
+def _get_bool_env(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
 def _split_csv(value: str) -> List[str]:
     if not value:
         return []
@@ -34,6 +40,14 @@ class Settings:
     image_base_url: str = os.getenv("IMAGE_BASE_URL", "")
     image_api_key: str = os.getenv("IMAGE_API_KEY", "")
     image_model: str = os.getenv("IMAGE_MODEL", "")
+
+    # AIGC: 本地 Ollama 模型开关与配置（优先级高于远程模型配置）
+    use_local_ollama: bool = _get_bool_env("USE_LOCAL_OLLAMA", False)
+    ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1")
+    ollama_api_key: str = os.getenv("OLLAMA_API_KEY", "ollama")
+    ollama_main_model: str = os.getenv("OLLAMA_MAIN_MODEL", "qwen2.5:7b-instruct")
+    ollama_coding_model: str = os.getenv("OLLAMA_CODING_MODEL", "qwen2.5-coder:7b")
+    ollama_image_model: str = os.getenv("OLLAMA_IMAGE_MODEL", "llava:7b")
 
     qweather_api_key: str = os.getenv('QWEATHER_API_KEY', '')
     weather_base_url: str = os.getenv('WEATHER_BASE_URL', 'https://pn6yvyt6je.re.qweatherapi.com/v7/weather/now')

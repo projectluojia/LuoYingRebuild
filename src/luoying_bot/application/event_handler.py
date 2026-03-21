@@ -32,6 +32,12 @@ class EventHandler:
         self.trigger_prefix = trigger_prefix
         self.bot_qq = bot_qq
         self.bot_name = bot_name
+
+    async def _maybe_send_text(self, context, text: str) -> None:
+        # AIGC: 仅 QQ 通道通过 transport 主动回发；Web 由 HTTP 响应返回
+        if context.target.platform.value == 'qq' and text:
+            await self.transport.send_text(context, text)
+
     async def handle(self, message: UniMessage) -> Reply:
         context = message.context
 
@@ -65,29 +71,28 @@ class EventHandler:
         #快速回复
         quick_reply=self.quick_reply_service.match(text=query)
         if quick_reply :
-            await self.transport.send_text(context=message.context,text=quick_reply)
+            await self._maybe_send_text(context=message.context, text=quick_reply)
             return Reply(text='', silent=True)
         
-        if MessageSegment(type="at",data={"user_id":"3949843218"}) not in message.segments:
-            return Reply(text='', silent=True)
+        # AIGC: 仅 QQ 通道要求显式 @ 机器人，Web 等通道不做该限制
+        if context.target.platform.value == 'qq':
+            if MessageSegment(type="at", data={"user_id": self.bot_qq}) not in message.segments:
+                return Reply(text='', silent=True)
         
         #进入指令执行器
         if query.startswith('/'):
             reply = await self.commands.dispatch(query, context) or Reply(text='未知命令')
             if not reply.silent and reply.text:
-                await self.transport.send_text(
-                    context, 
-                    self._at_prefix(context) + reply.text if context.target.platform.value == 'qq' else reply.text
+                await self._maybe_send_text(
+                    context=context,
+                    text=self._at_prefix(context) + reply.text
                 )
             return reply
         
         #如果处于复读模式
         if self.runtime.repeat_mode.get(context.target.conversation_id, False):
             reply = Reply(text=query)
-            await self.transport.send_text(
-                context, 
-                reply.text
-            )
+            await self._maybe_send_text(context=context, text=reply.text)
             return reply
         
         #其他情况，进入agent处理
@@ -95,7 +100,7 @@ class EventHandler:
         
         
         if not reply.silent and reply.text:
-            await self.transport.send_text(context, self._at_prefix(context) + reply.text if context.target.platform.value == 'qq' else reply.text)
+            await self._maybe_send_text(context=context, text=self._at_prefix(context) + reply.text)
         return reply
     def _normalize_query(self, text: str) -> str:
         return text.strip().replace(f'@{self.bot_name}', '').strip()
