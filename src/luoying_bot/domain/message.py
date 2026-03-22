@@ -45,7 +45,7 @@ class UniMessage:
             elif seg.type == 'face':
                 parts.append(f"[QQ表情:{seg.data.get('face_id')}]")
             elif seg.type == 'image':
-                parts.append(f'[图片:{seg.data.get('file')}]')
+                parts.append(f"[图片:{seg.data.get('file')}]")
             else:
                 parts.append(f"[{seg.type}:{seg.data}]")
         return ' '.join(p for p in parts if p).strip()
