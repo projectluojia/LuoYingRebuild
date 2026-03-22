@@ -727,7 +727,8 @@ TRIGGER_PREFIX=/,!
 ### 启动 QQ 机器人
 
 ```bash
-python -m src.luoying_bot.main_qq
+cd src
+python -m luoying_bot.main_qq
 ```
 
 如果你的环境变量与模块路径配置不同，也可以在仓库根目录下自行调整启动方式。
