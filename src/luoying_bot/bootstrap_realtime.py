@@ -21,6 +21,7 @@ async def build_realtime_container() -> RealtimeAppContainer:
     transport = RealtimeWsTransport(
         max_participants_per_session=int(realtime_policy["max_participants_per_session"]),
         server_webrtc_enabled=bool(realtime_policy["server_webrtc_enabled"]),
+        server_signaling_target=str(realtime_policy["server_signaling_target"]),
     )
     return RealtimeAppContainer(
         realtime_transport=transport,

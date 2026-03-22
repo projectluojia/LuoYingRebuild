@@ -68,9 +68,11 @@ class RealtimeWsTransport:
         self,
         max_participants_per_session: int = 2,
         server_webrtc_enabled: bool = True,
+        server_signaling_target: str = "server",
     ):
         self.max_participants_per_session = max(2, int(max_participants_per_session))
         self.server_webrtc_enabled = bool(server_webrtc_enabled)
+        self.server_signaling_target = (server_signaling_target or "server").strip() or "server"
         self._sessions: dict[str, RealtimeSession] = {}
         self._connections: dict[str, dict[str, WebSocket]] = {}
         self._server_peers: dict[tuple[str, str], _ServerPeer] = {}
@@ -82,6 +84,7 @@ class RealtimeWsTransport:
             "realtime ws transport ready "
             f"(max_participants_per_session={self.max_participants_per_session}, "
             f"server_webrtc_enabled={self.server_webrtc_enabled}, "
+            f"server_signaling_target={self.server_signaling_target}, "
             f"aiortc_available={aiortc_available})"
         )
 
@@ -300,7 +303,7 @@ class RealtimeWsTransport:
             return
 
         to_client_id = str(packet.get("to") or "").strip() or None
-        if to_client_id == "server":
+        if to_client_id == self.server_signaling_target:
             handled = await self._handle_server_signal(
                 session_id=session_id,
                 from_client_id=from_client_id,
@@ -418,6 +421,58 @@ class RealtimeWsTransport:
             if key not in {"type", "to", "from", "session_id"}
         }
 
+    @staticmethod
+    def _extract_offer(payload: dict[str, Any]) -> tuple[str, str]:
+        nested_offer = payload.get("offer")
+        if isinstance(nested_offer, dict):
+            sdp = str(nested_offer.get("sdp") or payload.get("sdp") or "").strip()
+            offer_type = str(nested_offer.get("type") or payload.get("type") or "offer").strip() or "offer"
+            return sdp, offer_type
+        sdp = str(payload.get("sdp") or "").strip()
+        offer_type = str(payload.get("type") or "offer").strip() or "offer"
+        return sdp, offer_type
+
+    @staticmethod
+    def _parse_mline_index(value: Any) -> int | None:
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _extract_ice_fields(self, payload: dict[str, Any]) -> tuple[str | None, str | None, int | None, str | None]:
+        raw_candidate = payload.get("candidate")
+        sdp_mid = payload.get("sdpMid")
+        sdp_mline_index = payload.get("sdpMLineIndex")
+        username_fragment = payload.get("usernameFragment")
+
+        if isinstance(raw_candidate, dict):
+            if sdp_mid is None:
+                sdp_mid = raw_candidate.get("sdpMid")
+            if sdp_mline_index is None:
+                sdp_mline_index = raw_candidate.get("sdpMLineIndex")
+            if username_fragment is None:
+                username_fragment = raw_candidate.get("usernameFragment")
+            raw_candidate = raw_candidate.get("candidate")
+
+        if raw_candidate is None:
+            return None, None if sdp_mid is None else str(sdp_mid), self._parse_mline_index(sdp_mline_index), (
+                None if username_fragment is None else str(username_fragment)
+            )
+
+        candidate_text = str(raw_candidate).strip()
+        if not candidate_text:
+            return None, None if sdp_mid is None else str(sdp_mid), self._parse_mline_index(sdp_mline_index), (
+                None if username_fragment is None else str(username_fragment)
+            )
+        return (
+            candidate_text,
+            None if sdp_mid is None else str(sdp_mid),
+            self._parse_mline_index(sdp_mline_index),
+            None if username_fragment is None else str(username_fragment),
+        )
+
     async def _handle_server_offer(self, session_id: str, client_id: str, packet: dict[str, Any]) -> None:
         aiortc = self._import_aiortc()
         if aiortc is None:
@@ -436,8 +491,7 @@ class RealtimeWsTransport:
             return
 
         payload = self._resolve_payload(packet)
-        sdp = str(payload.get("sdp") or "").strip()
-        offer_type = str(payload.get("type") or "offer").strip() or "offer"
+        sdp, offer_type = self._extract_offer(payload)
         if not sdp:
             await self._emit_to_client(
                 session_id,
@@ -446,6 +500,17 @@ class RealtimeWsTransport:
                     "signal.error",
                     session_id,
                     {"code": "INVALID_OFFER", "message": "missing SDP in offer payload"},
+                ),
+            )
+            return
+        if offer_type != "offer":
+            await self._emit_to_client(
+                session_id,
+                client_id,
+                self._event(
+                    "signal.error",
+                    session_id,
+                    {"code": "INVALID_OFFER_TYPE", "message": f"unsupported offer type: {offer_type}"},
                 ),
             )
             return
@@ -463,23 +528,61 @@ class RealtimeWsTransport:
                 self._event(
                     "webrtc.state.changed",
                     session_id,
-                    {"from": "server", "to": client_id, "state": state},
+                    {"from": self.server_signaling_target, "to": client_id, "state": state},
                 ),
             )
             if state == "connected":
                 await self._set_session_state(session_id, "connected")
-            elif state in {"failed", "closed"}:
+            elif state in {"disconnected", "failed", "closed"}:
                 await self._set_session_state(session_id, "signaling")
-                if state == "closed":
+                if state in {"failed", "closed"}:
                     await self._close_server_peer(session_id, client_id)
+
+        @pc.on("iceconnectionstatechange")
+        async def _on_ice_conn_state_change() -> None:
+            state = str(getattr(pc, "iceConnectionState", "") or "").strip() or "unknown"
+            await self._emit_to_client(
+                session_id,
+                client_id,
+                self._event(
+                    "webrtc.ice.state.changed",
+                    session_id,
+                    {"from": self.server_signaling_target, "to": client_id, "state": state},
+                ),
+            )
 
         @pc.on("icecandidate")
         async def _on_ice_candidate(candidate) -> None:  # noqa: ANN001
             if candidate is None:
+                await self._emit_to_client(
+                    session_id,
+                    client_id,
+                    self._event(
+                        "signal.ice",
+                        session_id,
+                        {
+                            "from": self.server_signaling_target,
+                            "to": client_id,
+                            "payload": {
+                                "candidate": None,
+                                "sdpMid": None,
+                                "sdpMLineIndex": None,
+                            },
+                        },
+                    ),
+                )
                 return
             candidate_sdp = aiortc["candidate_to_sdp"](candidate)
             if not candidate_sdp.startswith("candidate:"):
                 candidate_sdp = f"candidate:{candidate_sdp}"
+            payload: dict[str, Any] = {
+                "candidate": candidate_sdp,
+                "sdpMid": candidate.sdpMid,
+                "sdpMLineIndex": candidate.sdpMLineIndex,
+            }
+            username_fragment = getattr(candidate, "usernameFragment", None)
+            if username_fragment:
+                payload["usernameFragment"] = str(username_fragment)
             await self._emit_to_client(
                 session_id,
                 client_id,
@@ -487,13 +590,9 @@ class RealtimeWsTransport:
                     "signal.ice",
                     session_id,
                     {
-                        "from": "server",
+                        "from": self.server_signaling_target,
                         "to": client_id,
-                        "payload": {
-                            "candidate": candidate_sdp,
-                            "sdpMid": candidate.sdpMid,
-                            "sdpMLineIndex": candidate.sdpMLineIndex,
-                        },
+                        "payload": payload,
                     },
                 ),
             )
@@ -523,7 +622,7 @@ class RealtimeWsTransport:
                 "signal.answer",
                 session_id,
                 {
-                    "from": "server",
+                    "from": self.server_signaling_target,
                     "to": client_id,
                     "payload": {
                         "type": str(pc.localDescription.type),
@@ -564,8 +663,8 @@ class RealtimeWsTransport:
             return
 
         payload = self._resolve_payload(packet)
-        raw_candidate = payload.get("candidate")
-        if raw_candidate is None:
+        candidate_text, sdp_mid, sdp_mline_index, username_fragment = self._extract_ice_fields(payload)
+        if candidate_text is None:
             try:
                 await peer.pc.addIceCandidate(None)
             except Exception as exc:
@@ -580,9 +679,6 @@ class RealtimeWsTransport:
                 )
             return
 
-        candidate_text = str(raw_candidate).strip()
-        if not candidate_text:
-            return
         candidate = None
         try:
             candidate = aiortc["candidate_from_sdp"](candidate_text)
@@ -613,8 +709,13 @@ class RealtimeWsTransport:
                 )
                 return
 
-        candidate.sdpMid = payload.get("sdpMid")
-        candidate.sdpMLineIndex = payload.get("sdpMLineIndex")
+        candidate.sdpMid = sdp_mid
+        candidate.sdpMLineIndex = sdp_mline_index
+        if username_fragment is not None and hasattr(candidate, "usernameFragment"):
+            try:
+                setattr(candidate, "usernameFragment", username_fragment)
+            except Exception:
+                pass
         try:
             await peer.pc.addIceCandidate(candidate)
         except Exception as exc:

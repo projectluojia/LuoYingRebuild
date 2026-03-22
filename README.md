@@ -114,6 +114,7 @@
 
 - QQ OneBot WebSocket 输入输出适配
 - 简单 Web API 聊天接口
+- 独立 Realtime 入口（会话 + WS 信令 + server-side 协商关键分支）
 
 ------
 
@@ -162,10 +163,12 @@
       │
       ├─ bootstrap.py            # QQ 容器构建入口（build_qq_container）
       ├─ bootstrap_web.py        # Web 容器构建入口（build_web_container）
+      ├─ bootstrap_realtime.py   # Realtime 容器构建入口（build_realtime_container）
       ├─ config.py               # 配置中心
       ├─ constants.py            # 常量与系统提示词
       ├─ main_qq.py              # QQ 入口
       ├─ main_web.py             # Web 入口
+      ├─ main_realtime.py        # Realtime 入口
       └─ __init__.py
 ```
 
@@ -187,10 +190,11 @@
 
 ### 4.2 启动流程
 
-当前有两条启动链路：
+当前有三条启动链路：
 
 1. QQ 链路（`main_qq.py`）
 2. Web 链路（`main_web.py`）
+3. Realtime 链路（`main_realtime.py`）
 
 QQ 链路启动流程：
 
@@ -210,7 +214,15 @@ Web 链路启动流程：
 4. 运行 transport 启动自检并输出会话策略日志
 5. 通过 `POST /chat` 进入同一条 `EventHandler` 处理链
 
-也就是说，当前系统是“QQ 容器 + Web 容器”并行入口，共享同一套应用层处理逻辑。
+Realtime 链路启动流程（独立于主聊天链路）：
+
+1. `main_realtime.py` 创建 FastAPI app
+2. 在 `startup` 生命周期调用 `build_realtime_container()` 构建 Realtime 容器
+3. 注入 `realtime_transport`
+4. 输出 Realtime transport 自检与策略日志
+5. 通过 HTTP + WS 提供会话与信令能力
+
+也就是说，当前系统是“QQ 容器 + Web 容器 + Realtime 容器”并行入口，其中 Realtime 与主聊天链路解耦。
 
 ### 4.3 容器装配
 
@@ -693,6 +705,32 @@ src/data/web_sessions.json
 
 ------
 
+## 14.5 Realtime 入口（实时通话阶段）
+
+`main_realtime.py` + `infra/transports/realtime_ws_transport.py` 提供了独立实时入口。
+
+当前接口形态为：
+
+- `GET /realtime/health`
+- `POST /realtime/sessions`
+- `GET /realtime/sessions/{session_id}`
+- `POST /realtime/sessions/{session_id}/close`
+- `WS /realtime/ws/{session_id}`
+
+当前已支持：
+
+- `signal.offer` / `signal.answer` / `signal.ice` 信令通道
+- `to: "server"` 的 server-side 协商关键分支
+- 嵌套 offer 结构（`payload.offer.{type,sdp}`）
+- 对象 candidate 与空 candidate（end-of-candidates）
+
+说明：
+
+- 当前媒体轨（占位视频/音频）尚未落地，Realtime 仍处于“协商可测、媒体待补”阶段
+- 若运行环境缺少 `aiortc`，会返回结构化 `signal.error`，不会影响主链
+
+------
+
 ## 15. 环境要求
 
 当前项目依赖见 `requirements.txt`：
@@ -706,6 +744,7 @@ src/data/web_sessions.json
 - python-dotenv
 - langchain
 - langchain-openai
+- aiortc（Realtime 协商依赖）
 
 建议环境：
 
@@ -840,6 +879,19 @@ cd src
 uvicorn luoying_bot.main_web:create_app --factory --host 0.0.0.0 --port 8000
 ```
 
+### 启动 Realtime API
+
+```bash
+cd src
+uvicorn luoying_bot.main_realtime:create_app --factory --host 0.0.0.0 --port 8010
+```
+
+Realtime 健康检查：
+
+```bash
+curl -s http://127.0.0.1:8010/realtime/health
+```
+
 ### 启动前自检
 
 如果你想先确认依赖是否安装齐、关键模块能否导入、数据路径是否存在，可以先运行：
@@ -878,6 +930,13 @@ python -m unittest discover -s tests -v
 - `CommandDispatcher`
 - `ReminderService`
 - `Web API` 错误契约回归（`tests/test_web_api_regression.py`）
+- `Realtime WS transport` 协商关键分支（`tests/test_realtime_ws_transport.py`）
+
+可单独执行实时回归：
+
+```bash
+python -m unittest tests/test_realtime_ws_transport.py -v
+```
 
 ### Web MVP 回归脚本（Ubuntu）
 
@@ -1086,7 +1145,13 @@ OLLAMA_IMAGE_MODEL=llava:7b
 
 当前 Web 接口更像调试入口，不是完整前后端产品。
 
-### 20.5 图片 / 回复逻辑依赖平台实现
+### 20.5 Web 自然语言链路存在上游超时波动
+
+在当前环境中，`/api/chat` 的自然语言路径可能出现上游模型 `ReadTimeout`，并以结构化 502 返回。
+
+同环境下命令路径（如 `/help`）通常可用，说明风险主要集中在上游模型调用稳定性，而不是 Web 路由契约本身。
+
+### 20.6 图片 / 回复逻辑依赖平台实现
 
 OneBot 对回复消息、图片文件路径、消息段格式的支持情况，会直接影响系统表现。
 
