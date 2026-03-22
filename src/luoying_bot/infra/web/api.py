@@ -107,11 +107,14 @@ class WebApiFactory:
         @app.post('/api/chat', response_model=RichChatResponse)
         async def rich_chat(req: ChatRequest, request: Request) -> RichChatResponse:
             store = getattr(request.app.state, 'web_session_store')
-            session = store.ensure_session(
-                session_id=req.session_id,
-                user_id=req.user_id,
-                user_name=req.user_name,
-            )
+            try:
+                session = store.ensure_session(
+                    session_id=req.session_id,
+                    user_id=req.user_id,
+                    user_name=req.user_name,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
             reply = await self._handle_web_chat(request=request, req=req, persist_history=True)
             session = store.get_session(session_id=req.session_id, user_id=req.user_id)
             return RichChatResponse(
