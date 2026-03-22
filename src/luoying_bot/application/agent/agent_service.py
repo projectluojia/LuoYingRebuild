@@ -268,4 +268,5 @@ class AgentService:
         
         self.memory.append(thread_id,"user",user_text)
         self.memory.append(thread_id,"assistant",answer)
+        print(answer)
         return answer
