@@ -8,9 +8,10 @@ import json
 from luoying_bot.application.agent.skill_base import SkillRequest
 from luoying_bot.application.agent.skill_registry import SkillRegistry
 from luoying_bot.domain.message import UniMessage
+from luoying_bot.domain.context import Platform,ChannelType
 from luoying_bot.ports.llm import ChatModel
 from luoying_bot.ports.memory import ConversationMemory
-from luoying_bot.constants import SYSTEM_PROMPT,REACT_INSTRUCTION
+from luoying_bot.constants import QQ_GROUP_SYSTEM_PROMPT,REACT_INSTRUCTION,WEB_SYSTEM_PROMPT
 
 
 @dataclass
@@ -33,6 +34,7 @@ class AgentService:
         self.memory=memory
         self.skills=skills
         self.max_steps=max_steps
+        self.system_pro:str=None
 
     def _build_react_messages(
         self,
@@ -56,7 +58,7 @@ class AgentService:
         )
 
         return [
-            {"role":"system","content":SYSTEM_PROMPT},
+            {"role":"system","content":self.system_pro},
             {"role":"system","content":REACT_INSTRUCTION},
             *history,
             {"role":"user","content":user_prompt},
@@ -102,7 +104,7 @@ class AgentService:
 
         raw= await self.model.chat(
             [
-                {"role":"system","content":SYSTEM_PROMPT},
+                {"role":"system","content":self.system_pro},
                 *self.memory.read(thread_id=thread_id),
                 {"role":"user","content":prompt},
             ]
@@ -167,11 +169,22 @@ class AgentService:
             f"会话ID：{conversation_id}\n"
             f"消息内容：\n{message_text}"
         )
+    
+    def _decide_system_prompt(self,pltf:Platform,cntp:ChannelType):
+        if pltf.value=='qq' and cntp.value=='group':
+            self.system_pro=QQ_GROUP_SYSTEM_PROMPT
+        elif pltf.value=='web':
+            self.system_pro=WEB_SYSTEM_PROMPT
 
     async def reply(self,message:UniMessage)->str:
         thread_id=message.context.thread_id
         user_text=self._render_user_message_for_agent(message)
+        
+        pltf=message.platform
+        cntp=message.context.target.channel_type
+        self._decide_system_prompt(pltf,cntp)
 
+        print(pltf)
         print(user_text)
 
         scratchpad: list[AgentStep]=[]
@@ -256,71 +269,3 @@ class AgentService:
         self.memory.append(thread_id,"user",user_text)
         self.memory.append(thread_id,"assistant",answer)
         return answer
-
-
-
-"""
-class AgentService:
-    def __init__(self, model: ChatModel, memory: ConversationMemory, skills: SkillRegistry):
-        self.model = model
-        self.memory = memory
-        self.skills = skills
-
-    async def reply(self, message: UniMessage) -> str:
-        thread_id = message.context.thread_id
-        user_text = message.to_llm_text()
-        planner_prompt = (
-            f"可用技能如下：\n{self.skills.summary()}\n\n"
-            f"用户消息：\n{user_text}\n\n"
-            "如果只是普通闲聊，直接回答。"
-        )
-        raw = await self.model.chat(
-            [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                *self.memory.read(thread_id, 12),
-                {"role": "user", "content": planner_prompt},
-            ]
-        )
-        data = self._safe_parse(raw)
-        if data.get("mode") == "skill":
-            skill = self.skills.get(data.get("skill", ""))
-            if not skill:
-                answer = f"我本来想调用技能 {data.get('skill')}，但它当前不存在。"
-            else:
-                skill_result = await skill.run(
-                    SkillRequest(
-                        message=message,
-                        context=message.context,
-                        payload=data.get("payload", {}),
-                    )
-                )
-                rawans = await self.model.chat(
-                    [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        *self.memory.read(thread_id, 12),
-                        {
-                            "role": "user",
-                            "content": (
-                                f"用户原始消息：{user_text}\n\n"
-                                f"你已经获得了处理这个请求所需的结果：\n{skill_result.text}\n\n"
-                                "现在请直接自然地回复用户。"
-                            ),
-                        },
-                    ]
-                )
-                print()
-                answer=self._safe_parse(rawans).get("answer") or rawans
-        else:
-            answer = data.get("answer") or raw
-
-        self.memory.append(thread_id, "user", user_text)
-        self.memory.append(thread_id, "assistant", answer)
-        return answer
-
-    def _safe_parse(self, text: str) -> dict:
-        try:
-            return json.loads(text.strip())
-        except Exception:
-            return {"mode": "direct", "answer": text.strip()}
-
-"""

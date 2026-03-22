@@ -32,9 +32,9 @@ class Settings:
     openai_model: str = os.getenv('OPENAI_MODEL', 'deepseek-chat')
     llm_temperature: float = float(os.getenv('LLM_TEMPERATURE', '1.0'))
 
-    coding_base_url: str = os.getenv('CODER_BASE_URL', 'https://api.deepseek.com')
+    coding_base_url: str = os.getenv('CODER_BASE_URL', 'https://dashscope.aliyuncs.com/compatible-mode/v1')
     coding_api_key: str = os.getenv('CODER_API_KEY', '')
-    coding_model: str = os.getenv('CODER_MODEL', 'deepseek-reasoner')
+    coding_model: str = os.getenv('CODER_MODEL', 'qwen3-max')
     coding_temperature: float = float(os.getenv('CODER_TEMPERATURE', '0.2'))
 
     image_base_url: str = os.getenv("IMAGE_BASE_URL", "")
