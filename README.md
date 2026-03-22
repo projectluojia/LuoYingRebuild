@@ -516,6 +516,12 @@ src/data/memo/
 src/data/scripts/<user_id>/
 ```
 
+说明：
+
+- 上面列的是仓库根目录视角下的实际文件位置
+- 当前推荐启动方式是先 `cd src`
+- 在这种启动方式下，配置中的 `./data/...` 会自然对应到这里的 `src/data/...`
+
 ### 优缺点
 
 优点：
@@ -725,7 +731,7 @@ IMAGE_API_KEY=
 IMAGE_MODEL=
 ```
 
-说明：当前图片子 Agent 实际仍主要使用 `OPENAI_*` 配置，而不是完全独立走 `IMAGE_*` 配置，后续可以考虑统一或彻底拆开。
+说明：当前图片子 Agent 默认会独立使用 `IMAGE_*` 配置；如果开启 `USE_LOCAL_OLLAMA=true`，则会改为使用 `OLLAMA_*` 配置。
 
 #### 天气 / 搜索
 
@@ -745,6 +751,8 @@ USER_DB_FILE=./data/userdatabase.json
 REMINDER_DB_FILE=./data/reminders.json
 SCRIPT_WORKSPACE_DIR=./data/scripts
 ```
+
+如果按下面推荐方式先执行 `cd src` 再启动，那么这里的 `./data` 实际就会对应仓库里的 `src/data`。
 
 #### 脚本运行控制
 
@@ -769,17 +777,19 @@ TRIGGER_PREFIX=/,!
 ### 启动 QQ 机器人
 
 ```bash
-python -m src.luoying_bot.main_qq
+cd src
+python -m luoying_bot.main_qq
 ```
 
-如果你的环境变量与模块路径配置不同，也可以在仓库根目录下自行调整启动方式。
+当前源码位于 `src/` 下，建议先进入 `src` 目录再启动。
 
 ### 启动 Web API
 
 需要自行用 uvicorn 包一层，例如：
 
 ```bash
-uvicorn src.luoying_bot.main_web:create_app --factory --host 0.0.0.0 --port 8000
+cd src
+uvicorn luoying_bot.main_web:create_app --factory --host 0.0.0.0 --port 8000
 ```
 
 ------
