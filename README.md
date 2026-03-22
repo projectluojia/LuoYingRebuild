@@ -653,6 +653,18 @@ src/data/scripts/<user_id>/
 }
 ```
 
+错误返回（`/chat`、`/api/chat`）已统一为结构化 JSON `detail`：
+
+```json
+{
+  "detail": {
+    "code": "SESSION_OWNERSHIP_ERROR",
+    "message": "session does not belong to current user",
+    "status": 400
+  }
+}
+```
+
 这个 Web 入口目前更适合：
 
 - 本地调试 Agent
@@ -865,6 +877,7 @@ python -m unittest discover -s tests -v
 - `EventHandler`
 - `CommandDispatcher`
 - `ReminderService`
+- `Web API` 错误契约回归（`tests/test_web_api_regression.py`）
 
 ### Web MVP 回归脚本（Ubuntu）
 
@@ -879,7 +892,7 @@ python -m unittest discover -s tests -v
 - Web 首页可达性
 - 创建会话 / 查询会话
 - 发送消息 / 查询历史
-- 跨用户错误分支是否返回标准 JSON `detail`
+- 跨用户错误分支是否返回标准 JSON `detail`（`code/message/status`）
 
 ### Ollama 状态检查（可选）
 

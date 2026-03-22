@@ -394,7 +394,11 @@
         }
       }
       if (!response.ok) {
-        throw new Error(payload.detail || payload.message || `请求失败：${response.status}`);
+        const detail = payload.detail;
+        const detailMessage = typeof detail === "string"
+          ? detail
+          : (detail && typeof detail === "object" ? detail.message : "");
+        throw new Error(detailMessage || payload.message || `请求失败：${response.status}`);
       }
       return payload;
     }

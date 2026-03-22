@@ -58,9 +58,27 @@ class RichChatResponse(BaseModel):
     session: SessionSummaryResponse
     reply: str
 
+
+class ErrorDetail(BaseModel):
+    code: str
+    message: str
+    status: int
+
+
 class WebApiFactory:
     def __init__(self, event_handler: EventHandler | None = None):
         self.event_handler = event_handler
+
+    @staticmethod
+    def _error_detail(status_code: int, code: str, message: str) -> dict[str, str | int]:
+        return {
+            'code': code,
+            'message': message,
+            'status': status_code,
+        }
+
+    def _raise_http_error(self, status_code: int, code: str, message: str) -> None:
+        raise HTTPException(status_code=status_code, detail=self._error_detail(status_code, code, message))
 
     def create(self) -> FastAPI:
         app = FastAPI(title='Luoying Web Agent')
@@ -92,7 +110,7 @@ class WebApiFactory:
             store = getattr(request.app.state, 'web_session_store')
             session = store.get_session(session_id=session_id, user_id=user_id)
             if session is None:
-                raise HTTPException(status_code=404, detail='Session not found')
+                self._raise_http_error(404, 'SESSION_NOT_FOUND', 'Session not found')
             messages = store.get_messages(session_id=session_id, user_id=user_id) or []
             return SessionMessagesResponse(
                 session=SessionSummaryResponse(**store._session_summary(session)),
@@ -107,11 +125,14 @@ class WebApiFactory:
         @app.post('/api/chat', response_model=RichChatResponse)
         async def rich_chat(req: ChatRequest, request: Request) -> RichChatResponse:
             store = getattr(request.app.state, 'web_session_store')
-            session = store.ensure_session(
-                session_id=req.session_id,
-                user_id=req.user_id,
-                user_name=req.user_name,
-            )
+            try:
+                session = store.ensure_session(
+                    session_id=req.session_id,
+                    user_id=req.user_id,
+                    user_name=req.user_name,
+                )
+            except ValueError as exc:
+                self._raise_http_error(400, 'SESSION_OWNERSHIP_ERROR', str(exc))
             reply = await self._handle_web_chat(request=request, req=req, persist_history=True)
             session = store.get_session(session_id=req.session_id, user_id=req.user_id)
             return RichChatResponse(
@@ -123,12 +144,15 @@ class WebApiFactory:
     async def _handle_web_chat(self, request: Request, req: ChatRequest, persist_history: bool) -> Reply:
         event_handler = getattr(request.app.state, 'event_handler', None)
         if event_handler is None:
-            raise HTTPException(status_code=503, detail='Web handler is not ready yet')
+            self._raise_http_error(503, 'HANDLER_NOT_READY', 'Web handler is not ready yet')
 
         store = getattr(request.app.state, 'web_session_store', None)
         if persist_history and store is not None:
-            store.ensure_session(req.session_id, req.user_id, req.user_name)
-            store.append_message(req.session_id, req.user_id, 'user', req.text)
+            try:
+                store.ensure_session(req.session_id, req.user_id, req.user_name)
+                store.append_message(req.session_id, req.user_id, 'user', req.text)
+            except ValueError as exc:
+                self._raise_http_error(400, 'SESSION_OWNERSHIP_ERROR', str(exc))
 
         try:
             reply = await event_handler.handle(
@@ -137,14 +161,17 @@ class WebApiFactory:
         except HTTPException:
             raise
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            self._raise_http_error(400, 'BAD_REQUEST', str(exc))
         except RuntimeError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+            self._raise_http_error(502, 'UPSTREAM_RUNTIME_ERROR', str(exc))
         except Exception as exc:
-            raise HTTPException(status_code=500, detail=f'Web chat failed: {type(exc).__name__}: {exc}') from exc
+            self._raise_http_error(500, 'INTERNAL_ERROR', f'Web chat failed: {type(exc).__name__}: {exc}')
 
         if persist_history and store is not None and reply.text:
-            store.append_message(req.session_id, req.user_id, 'assistant', reply.text)
+            try:
+                store.append_message(req.session_id, req.user_id, 'assistant', reply.text)
+            except ValueError as exc:
+                self._raise_http_error(400, 'SESSION_OWNERSHIP_ERROR', str(exc))
         return reply
     
 #web端相关所有代码由AI后来生成的，我看不懂，前端可以研究研究

@@ -5,7 +5,8 @@ from luoying_bot.domain.message import UniMessage
 from luoying_bot.ports.transport import ChatTransport, TransportCapabilityError
 
 # AIGC: Web 模式下的空实现 transport。
-# 说明：Web 请求/回复走 HTTP，不需要 QQ 那种双向主动推送。
+# 说明：当前 Web MVP 的请求/回复链路走 HTTP（/api/chat、/chat）。
+# 若后续进入实时阶段（WebSocket + WebRTC），再补充对应 transport/实时通道实现。
 
 class WebNoopTransport(ChatTransport):
     async def connect(self) -> None:

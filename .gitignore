@@ -15,3 +15,6 @@ env/
 
 # Runtime data (do not commit)
 src/data/web_sessions.json
+
+# JSON files
+*.json
