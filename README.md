@@ -792,6 +792,41 @@ cd src
 uvicorn luoying_bot.main_web:create_app --factory --host 0.0.0.0 --port 8000
 ```
 
+### 启动前自检
+
+如果你想先确认依赖是否安装齐、关键模块能否导入、数据路径是否存在，可以先运行：
+
+```bash
+cd src
+python -m luoying_bot.tools.selfcheck
+```
+
+这个自检不会真的连接 QQ，也不会真的调用外部模型接口，但会检查：
+
+- Python 版本
+- 核心依赖是否已安装
+- 关键项目模块能否导入
+- 数据路径是否存在
+- Web 工厂函数能否创建
+
+如果失败，输出里会直接标出具体缺失项。
+
+### 最基础测试
+
+仓库里现在带了一组最基础的 smoke tests。
+
+在仓库根目录执行：
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+当前主要覆盖：
+
+- `UniMessage`
+- `QuickReplyService`
+- `ScriptWorkspaceService`
+
 ------
 
 ## 19. 开发指南
@@ -857,10 +892,95 @@ uvicorn luoying_bot.main_web:create_app --factory --host 0.0.0.0 --port 8000
 - `infra/llm/openai_chat.py`
 - LangChain 子 Agent 中的 `ChatOpenAI(...)`
 
-如果要替换：
+当前项目已经内置了一套最基础的本地 Ollama 切换流程，不需要一上来直接改代码。
 
-- 主 Agent：改 `OpenAICompatibleChatModel`
-- 子 Agent：改 skill 中的 `ChatOpenAI` 初始化逻辑
+#### 现有切换点
+
+主 Agent 切换逻辑位于：
+
+- [`src/luoying_bot/bootstrap.py`](src/luoying_bot/bootstrap.py)
+- [`src/luoying_bot/bootstrap_web.py`](src/luoying_bot/bootstrap_web.py)
+
+这里会根据：
+
+- `USE_LOCAL_OLLAMA`
+
+在下面两组配置之间切换：
+
+- 远程主模型：`OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL`
+- 本地主模型：`OLLAMA_BASE_URL` / `OLLAMA_API_KEY` / `OLLAMA_MAIN_MODEL`
+
+编程子 Agent 切换逻辑位于：
+
+- [`src/luoying_bot/application/agent/skills/coding_agent_skill.py`](src/luoying_bot/application/agent/skills/coding_agent_skill.py)
+
+这里会根据同一个开关：
+
+- `USE_LOCAL_OLLAMA`
+
+在下面两组配置之间切换：
+
+- 远程编程模型：`CODER_BASE_URL` / `CODER_API_KEY` / `CODER_MODEL`
+- 本地编程模型：`OLLAMA_BASE_URL` / `OLLAMA_API_KEY` / `OLLAMA_CODING_MODEL`
+
+图片子 Agent 切换逻辑位于：
+
+- [`src/luoying_bot/application/agent/skills/image_agent_skill.py`](src/luoying_bot/application/agent/skills/image_agent_skill.py)
+
+这里同样根据：
+
+- `USE_LOCAL_OLLAMA`
+
+在下面两组配置之间切换：
+
+- 远程图片模型：`IMAGE_BASE_URL` / `IMAGE_API_KEY` / `IMAGE_MODEL`
+- 本地图片模型：`OLLAMA_BASE_URL` / `OLLAMA_API_KEY` / `OLLAMA_IMAGE_MODEL`
+
+#### 当前 Ollama 部署流程
+
+如果你要把项目切到本地 Ollama，当前推荐流程是：
+
+1. 先确保本机 Ollama 服务已启动，并提供 OpenAI 兼容接口
+2. 在 `.env` 中开启：
+
+```env
+USE_LOCAL_OLLAMA=true
+OLLAMA_BASE_URL=http://127.0.0.1:11434/v1
+OLLAMA_API_KEY=ollama
+OLLAMA_MAIN_MODEL=qwen2.5:7b-instruct
+OLLAMA_CODING_MODEL=qwen2.5-coder:7b
+OLLAMA_IMAGE_MODEL=llava:7b
+```
+
+3. 按需要确保对应模型已经在本地可用
+4. 重新启动 Web 或 QQ 入口
+
+在这个流程下：
+
+- 主 Agent 会自动改走 `OLLAMA_MAIN_MODEL`
+- 编程子 Agent 会自动改走 `OLLAMA_CODING_MODEL`
+- 图片子 Agent 会自动改走 `OLLAMA_IMAGE_MODEL`
+
+也就是说，当前项目的“替换模型供应商”更准确地说，是：
+
+- 主链路和子 Agent 已经支持“远程兼容接口 / 本地 Ollama”两套配置切换
+- 常规切换优先通过 `.env` 完成
+- 只有在你要接入第三种供应商或非 OpenAI 兼容接口时，才需要进一步改代码
+
+#### 什么时候才需要改代码
+
+只有在下面这些情况，才建议直接改实现：
+
+- 你要接入的服务不是 OpenAI 兼容接口
+- 你希望主 Agent、编程子 Agent、图片子 Agent 使用完全不同的切换策略
+- 你要增加新的子 Agent，并希望它也支持 Ollama / 远程双模式
+
+这时再分别修改：
+
+- [`src/luoying_bot/infra/llm/openai_chat.py`](src/luoying_bot/infra/llm/openai_chat.py)
+- [`src/luoying_bot/bootstrap.py`](src/luoying_bot/bootstrap.py)
+- [`src/luoying_bot/bootstrap_web.py`](src/luoying_bot/bootstrap_web.py)
+- 对应 skill 中 `ChatOpenAI(...)` 的初始化逻辑
 
 ------
 
