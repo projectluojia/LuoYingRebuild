@@ -12,6 +12,7 @@ from luoying_bot.application.services.quick_reply_service import QuickReplyServi
 from luoying_bot.application.services.reminder_service import ReminderService
 from luoying_bot.application.services.script_workspace_service import ScriptWorkspaceService
 from luoying_bot.application.services.user_service import UserService
+from luoying_bot.application.services.video_understanding_service import VideoUnderstandingService
 from luoying_bot.config import settings
 from luoying_bot.infra.llm.openai_chat import OpenAICompatibleChatModel
 from luoying_bot.infra.memory.in_memory import InMemoryConversationMemory
@@ -32,6 +33,7 @@ class WebAppContainer:
     script_workspace_service: ScriptWorkspaceService
     memo_service: MemoService
     quick_reply_service: QuickReplyService
+    video_understanding_service: VideoUnderstandingService
     commands: CommandDispatcher
     skills: SkillRegistry
     agent: AgentService
@@ -50,6 +52,7 @@ async def build_web_container() -> WebAppContainer:
     reminder_service = ReminderService(JsonReminderRepo(settings.reminder_db_file), scheduler, transport)
     memo_service = MemoService(JsonMemoRepo(settings.memo_dir))
     quick_reply_service = QuickReplyService(settings.quick_reply_file)
+    video_understanding_service = VideoUnderstandingService()
     script_workspace_service = ScriptWorkspaceService(
         root_dir=settings.script_workspace_dir,
         python_timeout_sec=settings.python_script_timeout_sec,
@@ -114,6 +117,7 @@ async def build_web_container() -> WebAppContainer:
         script_workspace_service=script_workspace_service,
         memo_service=memo_service,
         quick_reply_service=quick_reply_service,
+        video_understanding_service=video_understanding_service,
         commands=commands,
         skills=skills,
         agent=agent,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sys
 import unittest
 from asyncio import run as asyncio_run
@@ -338,10 +339,71 @@ class RealtimeWsTransportTest(unittest.TestCase):
 
             final_events = [event for event in ws.events if event.get("type") == "assistant.text.final"]
             self.assertGreaterEqual(len(final_events), 1)
-            final_payload = final_events[-1].get("payload", {})
+            track_observer_final = next(
+                (
+                    event
+                    for event in final_events
+                    if str(event.get("payload", {}).get("source") or "") == "realtime_transport_track_observer"
+                ),
+                final_events[0],
+            )
+            final_payload = track_observer_final.get("payload", {})
             final_text = str(final_payload.get("text") or "")
             self.assertIn("视频流", final_text)
             self.assertIn("remote_v_1", final_text)
+
+        asyncio_run(_run())
+
+    def test_video_track_semantic_analysis_emits_additional_assistant_text(self) -> None:
+        async def _run() -> None:
+            transport, session_id, client_id, ws = await self._prepare_transport()
+            fake_pc = _FakePeerConnection()
+
+            async def _fake_describe_video_track_semantic(track: Any, track_id: str) -> str | None:  # noqa: ARG001
+                return f"语义分析：画面中有一只猫（track_id={track_id}）"
+
+            transport._describe_video_track_semantic = _fake_describe_video_track_semantic  # type: ignore[assignment]
+
+            def _candidate_from_sdp(raw: str) -> _FakeCandidate:
+                return _FakeCandidate(raw)
+
+            transport._import_aiortc = lambda: {  # type: ignore[assignment]
+                "RTCPeerConnection": lambda: fake_pc,
+                "RTCSessionDescription": _FakeRTCSessionDescription,
+                "VideoStreamTrack": _FakeVideoStreamTrack,
+                "VideoFrame": _FakeVideoFrame,
+                "candidate_from_sdp": _candidate_from_sdp,
+                "candidate_to_sdp": lambda candidate: candidate.raw,
+            }
+
+            handled = await transport._handle_server_signal(
+                session_id=session_id,
+                from_client_id=client_id,
+                msg_type="signal.offer",
+                packet={
+                    "type": "signal.offer",
+                    "to": "server",
+                    "payload": {
+                        "offer": {"type": "offer", "sdp": "v=0 fake-offer"},
+                    },
+                },
+            )
+            self.assertTrue(handled)
+            self.assertIn("track", fake_pc.handlers)
+
+            await fake_pc.handlers["track"](_FakeRemoteTrack(kind="video", track_id="remote_v_2"))
+            await asyncio.sleep(0.01)
+
+            semantic_final_events = [
+                event
+                for event in ws.events
+                if event.get("type") == "assistant.text.final"
+                and str(event.get("payload", {}).get("source") or "") == "realtime_transport_video_semantic"
+            ]
+            self.assertGreaterEqual(len(semantic_final_events), 1)
+            semantic_text = str(semantic_final_events[-1].get("payload", {}).get("text") or "")
+            self.assertIn("语义分析", semantic_text)
+            self.assertIn("remote_v_2", semantic_text)
 
         asyncio_run(_run())
 

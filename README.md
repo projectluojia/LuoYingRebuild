@@ -637,6 +637,7 @@ src/data/scripts/<user_id>/
 - 查看当前用户的会话列表
 - 查看某个会话的历史消息
 - 发送消息并看到回复
+- 上传视频并让 AI 返回画面理解文本（`assistant.text.final`）
 
 当前接口形态为：
 
@@ -645,6 +646,7 @@ src/data/scripts/<user_id>/
 - `POST /api/sessions`
 - `GET /api/sessions`
 - `GET /api/sessions/{session_id}/messages`
+- `POST /api/sessions/{session_id}/video/describe`
 
 请求体：
 
@@ -663,6 +665,33 @@ src/data/scripts/<user_id>/
 {
   "reply": "你好呀"
 }
+```
+
+视频上传接口（关键字段）：
+
+```json
+{
+  "reply": "画面概述...",
+  "event": {
+    "type": "assistant.text.final",
+    "payload": {
+      "from": "assistant",
+      "to": "u_001",
+      "text": "画面概述...",
+      "source": "video_understanding",
+      "frame_count": 6
+    }
+  }
+}
+```
+
+调用示例（原始二进制上传）：
+
+```bash
+curl -s -X POST "http://127.0.0.1:8000/api/sessions/<SESSION_ID>/video/describe?user_id=u_001&user_name=Alice" \
+  -H "Content-Type: video/mp4" \
+  -H "X-File-Name: demo.mp4" \
+  --data-binary @demo.mp4
 ```
 
 错误返回（`/chat`、`/api/chat`）已统一为结构化 JSON `detail`：
@@ -727,6 +756,7 @@ src/data/web_sessions.json
 - `webrtc.media.track.ready` 事件（占位轨就绪通知）
 - `webrtc.remote.track.received` 事件（服务端收到远端媒体轨）
 - 收到远端媒体轨后输出 `assistant.text.start/delta/final` 确认消息
+- 视频轨到达后可异步抽帧并追加语义理解文本（`source: realtime_transport_video_semantic`）
 
 说明：
 
@@ -896,6 +926,8 @@ Realtime 健康检查：
 curl -s http://127.0.0.1:8010/realtime/health
 ```
 
+说明：`main_realtime` 默认不提供 `/` 页面，访问 `GET /` 返回 `404` 属于预期。
+
 ### 启动前自检
 
 如果你想先确认依赖是否安装齐、关键模块能否导入、数据路径是否存在，可以先运行：
@@ -952,6 +984,12 @@ python tests/realtime_offer_smoke.py --base-url http://127.0.0.1:8010
 
 ```bash
 python tests/realtime_offer_smoke.py --base-url http://127.0.0.1:8010 --send-video
+```
+
+若要进一步要求收到“语义分析文本事件”，可加：
+
+```bash
+python tests/realtime_offer_smoke.py --base-url http://127.0.0.1:8010 --require-semantic --recv-timeout 45
 ```
 
 ### Web MVP 回归脚本（Ubuntu）

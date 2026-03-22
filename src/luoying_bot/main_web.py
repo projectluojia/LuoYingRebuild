@@ -16,6 +16,7 @@ def create_app():
         app.state.container = container
         app.state.web_session_store = container.web_session_store
         app.state.event_handler = container.event_handler
+        app.state.video_understanding_service = container.video_understanding_service
         check_result = await container.event_handler.transport.startup_self_check()
         logging.info("Web startup self-check: %s", check_result)
         logging.info("Web session policy: %s", container.session_policy)

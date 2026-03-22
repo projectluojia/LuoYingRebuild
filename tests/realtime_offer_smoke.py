@@ -135,6 +135,8 @@ async def _run(args: argparse.Namespace) -> int:
     got_answer = False
     got_connected = False
     got_assistant_final = False
+    got_assistant_semantic_final = False
+    assistant_final_sources: set[str] = set()
     seen_events = 0
 
     @pc.on("connectionstatechange")
@@ -241,12 +243,20 @@ async def _run(args: argparse.Namespace) -> int:
                         got_connected = True
                 elif msg_type == "assistant.text.final":
                     got_assistant_final = True
+                    if isinstance(payload, dict):
+                        source = str(payload.get("source") or "").strip()
+                        if source:
+                            assistant_final_sources.add(source)
+                        if source == args.semantic_source:
+                            got_assistant_semantic_final = True
 
                 success = got_joined and got_track_ready and got_answer
                 if args.require_connected:
                     success = success and got_connected
                 if args.send_video:
                     success = success and got_assistant_final
+                if args.require_semantic:
+                    success = success and got_assistant_semantic_final
                 if success:
                     break
     except asyncio.TimeoutError:
@@ -279,6 +289,8 @@ async def _run(args: argparse.Namespace) -> int:
         "[INFO] summary "
         f"joined={got_joined}, track_ready={got_track_ready}, answer={got_answer}, "
         f"connected={got_connected}, assistant_final={got_assistant_final}, "
+        f"assistant_semantic_final={got_assistant_semantic_final}, "
+        f"assistant_final_sources={sorted(assistant_final_sources)}, "
         f"events={seen_events}"
     )
     if not got_joined:
@@ -295,6 +307,12 @@ async def _run(args: argparse.Namespace) -> int:
         return 1
     if args.send_video and not got_assistant_final:
         print("[FAIL] missing assistant.text.final when send_video is enabled")
+        return 1
+    if args.require_semantic and not got_assistant_semantic_final:
+        print(
+            "[FAIL] missing semantic assistant.text.final "
+            f"(source={args.semantic_source!r})"
+        )
         return 1
 
     print("[OK] realtime offer smoke passed")
@@ -319,11 +337,24 @@ def main() -> int:
         help="Add a local dummy outbound video track and require assistant.text.final confirmation from server.",
     )
     parser.add_argument(
+        "--require-semantic",
+        action="store_true",
+        help="Require assistant.text.final from semantic source (default: realtime_transport_video_semantic).",
+    )
+    parser.add_argument(
+        "--semantic-source",
+        default="realtime_transport_video_semantic",
+        help="assistant.text.final payload.source expected when --require-semantic is enabled.",
+    )
+    parser.add_argument(
         "--require-connected",
         action="store_true",
         help="Also require webrtc.state.changed=connected before success",
     )
     args = parser.parse_args()
+    if args.require_semantic and not args.send_video:
+        args.send_video = True
+        print("[INFO] --require-semantic enabled, auto set --send-video=true")
     return asyncio.run(_run(args))
 
 

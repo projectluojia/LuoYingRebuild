@@ -254,6 +254,24 @@
       margin-bottom: 12px;
     }
 
+    .upload-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .upload-row input[type="file"] {
+      flex: 1;
+      min-width: 200px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      padding: 8px 10px;
+      font-size: 13px;
+    }
+
     .status-text {
       min-height: 22px;
       font-size: 13px;
@@ -330,6 +348,10 @@
 
       <section class="composer">
         <textarea id="messageInput" placeholder="在这里输入你想对珞樱说的话"></textarea>
+        <div class="upload-row">
+          <input id="videoInput" type="file" accept="video/*">
+          <button id="uploadVideoBtn" class="secondary" type="button">上传视频并分析</button>
+        </div>
         <div class="button-row">
           <button id="sendBtn" type="button">发送消息</button>
           <button id="clearBtn" class="secondary" type="button">清空输入</button>
@@ -347,6 +369,7 @@
     const sessionMeta = document.getElementById("sessionMeta");
     const chatLog = document.getElementById("chatLog");
     const messageInput = document.getElementById("messageInput");
+    const videoInput = document.getElementById("videoInput");
     const statusText = document.getElementById("statusText");
 
     let currentSessionId = null;
@@ -537,10 +560,57 @@
       }
     }
 
+    async function uploadVideo() {
+      if (!saveIdentity()) {
+        return;
+      }
+      if (!currentSessionId) {
+        setStatus("请先新建或选择一个会话。", true);
+        return;
+      }
+      const file = videoInput.files && videoInput.files[0];
+      if (!file) {
+        setStatus("请先选择一个视频文件。", true);
+        return;
+      }
+
+      setStatus("正在上传视频并等待视觉模型分析...");
+      try {
+        const response = await fetch(
+          `/api/sessions/${encodeURIComponent(currentSessionId)}/video/describe?user_id=${encodeURIComponent(userIdInput.value.trim())}&user_name=${encodeURIComponent(userNameInput.value.trim())}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": file.type || "application/octet-stream",
+              "X-File-Name": encodeURIComponent(file.name || "uploaded_video"),
+            },
+            body: file,
+          }
+        );
+
+        const payload = await response.json();
+        if (!response.ok) {
+          const detail = payload.detail;
+          const detailMessage = typeof detail === "string"
+            ? detail
+            : (detail && typeof detail === "object" ? detail.message : "");
+          throw new Error(detailMessage || payload.message || `请求失败：${response.status}`);
+        }
+
+        await loadSessions();
+        await loadMessages(currentSessionId);
+        videoInput.value = "";
+        setStatus(`视频分析完成：${(payload.reply || "").slice(0, 80)}${payload.reply && payload.reply.length > 80 ? "..." : ""}`);
+      } catch (error) {
+        setStatus(error.message, true);
+      }
+    }
+
     document.getElementById("saveIdentityBtn").addEventListener("click", saveIdentity);
     document.getElementById("loadSessionsBtn").addEventListener("click", loadSessions);
     document.getElementById("newSessionBtn").addEventListener("click", createSession);
     document.getElementById("sendBtn").addEventListener("click", sendMessage);
+    document.getElementById("uploadVideoBtn").addEventListener("click", uploadVideo);
     document.getElementById("clearBtn").addEventListener("click", () => { messageInput.value = ""; });
     messageInput.addEventListener("keydown", (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {

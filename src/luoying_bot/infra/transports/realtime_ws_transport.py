@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import io
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import importlib.util
@@ -72,6 +74,9 @@ class RealtimeWsTransport:
         placeholder_video_enabled: bool = True,
         placeholder_video_width: int = 320,
         placeholder_video_height: int = 180,
+        video_semantic_enabled: bool = True,
+        video_semantic_max_frames: int = 4,
+        video_semantic_frame_timeout_sec: float = 1.2,
     ):
         self.max_participants_per_session = max(2, int(max_participants_per_session))
         self.server_webrtc_enabled = bool(server_webrtc_enabled)
@@ -79,6 +84,9 @@ class RealtimeWsTransport:
         self.placeholder_video_enabled = bool(placeholder_video_enabled)
         self.placeholder_video_width = max(64, int(placeholder_video_width))
         self.placeholder_video_height = max(64, int(placeholder_video_height))
+        self.video_semantic_enabled = bool(video_semantic_enabled)
+        self.video_semantic_max_frames = max(1, int(video_semantic_max_frames))
+        self.video_semantic_frame_timeout_sec = max(0.2, float(video_semantic_frame_timeout_sec))
         self._sessions: dict[str, RealtimeSession] = {}
         self._connections: dict[str, dict[str, WebSocket]] = {}
         self._server_peers: dict[tuple[str, str], _ServerPeer] = {}
@@ -92,6 +100,7 @@ class RealtimeWsTransport:
             f"server_webrtc_enabled={self.server_webrtc_enabled}, "
             f"server_signaling_target={self.server_signaling_target}, "
             f"placeholder_video_enabled={self.placeholder_video_enabled}, "
+            f"video_semantic_enabled={self.video_semantic_enabled}, "
             f"aiortc_available={aiortc_available})"
         )
 
@@ -568,6 +577,154 @@ class RealtimeWsTransport:
             ),
         )
 
+    async def _analyze_video_track_and_emit(
+        self,
+        session_id: str,
+        client_id: str,
+        track: Any,
+        track_id: str,
+    ) -> None:
+        if not self.video_semantic_enabled:
+            return
+        try:
+            semantic_text = await self._describe_video_track_semantic(track=track, track_id=track_id)
+        except Exception as exc:
+            semantic_text = (
+                f"已收到视频流（track_id={track_id or 'unknown'}），"
+                f"但画面语义分析失败：{type(exc).__name__}: {exc}"
+            )
+        if not semantic_text:
+            return
+        await self._emit_assistant_text(
+            session_id=session_id,
+            client_id=client_id,
+            text=semantic_text,
+            source="realtime_transport_video_semantic",
+        )
+
+    async def _describe_video_track_semantic(self, track: Any, track_id: str) -> str | None:
+        recv = getattr(track, "recv", None)
+        if not callable(recv):
+            return None
+
+        data_urls = await self._capture_video_frame_data_urls(track)
+        if not data_urls:
+            return f"已收到视频流（track_id={track_id or 'unknown'}），但暂未抓取到可分析画面帧。"
+
+        model_name, api_key, base_url = self._resolve_vision_model_config()
+        if not api_key and not self._use_local_ollama():
+            return (
+                f"已收到视频流（track_id={track_id or 'unknown'}），并抽取到 {len(data_urls)} 帧；"
+                "当前未配置视觉模型 API Key，暂时无法输出画面语义描述。"
+            )
+
+        try:
+            from langchain_core.messages import HumanMessage
+            from langchain_openai import ChatOpenAI
+        except Exception as exc:
+            return (
+                f"已收到视频流（track_id={track_id or 'unknown'}），并抽取到 {len(data_urls)} 帧；"
+                f"视觉推理依赖不可用：{type(exc).__name__}: {exc}"
+            )
+
+        prompt = (
+            "你是实时视频理解助手。以下是同一段视频按时间顺序抽取的关键帧。\n"
+            "请用中文输出：\n"
+            "1) 画面概述\n"
+            "2) 主要对象与动作\n"
+            "3) 时间变化\n"
+            "4) 可见文字（若有）\n"
+            "5) 不确定项（若有）\n"
+            "要求：客观、简洁、不要臆测。"
+        )
+        content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+        content.extend({"type": "image_url", "image_url": {"url": item}} for item in data_urls)
+
+        try:
+            model = ChatOpenAI(
+                model=model_name,
+                api_key=api_key,
+                base_url=base_url,
+                temperature=0.2,
+            )
+            response = await model.ainvoke([HumanMessage(content=content)])
+            text = self._extract_content_text(getattr(response, "content", ""))
+            if not text:
+                return "视频画面已分析，但模型未返回可读文本。"
+            return text
+        except Exception as exc:
+            return (
+                f"已收到视频流（track_id={track_id or 'unknown'}），并抽取到 {len(data_urls)} 帧；"
+                f"视觉推理失败：{type(exc).__name__}: {exc}"
+            )
+
+    async def _capture_video_frame_data_urls(self, track: Any) -> list[str]:
+        data_urls: list[str] = []
+        for _ in range(self.video_semantic_max_frames):
+            try:
+                frame = await asyncio.wait_for(track.recv(), timeout=self.video_semantic_frame_timeout_sec)
+            except asyncio.TimeoutError:
+                break
+            except Exception:
+                break
+
+            data_url = self._frame_to_data_url(frame)
+            if data_url:
+                data_urls.append(data_url)
+
+        return data_urls
+
+    @staticmethod
+    def _frame_to_data_url(frame: Any) -> str | None:
+        to_image = getattr(frame, "to_image", None)
+        if not callable(to_image):
+            return None
+        try:
+            image = to_image().convert("RGB")
+            buffer = io.BytesIO()
+            image.save(buffer, format="JPEG", quality=82)
+            raw = buffer.getvalue()
+            return f"data:image/jpeg;base64,{base64.b64encode(raw).decode('utf-8')}"
+        except Exception:
+            return None
+
+    @staticmethod
+    def _extract_content_text(content: Any) -> str:
+        if isinstance(content, str):
+            return content.strip()
+        if isinstance(content, list):
+            parts: list[str] = []
+            for item in content:
+                if isinstance(item, dict):
+                    text = item.get("text")
+                    if isinstance(text, str) and text.strip():
+                        parts.append(text.strip())
+            if parts:
+                return "\n".join(parts).strip()
+        return str(content).strip()
+
+    @staticmethod
+    def _use_local_ollama() -> bool:
+        from luoying_bot.config import settings
+
+        return bool(getattr(settings, "use_local_ollama", False))
+
+    @staticmethod
+    def _resolve_vision_model_config() -> tuple[str, str, str]:
+        from luoying_bot.config import settings
+
+        if bool(getattr(settings, "use_local_ollama", False)):
+            return (
+                str(getattr(settings, "ollama_image_model", "")),
+                str(getattr(settings, "ollama_api_key", "")),
+                str(getattr(settings, "ollama_base_url", "")),
+            )
+        return (
+            str(getattr(settings, "image_model", "") or getattr(settings, "openai_model", "")),
+            str(getattr(settings, "image_api_key", "") or getattr(settings, "openai_api_key", "")),
+            str(getattr(settings, "image_base_url", "") or getattr(settings, "openai_base_url", "")),
+        )
+
     async def _handle_server_offer(self, session_id: str, client_id: str, packet: dict[str, Any]) -> None:
         aiortc = self._import_aiortc()
         if aiortc is None:
@@ -746,6 +903,14 @@ class RealtimeWsTransport:
 
             if kind == "video":
                 text = f"我已收到你的视频流（track_id={track_id or 'unknown'}），当前实时链路正常。"
+                asyncio.create_task(
+                    self._analyze_video_track_and_emit(
+                        session_id=session_id,
+                        client_id=client_id,
+                        track=track,
+                        track_id=track_id,
+                    )
+                )
             elif kind == "audio":
                 text = f"我已收到你的音频流（track_id={track_id or 'unknown'}）。"
             else:
