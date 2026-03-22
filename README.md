@@ -723,11 +723,15 @@ src/data/web_sessions.json
 - `to: "server"` 的 server-side 协商关键分支
 - 嵌套 offer 结构（`payload.offer.{type,sdp}`）
 - 对象 candidate 与空 candidate（end-of-candidates）
+- server 侧占位视频轨自动挂载（协商成功后可接收视频）
+- `webrtc.media.track.ready` 事件（占位轨就绪通知）
+- `webrtc.remote.track.received` 事件（服务端收到远端媒体轨）
+- 收到远端媒体轨后输出 `assistant.text.start/delta/final` 确认消息
 
 说明：
 
-- 当前媒体轨（占位视频/音频）尚未落地，Realtime 仍处于“协商可测、媒体待补”阶段
-- 若运行环境缺少 `aiortc`，会返回结构化 `signal.error`，不会影响主链
+- 当前已落地占位视频轨，仍待补占位音频轨与更细粒度 Live2D 事件
+- 若运行环境缺少 `aiortc`（或 `av`），会返回结构化 `signal.error`，不会影响主链
 
 ------
 
@@ -744,7 +748,7 @@ src/data/web_sessions.json
 - python-dotenv
 - langchain
 - langchain-openai
-- aiortc（Realtime 协商依赖）
+- aiortc（Realtime 协商依赖，包含媒体相关依赖）
 
 建议环境：
 
@@ -936,6 +940,18 @@ python -m unittest discover -s tests -v
 
 ```bash
 python -m unittest tests/test_realtime_ws_transport.py -v
+```
+
+可执行实时 offer 端到端 smoke（需先启动实时入口）：
+
+```bash
+python tests/realtime_offer_smoke.py --base-url http://127.0.0.1:8010
+```
+
+若要验证“服务端收到上行视频后输出 `assistant.text.final` 确认”，可加：
+
+```bash
+python tests/realtime_offer_smoke.py --base-url http://127.0.0.1:8010 --send-video
 ```
 
 ### Web MVP 回归脚本（Ubuntu）

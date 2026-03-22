@@ -69,10 +69,16 @@ class RealtimeWsTransport:
         max_participants_per_session: int = 2,
         server_webrtc_enabled: bool = True,
         server_signaling_target: str = "server",
+        placeholder_video_enabled: bool = True,
+        placeholder_video_width: int = 320,
+        placeholder_video_height: int = 180,
     ):
         self.max_participants_per_session = max(2, int(max_participants_per_session))
         self.server_webrtc_enabled = bool(server_webrtc_enabled)
         self.server_signaling_target = (server_signaling_target or "server").strip() or "server"
+        self.placeholder_video_enabled = bool(placeholder_video_enabled)
+        self.placeholder_video_width = max(64, int(placeholder_video_width))
+        self.placeholder_video_height = max(64, int(placeholder_video_height))
         self._sessions: dict[str, RealtimeSession] = {}
         self._connections: dict[str, dict[str, WebSocket]] = {}
         self._server_peers: dict[tuple[str, str], _ServerPeer] = {}
@@ -85,6 +91,7 @@ class RealtimeWsTransport:
             f"(max_participants_per_session={self.max_participants_per_session}, "
             f"server_webrtc_enabled={self.server_webrtc_enabled}, "
             f"server_signaling_target={self.server_signaling_target}, "
+            f"placeholder_video_enabled={self.placeholder_video_enabled}, "
             f"aiortc_available={aiortc_available})"
         )
 
@@ -473,6 +480,94 @@ class RealtimeWsTransport:
             None if username_fragment is None else str(username_fragment),
         )
 
+    def _create_placeholder_video_track(self, aiortc: dict[str, Any]) -> Any | None:
+        if not self.placeholder_video_enabled:
+            return None
+        video_stream_track_cls = aiortc.get("VideoStreamTrack")
+        video_frame_cls = aiortc.get("VideoFrame")
+        if video_stream_track_cls is None or video_frame_cls is None:
+            return None
+
+        width = self.placeholder_video_width
+        height = self.placeholder_video_height
+
+        class _PlaceholderVideoTrack(video_stream_track_cls):  # type: ignore[misc, valid-type]
+            def __init__(self) -> None:
+                super().__init__()
+                self._luma_tick = 0
+
+            async def recv(self):  # noqa: ANN202
+                pts, time_base = await self.next_timestamp()
+                frame = video_frame_cls(width=width, height=height, format="yuv420p")
+                self._luma_tick = (self._luma_tick + 2) % 220
+                luma = 16 + self._luma_tick
+
+                frame.planes[0].update(bytes([luma]) * frame.planes[0].buffer_size)
+                frame.planes[1].update(bytes([128]) * frame.planes[1].buffer_size)
+                frame.planes[2].update(bytes([128]) * frame.planes[2].buffer_size)
+                frame.pts = pts
+                frame.time_base = time_base
+                return frame
+
+        return _PlaceholderVideoTrack()
+
+    def _attach_placeholder_video_track(self, pc: Any, aiortc: dict[str, Any]) -> tuple[str, str | None]:
+        track = self._create_placeholder_video_track(aiortc)
+        if track is None:
+            return "skipped", None
+        try:
+            pc.addTrack(track)
+        except Exception as exc:
+            return "failed", str(exc)
+        return "attached", None
+
+    async def _emit_assistant_text(
+        self,
+        session_id: str,
+        client_id: str,
+        text: str,
+        source: str = "realtime_transport",
+    ) -> None:
+        message_id = str(uuid.uuid4())
+        await self._emit_to_client(
+            session_id,
+            client_id,
+            self._event(
+                "assistant.text.start",
+                session_id,
+                {
+                    "message_id": message_id,
+                    "source": source,
+                },
+            ),
+        )
+        await self._emit_to_client(
+            session_id,
+            client_id,
+            self._event(
+                "assistant.text.delta",
+                session_id,
+                {
+                    "message_id": message_id,
+                    "delta": text,
+                    "source": source,
+                },
+            ),
+        )
+        await self._emit_to_client(
+            session_id,
+            client_id,
+            self._event(
+                "assistant.text.final",
+                session_id,
+                {
+                    "message_id": message_id,
+                    "text": text,
+                    "source": source,
+                },
+            ),
+        )
+
     async def _handle_server_offer(self, session_id: str, client_id: str, packet: dict[str, Any]) -> None:
         aiortc = self._import_aiortc()
         if aiortc is None:
@@ -518,6 +613,39 @@ class RealtimeWsTransport:
         await self._close_server_peer(session_id, client_id)
         pc = aiortc["RTCPeerConnection"]()
         await self._set_server_peer(session_id, client_id, pc)
+
+        attach_status, attach_error = self._attach_placeholder_video_track(pc, aiortc)
+        if attach_status == "failed":
+            await self._close_server_peer(session_id, client_id)
+            await self._emit_to_client(
+                session_id,
+                client_id,
+                self._event(
+                    "signal.error",
+                    session_id,
+                    {"code": "PLACEHOLDER_VIDEO_ATTACH_FAILED", "message": attach_error or "attach track failed"},
+                ),
+            )
+            return
+        if attach_status == "attached":
+            await self._emit_to_client(
+                session_id,
+                client_id,
+                self._event(
+                    "webrtc.media.track.ready",
+                    session_id,
+                    {
+                        "from": self.server_signaling_target,
+                        "to": client_id,
+                        "kind": "video",
+                        "source": "placeholder",
+                        "resolution": {
+                            "width": self.placeholder_video_width,
+                            "height": self.placeholder_video_height,
+                        },
+                    },
+                ),
+            )
 
         @pc.on("connectionstatechange")
         async def _on_conn_state_change() -> None:
@@ -595,6 +723,39 @@ class RealtimeWsTransport:
                         "payload": payload,
                     },
                 ),
+            )
+
+        @pc.on("track")
+        async def _on_track(track) -> None:  # noqa: ANN001
+            kind = str(getattr(track, "kind", "") or "unknown").strip() or "unknown"
+            track_id = str(getattr(track, "id", "") or "").strip()
+            await self._emit_to_client(
+                session_id,
+                client_id,
+                self._event(
+                    "webrtc.remote.track.received",
+                    session_id,
+                    {
+                        "from": self.server_signaling_target,
+                        "to": client_id,
+                        "kind": kind,
+                        "track_id": track_id,
+                    },
+                ),
+            )
+
+            if kind == "video":
+                text = f"我已收到你的视频流（track_id={track_id or 'unknown'}），当前实时链路正常。"
+            elif kind == "audio":
+                text = f"我已收到你的音频流（track_id={track_id or 'unknown'}）。"
+            else:
+                text = f"我已收到你的媒体流（kind={kind}, track_id={track_id or 'unknown'}）。"
+
+            await self._emit_assistant_text(
+                session_id=session_id,
+                client_id=client_id,
+                text=text,
+                source="realtime_transport_track_observer",
             )
 
         try:
@@ -732,13 +893,19 @@ class RealtimeWsTransport:
     @staticmethod
     def _import_aiortc() -> dict[str, Any] | None:
         try:
-            from aiortc import RTCPeerConnection, RTCSessionDescription
+            from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
             from aiortc.sdp import candidate_from_sdp, candidate_to_sdp
         except Exception:
             return None
+        try:
+            from av import VideoFrame
+        except Exception:
+            VideoFrame = None
         return {
             "RTCPeerConnection": RTCPeerConnection,
             "RTCSessionDescription": RTCSessionDescription,
+            "VideoStreamTrack": VideoStreamTrack,
+            "VideoFrame": VideoFrame,
             "candidate_from_sdp": candidate_from_sdp,
             "candidate_to_sdp": candidate_to_sdp,
         }

@@ -45,6 +45,7 @@ class _FakePeerConnection:
         self.connectionState: str = "new"
         self.iceConnectionState: str = "new"
         self.added_candidates: list[Any] = []
+        self.added_tracks: list[Any] = []
         self.closed = False
 
     def on(self, event_name: str):  # noqa: ANN001
@@ -66,8 +67,49 @@ class _FakePeerConnection:
     async def addIceCandidate(self, candidate: Any) -> None:
         self.added_candidates.append(candidate)
 
+    def addTrack(self, track: Any) -> None:  # noqa: ANN401
+        self.added_tracks.append(track)
+
     async def close(self) -> None:
         self.closed = True
+
+
+class _FakePlane:
+    def __init__(self, buffer_size: int) -> None:
+        self.buffer_size = buffer_size
+        self.updated: bytes | None = None
+
+    def update(self, data: bytes) -> None:
+        self.updated = data
+
+
+class _FakeVideoFrame:
+    def __init__(self, width: int, height: int, format: str) -> None:  # noqa: A002
+        self.width = width
+        self.height = height
+        self.format = format
+        self.planes = [
+            _FakePlane(width * height),
+            _FakePlane((width * height) // 4),
+            _FakePlane((width * height) // 4),
+        ]
+        self.pts: int | None = None
+        self.time_base: int | None = None
+
+
+class _FakeVideoStreamTrack:
+    def __init__(self) -> None:
+        self._pts = 0
+
+    async def next_timestamp(self) -> tuple[int, int]:
+        self._pts += 3000
+        return self._pts, 90000
+
+
+class _FakeRemoteTrack:
+    def __init__(self, kind: str, track_id: str) -> None:
+        self.kind = kind
+        self.id = track_id
 
 
 class RealtimeWsTransportTest(unittest.TestCase):
@@ -213,6 +255,93 @@ class RealtimeWsTransportTest(unittest.TestCase):
             errors = [event for event in ws.events if event.get("type") == "signal.error"]
             self.assertEqual(len(errors), 1)
             self.assertEqual(errors[0].get("payload", {}).get("code"), "AIORTC_NOT_AVAILABLE")
+
+        asyncio_run(_run())
+
+    def test_server_offer_attaches_placeholder_video_track_when_available(self) -> None:
+        async def _run() -> None:
+            transport, session_id, client_id, ws = await self._prepare_transport()
+            fake_pc = _FakePeerConnection()
+
+            def _candidate_from_sdp(raw: str) -> _FakeCandidate:
+                return _FakeCandidate(raw)
+
+            transport._import_aiortc = lambda: {  # type: ignore[assignment]
+                "RTCPeerConnection": lambda: fake_pc,
+                "RTCSessionDescription": _FakeRTCSessionDescription,
+                "VideoStreamTrack": _FakeVideoStreamTrack,
+                "VideoFrame": _FakeVideoFrame,
+                "candidate_from_sdp": _candidate_from_sdp,
+                "candidate_to_sdp": lambda candidate: candidate.raw,
+            }
+
+            handled = await transport._handle_server_signal(
+                session_id=session_id,
+                from_client_id=client_id,
+                msg_type="signal.offer",
+                packet={
+                    "type": "signal.offer",
+                    "to": "server",
+                    "payload": {
+                        "offer": {"type": "offer", "sdp": "v=0 fake-offer"},
+                    },
+                },
+            )
+            self.assertTrue(handled)
+            self.assertEqual(len(fake_pc.added_tracks), 1)
+            media_events = [event for event in ws.events if event.get("type") == "webrtc.media.track.ready"]
+            self.assertEqual(len(media_events), 1)
+            payload = media_events[0].get("payload", {})
+            self.assertEqual(payload.get("kind"), "video")
+            self.assertEqual(payload.get("source"), "placeholder")
+
+        asyncio_run(_run())
+
+    def test_server_track_event_emits_assistant_text_confirmation(self) -> None:
+        async def _run() -> None:
+            transport, session_id, client_id, ws = await self._prepare_transport()
+            fake_pc = _FakePeerConnection()
+
+            def _candidate_from_sdp(raw: str) -> _FakeCandidate:
+                return _FakeCandidate(raw)
+
+            transport._import_aiortc = lambda: {  # type: ignore[assignment]
+                "RTCPeerConnection": lambda: fake_pc,
+                "RTCSessionDescription": _FakeRTCSessionDescription,
+                "VideoStreamTrack": _FakeVideoStreamTrack,
+                "VideoFrame": _FakeVideoFrame,
+                "candidate_from_sdp": _candidate_from_sdp,
+                "candidate_to_sdp": lambda candidate: candidate.raw,
+            }
+
+            handled = await transport._handle_server_signal(
+                session_id=session_id,
+                from_client_id=client_id,
+                msg_type="signal.offer",
+                packet={
+                    "type": "signal.offer",
+                    "to": "server",
+                    "payload": {
+                        "offer": {"type": "offer", "sdp": "v=0 fake-offer"},
+                    },
+                },
+            )
+            self.assertTrue(handled)
+            self.assertIn("track", fake_pc.handlers)
+
+            await fake_pc.handlers["track"](_FakeRemoteTrack(kind="video", track_id="remote_v_1"))
+            received_events = [event.get("type") for event in ws.events]
+            self.assertIn("webrtc.remote.track.received", received_events)
+            self.assertIn("assistant.text.start", received_events)
+            self.assertIn("assistant.text.delta", received_events)
+            self.assertIn("assistant.text.final", received_events)
+
+            final_events = [event for event in ws.events if event.get("type") == "assistant.text.final"]
+            self.assertGreaterEqual(len(final_events), 1)
+            final_payload = final_events[-1].get("payload", {})
+            final_text = str(final_payload.get("text") or "")
+            self.assertIn("视频流", final_text)
+            self.assertIn("remote_v_1", final_text)
 
         asyncio_run(_run())
 
