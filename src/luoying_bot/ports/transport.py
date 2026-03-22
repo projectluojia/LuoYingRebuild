@@ -20,6 +20,16 @@ class ChatTransport(ABC):
     @abstractmethod
     async def send_text(self, context: ChatContext, text: str) -> None: ...
 
+    # 统一会话作用域：用于日志、自检、会话策略展示等场景。
+    def resolve_session_scope(self, context: ChatContext) -> str:
+        platform = getattr(context.target.platform, "value", str(context.target.platform))
+        channel = getattr(context.target.channel_type, "value", str(context.target.channel_type))
+        return f"{platform}:{channel}:{context.target.conversation_id}"
+
+    # transport 可选的自检输出，默认不做额外检查。
+    async def startup_self_check(self) -> str:
+        return "transport startup self-check: OK"
+
     async def send_reaction(self, context: ChatContext, emoji_id: int) -> None:
         raise TransportCapabilityError('当前 transport 不支持消息表情反应')
     async def set_special_title(self, context: ChatContext, title: str) -> None:

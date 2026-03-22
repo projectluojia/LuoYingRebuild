@@ -348,3 +348,14 @@ class QQWsTransport(ChatTransport):
                 }
             }
         )
+
+    def resolve_session_scope(self, context: ChatContext) -> str:
+        if context.target.channel_type == ChannelType.GROUP:
+            return f"qq:group:{context.target.conversation_id}"
+        return f"qq:private:{context.user.user_id}"
+
+    async def startup_self_check(self) -> str:
+        ws_url = str(self.settings.ws_url or "").strip()
+        if not ws_url.startswith(("ws://", "wss://")):
+            raise RuntimeError(f"QQ WS 地址格式错误: {ws_url!r}")
+        return f"qq transport config OK ({ws_url})"

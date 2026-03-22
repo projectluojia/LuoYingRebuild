@@ -17,3 +17,9 @@ class WebNoopTransport(ChatTransport):
     async def send_text(self, context: ChatContext, text: str) -> None:
         # Web 模式下回复由 HTTP 响应返回，不通过 transport 回推。
         return None
+
+    def resolve_session_scope(self, context: ChatContext) -> str:
+        return f"web:session:{context.target.conversation_id}"
+
+    async def startup_self_check(self) -> str:
+        return "web transport ready (HTTP response driven)"

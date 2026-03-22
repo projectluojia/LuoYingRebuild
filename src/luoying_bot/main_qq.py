@@ -8,6 +8,8 @@ async def main() -> None:
         try:
             #构造container
             container = await build_qq_container()
+            check_result = await container.transport.startup_self_check()
+            logging.info('QQ startup self-check: %s', check_result)
             #连接到
             await container.transport.connect()
             #从提醒恢复

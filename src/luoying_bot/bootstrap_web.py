@@ -20,6 +20,7 @@ from luoying_bot.infra.repos.json_reminder_repo import JsonReminderRepo
 from luoying_bot.infra.repos.json_user_repo import JsonUserRepo
 from luoying_bot.infra.scheduler.async_scheduler import AsyncScheduler
 from luoying_bot.infra.transports.web_noop_transport import WebNoopTransport
+from luoying_bot.infra.web.session_store import WebSessionStore
 
 # AIGC: Web 专用容器，和 QQ 容器解耦，避免 Web 启动路径触发 QQ 连接逻辑。
 
@@ -36,6 +37,8 @@ class WebAppContainer:
     agent: AgentService
     event_handler: EventHandler
     scheduler: AsyncScheduler
+    web_session_store: WebSessionStore
+    session_policy: dict[str, object]
 
 
 async def build_web_container() -> WebAppContainer:
@@ -53,6 +56,12 @@ async def build_web_container() -> WebAppContainer:
         send_chunk_size=settings.script_send_chunk_size,
         max_output_chars=settings.script_max_output_chars,
     )
+    web_session_store = WebSessionStore.from_default_path()
+    session_policy: dict[str, object] = {
+        'history_window': 20,
+        'max_sessions_per_user': 50,
+        'auto_create_web_session': True,
+    }
 
     memory = InMemoryConversationMemory()
     main_model_base_url = settings.ollama_base_url if settings.use_local_ollama else settings.openai_base_url
@@ -75,6 +84,8 @@ async def build_web_container() -> WebAppContainer:
         'reminder_service': reminder_service,
         'memo_service': memo_service,
         'script_workspace_service': script_workspace_service,
+        'web_session_store': web_session_store,
+        'session_policy': session_policy,
         'memory': memory,
     }
 
@@ -108,4 +119,6 @@ async def build_web_container() -> WebAppContainer:
         agent=agent,
         event_handler=event_handler,
         scheduler=scheduler,
+        web_session_store=web_session_store,
+        session_policy=session_policy,
     )

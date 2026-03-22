@@ -90,6 +90,11 @@ async def build_qq_container() -> AppContainer:
         'ops': settings.ops, 
         'HELP': settings.HELP,
         'LOG': settings.LOG,
+        'session_policy': {
+            'history_window': 20,
+            'max_sessions_per_user': 0,
+            'auto_create_web_session': False,
+        },
         'transport': transport, 
         'runtime': runtime, 
         'user_service': user_service, 

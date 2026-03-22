@@ -71,6 +71,7 @@
 - 联网搜索
 - 提醒事项管理
 - 备忘录管理
+- 会话策略状态查询（`session_policy`）
 - 群信息 / 群成员信息查询
 - 图片理解
 - 编程工作区操作
@@ -206,7 +207,8 @@ Web 链路启动流程：
 1. `main_web.py` 创建 FastAPI app
 2. 在 `startup` 生命周期调用 `build_web_container()` 构建 Web 容器
 3. 将 `event_handler` 注入 `app.state`
-4. 通过 `POST /chat` 进入同一条 `EventHandler` 处理链
+4. 运行 transport 启动自检并输出会话策略日志
+5. 通过 `POST /chat` 进入同一条 `EventHandler` 处理链
 
 也就是说，当前系统是“QQ 容器 + Web 容器”并行入口，共享同一套应用层处理逻辑。
 
@@ -657,6 +659,18 @@ src/data/scripts/<user_id>/
 - 作为最小可用前端独立使用
 - 测试统一事件模型与会话历史
 
+Web MVP 稳定化回归（Ubuntu 可用）：
+
+```bash
+./tests/web_mvp_regression.sh
+```
+
+可选指定地址：
+
+```bash
+./tests/web_mvp_regression.sh http://127.0.0.1:8000
+```
+
 当前 Web 会话历史会保存到：
 
 ```text
@@ -835,7 +849,7 @@ python -m luoying_bot.tools.selfcheck
 
 ### 最基础测试
 
-仓库里现在带了一组最基础的 smoke tests。
+仓库里现在带了基础 smoke + 高价值回归测试。
 
 在仓库根目录执行：
 
@@ -848,6 +862,24 @@ python -m unittest discover -s tests -v
 - `UniMessage`
 - `QuickReplyService`
 - `ScriptWorkspaceService`
+- `EventHandler`
+- `CommandDispatcher`
+- `ReminderService`
+
+### Web MVP 回归脚本（Ubuntu）
+
+当 Web 服务已启动后，在仓库根目录执行：
+
+```bash
+./tests/web_mvp_regression.sh
+```
+
+该脚本会检查：
+
+- Web 首页可达性
+- 创建会话 / 查询会话
+- 发送消息 / 查询历史
+- 跨用户错误分支是否返回标准 JSON `detail`
 
 ### Ollama 状态检查（可选）
 
