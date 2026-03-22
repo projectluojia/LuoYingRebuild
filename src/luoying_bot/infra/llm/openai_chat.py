@@ -30,8 +30,23 @@ class OpenAICompatibleChatModel(ChatModel):
         }
 
         async with httpx.AsyncClient(timeout=60) as client:
-            #别问这是啥，问就是我也不懂，面向CV编程
-            resp = await client.post(f'{self.base_url}/chat/completions', json=payload, headers=headers)
-            resp.raise_for_status()
+            try:
+                #别问这是啥，问就是我也不懂，面向CV编程
+                resp = await client.post(f'{self.base_url}/chat/completions', json=payload, headers=headers)
+                resp.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                request_url = str(exc.request.url)
+                if exc.response.status_code == 404 and '11434' in request_url:
+                    raise RuntimeError(
+                        'Ollama 接口返回 404。当前代码使用 OpenAI 兼容路径 '
+                        '"/v1/chat/completions"，请检查 OLLAMA_BASE_URL 是否正确，'
+                        '或确认当前 Ollama 版本是否支持 OpenAI 兼容接口。'
+                    ) from exc
+                raise RuntimeError(
+                    f'模型接口请求失败：HTTP {exc.response.status_code}，URL={request_url}'
+                ) from exc
+            except httpx.HTTPError as exc:
+                raise RuntimeError(f'模型接口请求失败：{type(exc).__name__}: {exc}') from exc
+
             data = resp.json()
             return data['choices'][0]['message']['content']

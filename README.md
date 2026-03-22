@@ -610,11 +610,27 @@ src/data/scripts/<user_id>/
 
 ## 14. Web 入口
 
-`main_web.py` + `infra/web/api.py` 提供了一个简单 Web 接口。
+`main_web.py` + `infra/web/api.py` 现在已经不只是单个调试接口，而是一个最小可用的 Web 端闭环。
+
+当前可以直接打开：
+
+- `/`
+
+页面能力包括：
+
+- 填写并保存本地身份信息
+- 新建会话
+- 查看当前用户的会话列表
+- 查看某个会话的历史消息
+- 发送消息并看到回复
 
 当前接口形态为：
 
 - `POST /chat`
+- `POST /api/chat`
+- `POST /api/sessions`
+- `GET /api/sessions`
+- `GET /api/sessions/{session_id}/messages`
 
 请求体：
 
@@ -638,10 +654,16 @@ src/data/scripts/<user_id>/
 这个 Web 入口目前更适合：
 
 - 本地调试 Agent
-- 为后续前端页面预留接口
-- 测试统一事件模型
+- 作为最小可用前端独立使用
+- 测试统一事件模型与会话历史
 
-从代码注释和实现完整度来看，它目前属于可用但偏轻量的实验接口。
+当前 Web 会话历史会保存到：
+
+```text
+src/data/web_sessions.json
+```
+
+从定位上看，它现在已经比“单纯实验接口”更进一步，但仍然属于轻量 MVP，而不是完整产品前端。
 
 ------
 
@@ -826,6 +848,20 @@ python -m unittest discover -s tests -v
 - `UniMessage`
 - `QuickReplyService`
 - `ScriptWorkspaceService`
+
+### Ollama 状态检查（可选）
+
+如果你使用本地 Ollama，建议在聊天前先检查服务状态：
+
+```bash
+python tests/check_ollama_status.py
+```
+
+严格模式（要求配置模型必须在线）：
+
+```bash
+python tests/check_ollama_status.py --strict-model-match
+```
 
 ------
 

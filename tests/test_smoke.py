@@ -15,6 +15,7 @@ if str(SRC_DIR) not in sys.path:
 from luoying_bot.application.services.quick_reply_service import QuickReplyService
 from luoying_bot.application.services.script_workspace_service import ScriptWorkspaceService
 from luoying_bot.domain.message import UniMessage
+from luoying_bot.infra.web.session_store import WebSessionStore
 
 
 class UniMessageSmokeTest(unittest.TestCase):
@@ -57,6 +58,23 @@ class ScriptWorkspaceSmokeTest(unittest.TestCase):
             service = ScriptWorkspaceService(root_dir=Path(tmpdir))
             with self.assertRaises(ValueError):
                 service.write_script("10001", "../escape.py", "x=1", overwrite=False)
+
+
+class WebSessionStoreSmokeTest(unittest.TestCase):
+    def test_create_list_and_append_messages(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = WebSessionStore(Path(tmpdir) / "web_sessions.json")
+            session = store.create_session("u-1", "Alice")
+            store.append_message(session["session_id"], "u-1", "user", "你好")
+            store.append_message(session["session_id"], "u-1", "assistant", "你好呀")
+
+            sessions = store.list_sessions("u-1")
+            messages = store.get_messages(session["session_id"], user_id="u-1")
+
+            self.assertEqual(len(sessions), 1)
+            self.assertEqual(sessions[0]["message_count"], 2)
+            self.assertEqual(messages[0]["text"], "你好")
+            self.assertEqual(messages[1]["role"], "assistant")
 
 
 if __name__ == "__main__":
