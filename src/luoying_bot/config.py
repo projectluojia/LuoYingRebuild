@@ -16,6 +16,7 @@ def _split_csv(value: str) -> List[str]:
 @dataclass(slots=True)
 class Settings:
     ws_url: str = os.getenv('WS_URL', 'ws://127.0.0.1:3001')
+    ws_token: str = os.getenv('WS_TOKEN', '')
     HELP: str = os.getenv('HELP', '拉取链接失败')
     LOG: str = os.getenv('LOG', '拉取链接失败')
     version: str = os.getenv('VERSION','unknown')

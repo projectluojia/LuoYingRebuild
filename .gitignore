@@ -12,3 +12,5 @@ env/
 .env
 .env.*
 !.env.example
+
+src/data/

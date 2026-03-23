@@ -17,7 +17,7 @@ class QQWsTransport(ChatTransport):
     
     #连接到WebSocket
     async def connect(self) -> None:
-        self.websocket = await websockets.connect(self.settings.ws_url)
+        self.websocket = await websockets.connect(self.settings.ws_url, additional_headers={"Authorization": f"Bearer {self.settings.ws_token}"})
 
     #发送一个东西，看不懂这个函数先往下看
     async def _send_raw(self, data: Dict[str, Any]) -> None:

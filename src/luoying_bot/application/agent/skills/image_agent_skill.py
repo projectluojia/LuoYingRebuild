@@ -56,27 +56,26 @@ class ImageAgentSkill(BaseSkill):
         requested_file_names = self._normalize_file_names(req.payload.get("file_names"))
 
         images = self._collect_images(req)
+        
 
-        print(str(req.payload))
+        print("collect_images:", images)
 
         if requested_file_names:
             file_name_set = set(requested_file_names)
             images = [img for img in images if img["file_name"] in file_name_set]
-
         if requested_indexes:
             index_set = set(requested_indexes)
             images = [img for img in images if img["index"] in index_set]
-        print(111)
+            
         if not images:
             return SkillResult(text="当前消息里没有找到可分析的图片")
-        print(111)
         checkpointer = InMemorySaver()
         config: RunnableConfig = {
             "configurable": {
                 "thread_id": f"{req.context.thread_id}:image"
             }
         }
-        print(111)
+        
         @tool
         async def list_current_images() -> str:
             
@@ -369,6 +368,7 @@ class ImageAgentSkill(BaseSkill):
             copied = dict(img)
             copied["local_path"] = local_path
             ready.append(copied)
+        print("ensure_local_paths result:", ready)
         return ready
 
     async def _resolve_image_path(self, req: SkillRequest, file_name: str) -> Optional[str]:
@@ -377,11 +377,13 @@ class ImageAgentSkill(BaseSkill):
 
         if os.path.isabs(file_name) and os.path.exists(file_name):
             return file_name
-
+        print(f"download_image input: {file_name}")
         transport = self.services["transport"]
         try:
             local_path = await transport.download_image(file_name)
+            print(f"download_image output: {local_path}")
             if local_path and os.path.exists(local_path):
+                print(f"exists: {os.path.exists(local_path)}")
                 return local_path
         except Exception:
             pass
