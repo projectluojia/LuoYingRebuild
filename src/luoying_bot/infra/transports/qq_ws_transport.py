@@ -15,27 +15,106 @@ class QQWsTransport(ChatTransport):
         self.settings = settings
         self.platfrom = Platform.QQ
         self.websocket = None
-    
+
+        self._reader_task: asyncio.Task | None = None
+        self._event_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(maxsize=1000)
+        self._pending_calls: dict[str, asyncio.Future] = {}
+        self._send_lock = asyncio.Lock()
+
+    async def close(self) -> None:
+        if self._reader_task is not None:
+            self._reader_task.cancel()
+            await asyncio.gather(self._reader_task, return_exceptions=True)
+            self._reader_task = None
+
+        if self.websocket is not None:
+            try:
+                await self.websocket.close()
+            except Exception:
+                pass
+            self.websocket = None
+
+        for fut in self._pending_calls.values():
+            if not fut.done():
+                fut.set_exception(RuntimeError("QQ transport 已关闭"))
+        self._pending_calls.clear()
+
+        self._event_queue = asyncio.Queue(maxsize=1000)
+
+
     #连接到WebSocket
     async def connect(self) -> None:
-        self.websocket = await websockets.connect(self.settings.ws_url, additional_headers={"Authorization": f"Bearer {self.settings.ws_token}"})
+        await self.close()
+        self.websocket = await websockets.connect(
+            self.settings.ws_url,
+            additional_headers={"Authorization": f"Bearer {self.settings.ws_token}"},
+            ping_interval=20,
+            ping_timeout=20,
+            close_timeout=5,
+        )
+        self._reader_task = asyncio.create_task(self._reader_loop(), name="qq-ws-reader")
+
+    async def _reader_loop(self) -> None:
+        try:
+            while True:
+                if not self.websocket:
+                    raise RuntimeError("websocket 未连接")
+
+                raw = await self.websocket.recv()
+                data = json.loads(raw)
+
+                echo_id = data.get("echo")
+                if echo_id:
+                    fut = self._pending_calls.pop(echo_id, None)
+                    if fut is not None and not fut.done():
+                        fut.set_result(data)
+                    continue
+
+                await self._event_queue.put(data)
+
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            for fut in self._pending_calls.values():
+                if not fut.done():
+                    fut.set_exception(RuntimeError(f"reader_loop 异常退出：{exc}"))
+            self._pending_calls.clear()
+
+            # 给主循环一个明确错误信号
+            await self._event_queue.put({
+                "post_type": "__transport_error__",
+                "error": str(exc),
+            })
+
 
     #发送一个东西，看不懂这个函数先往下看
     async def _send_raw(self, data: Dict[str, Any]) -> None:
         if not self.websocket:
             raise RuntimeError('QQ transport 尚未连接')
-        await self.websocket.send(json.dumps(data, ensure_ascii=False))
+        async with self._send_lock:
+            await self.websocket.send(json.dumps(data, ensure_ascii=False))
     
     #拉取一个东西，看不懂往下看
     async def _call(self, action: str, params: Dict[str, Any] | None = None) -> Dict[str, Any]:
-        echo_id = str(uuid.uuid4())
-        await self._send_raw({'action': action, 'params': params or {}, 'echo': echo_id})
-        while True:
-            raw = await self.websocket.recv()
-            data = json.loads(raw)
-            if data.get('echo') == echo_id:
-                return data
-    
+        if not self.websocket:
+            raise RuntimeError('QQ transport 尚未连接')
+        echo_id=str(uuid.uuid4())
+        fut = asyncio.get_running_loop().create_future()
+        self._pending_calls[echo_id]=fut
+
+        try:
+            await self._send_raw(
+                {
+                    "action":action,
+                    "params":params or {},
+                    "echo":echo_id,
+                }
+            )
+            return await asyncio.wait_for(fut,timeout=15)
+        except Exception:
+            self._pending_calls.pop(echo_id,None)
+            raise
+        
     #抓取到用户的昵称        
     def _extract_user_name(self, data: Dict[str, Any]) -> Optional[str]:
         sender = data.get('sender', {})
@@ -143,9 +222,14 @@ class QQWsTransport(ChatTransport):
 
     #接受onebot事件
     async def recv_message(self) -> UniMessage:
+        """
         raw = await self.websocket.recv()#收到消息
         data: Dict[str, Any] = json.loads(raw)#json成data
+        """
 
+        data: Dict[str, Any] = await self._event_queue.get()
+        if data.get("post_type") == "__transport_error__":
+            raise RuntimeError(f"QQ transport reader 异常：{data.get('error')}")
 #打印事件，调试时候可以de注释一下
         print(json.dumps(data, indent=4, ensure_ascii=False))
 
@@ -179,35 +263,6 @@ class QQWsTransport(ChatTransport):
             fetch_reply=True,
             keep_reply_segment=True,
         )
-        """
-        else:
-            #构造普通上下文策略
-            context = ChatContext(
-                user=UserIdentity(
-                    user_id=str(data.get('user_id') or ''),
-                    user_name=self._extract_user_name(data)
-                ),
-                target=ConversationTarget(
-                    channel_type=ChannelType.GROUP if data.get('message_type') == 'group' else ChannelType.PRIVATE,
-                    conversation_id=str(data.get('group_id') or data.get('user_id') or ''),
-                    platform=Platform.QQ,
-                    group_name=data.get('group_name')
-                ),
-                message_id=str(data.get('message_id') or ''),
-                request_uid=str(uuid.uuid4())
-            )"""
-        """
-        #构造unimessage
-        msg = UniMessage(
-            platform=Platform.QQ,
-            raw_event=data,
-            context=context
-        )
-        raw_message = data.get('raw_message', '') or ''#由CQ码组成的原始信息
-        message_field = data.get('message', raw_message)#经过LLbot格式化的message（如果开了array模式）
-        for seg_type, seg_data in self._parse_segments(message_field, raw_message):
-            msg.add_segment(seg_type, **seg_data)
-        return msg"""
     
     #发送纯文本
     async def send_text(self, context: ChatContext, text: str) -> None:
@@ -298,7 +353,8 @@ class QQWsTransport(ChatTransport):
     
     #拉取消息！
     async def fetch_message(self, message_id: str) -> Optional[Dict[str, Any]]:
-        return (
+
+        fetch=(
             await self._call(
                 'get_msg', 
                 {
@@ -306,6 +362,8 @@ class QQWsTransport(ChatTransport):
                 }
             )
         ).get('data')
+        print(fetch)
+        return fetch
     
     #拉取图片路径
     async def _fetch_image_path(self, file_name: str) -> Optional[str]:

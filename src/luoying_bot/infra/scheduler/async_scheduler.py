@@ -1,13 +1,11 @@
 from __future__ import annotations
 import asyncio
+import heapq
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Awaitable, Callable, Dict
 
-#这个文件是一个异步调度器
-#提醒系统的核心
-
-#一个计划事件
 @dataclass(slots=True)
 class ScheduledJob:
     job_id: str
@@ -19,33 +17,84 @@ class ScheduledJob:
 class AsyncScheduler:
     def __init__(self):
         self.jobs: Dict[str, ScheduledJob] = {}
+        self._heap: list[tuple[float, str]] = []
+        self._wake_event = asyncio.Event()
         self.running = False
 
-    #添加一个计划事件
     def add_job(self, job: ScheduledJob) -> None:
         self.jobs[job.job_id] = job
-    
-    #删除一个计划事件
+        heapq.heappush(self._heap, (job.run_time.timestamp(), job.job_id))
+        self._wake_event.set()
+
     def remove_job(self, job_id: str) -> None:
-        self.jobs.pop(job_id, None)
-    
-    #开始运行异步调度
+        removed = self.jobs.pop(job_id, None)
+        if removed is not None:
+            self._wake_event.set()
+
+    async def _run_job(self, job: ScheduledJob) -> None:
+        try:
+            await job.callback(job)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logging.exception("计划任务执行失败，job_id=%s", job.job_id)
+
+        if not self.running:
+            return
+
+        current = self.jobs.get(job.job_id)
+        if current is not job:
+            return
+
+        if job.repeat_daily:
+            job.run_time = job.run_time + timedelta(days=1)
+            heapq.heappush(self._heap, (job.run_time.timestamp(), job.job_id))
+            self._wake_event.set()
+        else:
+            self.jobs.pop(job.job_id, None)
+
     async def start(self) -> None:
         self.running = True
+
         while self.running:
-            now = datetime.now()
-            to_remove: list[str] = []
-            for job_id, job in list(self.jobs.items()):
-                if now >= job.run_time:
-                    await job.callback(job)
-                    if job.repeat_daily:
-                        job.run_time = job.run_time + timedelta(days=1)
-                    else:
-                        to_remove.append(job_id)
-            for job_id in to_remove:
-                self.remove_job(job_id)
-            await asyncio.sleep(1)
-    
-    #停止运行异步调度
+            if not self.jobs:
+                self._wake_event.clear()
+                await self._wake_event.wait()
+                continue
+
+            while self._heap:
+                ts, job_id = self._heap[0]
+                job = self.jobs.get(job_id)
+                if job is None:
+                    heapq.heappop(self._heap)
+                    continue
+                if abs(job.run_time.timestamp() - ts) > 0.001:
+                    heapq.heappop(self._heap)
+                    continue
+                break
+
+            if not self._heap:
+                continue
+
+            next_ts, _ = self._heap[0]
+            delay = max(0, next_ts - datetime.now().timestamp())
+
+            self._wake_event.clear()
+            try:
+                await asyncio.wait_for(self._wake_event.wait(), timeout=delay)
+                continue
+            except asyncio.TimeoutError:
+                pass
+
+            ts, job_id = heapq.heappop(self._heap)
+            job = self.jobs.get(job_id)
+            if job is None:
+                continue
+            if abs(job.run_time.timestamp() - ts) > 0.001:
+                continue
+
+            asyncio.create_task(self._run_job(job), name=f"scheduled-job:{job_id}")
+
     def stop(self) -> None:
         self.running = False
+        self._wake_event.set()

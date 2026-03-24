@@ -1,5 +1,5 @@
 from __future__ import annotations
-import requests
+import httpx
 
 from dataclasses import dataclass
 from typing import Awaitable, Callable, TYPE_CHECKING
@@ -57,12 +57,12 @@ async def whWeather() -> str:
         "unit": "m",
         "key": settings.qweather_api_key,
     }
-    resp = requests.get(url, params=params)
-    resp.raise_for_status()
-    data = resp.json()
-    now = data["now"]
-
-    return f"天气：{now['text']}，温度 {now['temp']}°C，体感 {now['feelsLike']}°C，湿度 {now['humidity']}%"
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(url, params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        now = data["now"]
+        return f"天气：{now['text']}，温度 {now['temp']}°C，体感 {now['feelsLike']}°C，湿度 {now['humidity']}%"
 
 async def send_morning_greeting(
     service: 'BuiltinScheduleService',

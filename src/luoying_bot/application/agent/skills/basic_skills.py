@@ -2,23 +2,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 import httpx
-
+import asyncio
 import hashlib
-import requests
 import re
 from luoying_bot.application.agent.skill_base import BaseSkill, SkillRequest, SkillResult
 from luoying_bot.config import settings
 from luoying_bot.constants import FORTUNE_DO,FORTUNE_LEVELS
 from luoying_bot.domain.context import Platform
 
-"""
-#测试通过
-class UserProfileSkill(BaseSkill):
-    name = 'user_profile'
-    description = '查询，比如绑定的学部、学院、年级。payload 无需提供信息'
-    async def run(self, req: SkillRequest) -> SkillResult:
-        svc = self.services['user_service']
-        return SkillResult(text=svc.query(req.context.user.user_id))  """
 #测试通过
 class ReminderSkill(BaseSkill):
     name = 'reminder'
@@ -55,28 +46,31 @@ class WeatherSkill(BaseSkill):
             "unit": "m",
             "key": settings.qweather_api_key,
         }
-        resp = requests.get(url, params=params)
-        resp.raise_for_status()
-        data = resp.json()
-        now = data["now"]
 
-        return SkillResult(text=f"天气：{now['text']}，温度 {now['temp']}°C，体感 {now['feelsLike']}°C，湿度 {now['humidity']}%")
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(url, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+            now = data["now"]
+            return SkillResult(text=f"天气：{now['text']}，温度 {now['temp']}°C，体感 {now['feelsLike']}°C，湿度 {now['humidity']}%")
+        
+
 #测试通过
 class WebSearchSkill(BaseSkill):
     name = 'web_search'
     platform = [Platform.QQ, Platform.WEB]
     description = '联网搜索信息。payload 需要 query 查询内容，k 返回条数，最多 5 '
-    
-    def _tavily_search(self,query: str, k: int = 5) -> Optional[str]:
+
+    def _tavily_search_sync(self, query: str, k: int = 5) -> Optional[str]:
         try:
             from tavily import TavilyClient
-            api_key=settings.tavily_api_key
-      
+            api_key = settings.tavily_api_key
+
             if not api_key:
                 print("Tavily 搜索失败")
                 return None
+
             client = TavilyClient(api_key=api_key)
-  
             resp = client.search(
                 query=query,
                 max_results=max(1, min(k, 5)),
@@ -84,44 +78,53 @@ class WebSearchSkill(BaseSkill):
                 include_raw_content=False,
                 include_images=False,
             )
+
             answer = resp.get("answer") or ""
             results = resp.get("results") or []
             lines = []
+
             if answer:
                 lines.append(f"【摘要】{answer}")
             lines.append("【结果】")
+
             for i, r in enumerate(results[:k], 1):
                 title = (r.get("title") or "").strip()
                 url = (r.get("url") or "").strip()
-                content = (r.get("content") or "").strip()
-                content = content.replace("\n", " ").strip()
+                content = (r.get("content") or "").strip().replace("\n", " ").strip()
                 if len(content) > 160:
                     content = content[:160] + "…"
                 lines.append(f"{i}. {title}\n{url}\n{content}")
-      
+
             print("Tavily 搜索成功")
             return "\n".join(lines).strip()
         except Exception:
-
             print("Tavily 搜索失败")
             return None
-    
-    def _ddg_search(self,query: str, k: int = 5) -> str:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-        # HTML 结果页（兜底方案）
-        url = "https://duckduckgo.com/html/"
-        resp = requests.post(url, data={"q": query}, headers=headers, timeout=15)
-        resp.raise_for_status()
-        html = resp.text
 
-        # 粗暴提取：标题 + 链接 + 摘要（够用）
-        # 可能会随页面结构变化而失效
+    async def _tavily_search(self, query: str, k: int = 5) -> Optional[str]:
+        return await asyncio.to_thread(self._tavily_search_sync, query, k)
+    
+    async def _ddg_search(self, query: str, k: int = 5) -> str:
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            )
+        }
+        url = "https://duckduckgo.com/html/"
+
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(url, data={"q": query}, headers=headers)
+            resp.raise_for_status()
+            html = resp.text
+
         results = []
-        blocks = re.findall(r'<a rel="nofollow" class="result__a" href="([^"]+)".*?>(.*?)</a>.*?<a class="result__snippet".*?>(.*?)</a>',
-                            html, flags=re.S)
+        blocks = re.findall(
+            r'<a rel="nofollow" class="result__a" href="([^"]+)".*?>(.*?)</a>.*?<a class="result__snippet".*?>(.*?)</a>',
+            html,
+            flags=re.S,
+        )
         for link, title, snippet in blocks:
             title = re.sub(r"<.*?>", "", title).strip()
             snippet = re.sub(r"<.*?>", "", snippet).strip()
@@ -139,32 +142,34 @@ class WebSearchSkill(BaseSkill):
             if len(snippet) > 160:
                 snippet = snippet[:160] + "…"
             lines.append(f"{i}. {title}\n{link}\n{snippet}")
+
         print("DDG 搜索成功")
         return "\n".join(lines)
     
-    
     async def run(self, req: SkillRequest) -> SkillResult:
-      #  print(str(req))
-
         query = req.payload.get('query') or req.message.get_plain_text()
-        
         k = req.payload.get('k') or 5
+
         if not query:
             return SkillResult(text='query 不能为空')
+
         k = max(1, min(int(k or 5), 10))
+
         try:
-            tavily_out = self._tavily_search(query=query, k=k)
+            tavily_out = await self._tavily_search(query=query, k=k)
             if tavily_out:
                 print("Tavily called")
-                return SkillResult(text=f'{tavily_out}')
+                return SkillResult(text=tavily_out)
         except Exception as e:
             print(str(e))
-            return SkillResult(text='工具出错了')
+
         try:
             print("ddg called")
-            return SkillResult(text=f'{self._ddg_search(query=query, k=k)}')
+            return SkillResult(text=await self._ddg_search(query=query, k=k))
         except Exception as e:
             return SkillResult(text=f'联网搜索失败：{e}')
+
+
 #测试通过
 class MemoSkill(BaseSkill):
     name = "memo"

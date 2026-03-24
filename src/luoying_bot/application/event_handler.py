@@ -34,7 +34,7 @@ class EventHandler:
         self.quick_reply_service=quick_reply_service
         self.risk_control_service=risk_control_service
         self.trigger_prefix = trigger_prefix
-        self.bot_qq = bot_qq
+        self.bot_qq = str(bot_qq)
         self.bot_name = bot_name
     async def handle(self, message: UniMessage) -> Reply:
         context = message.context
@@ -72,7 +72,7 @@ class EventHandler:
             await self.transport.send_text(context=message.context,text=quick_reply)
             return Reply(text='', silent=True)
         
-        if MessageSegment(type="at",data={"user_id":"3949843218"}) not in message.segments:
+        if MessageSegment(type="at",data={"user_id":self.bot_qq}) not in message.segments:
             return Reply(text='', silent=True)
         
         #进入指令执行器

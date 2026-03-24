@@ -1,7 +1,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
-from luoying_bot.domain.context import ChatContext
+from luoying_bot.domain.context import ChatContext,Platform
 from luoying_bot.domain.message import UniMessage
 
 class TransportCapabilityError(RuntimeError):
@@ -9,9 +9,17 @@ class TransportCapabilityError(RuntimeError):
 
 class ChatTransport(ABC):
     
+    platfrom=Platform.QQ
+
     #连接到。。。。
     @abstractmethod
     async def connect(self) -> None: ...
+
+    @abstractmethod
+    async def close(self)->None:...
+
+
+
     #接收消息
     @abstractmethod
     async def recv_message(self) -> UniMessage: ...
