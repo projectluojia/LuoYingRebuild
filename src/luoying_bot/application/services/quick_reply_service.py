@@ -5,19 +5,11 @@ from pathlib import Path
 from typing import Optional
 
 from luoying_bot.config import settings
+from luoying_bot.constants import quick_replies
 
 class QuickReplyService:
     def __init__(self,path: Path | None =None):
-        self.path=path or (settings.data_dir/"quick_replies.json")
-    
-    def _load_rules(self) -> list[dict]:
-        if not self.path.exists():
-            return []
-
-        try:
-            return json.loads(self.path.read_text(encoding="utf-8"))
-        except Exception:
-            return []
+        pass
         
     def match(self,text:str)->Optional[str]:
         text=(text or "").strip()
@@ -25,7 +17,7 @@ class QuickReplyService:
         if not text:
             return None
         
-        rules=self._load_rules()
+        rules=quick_replies
 
         for rule in rules:
             trigger=str(rule.get("trigger","")).strip()

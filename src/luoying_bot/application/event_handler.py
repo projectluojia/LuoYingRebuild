@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import random
 
 from luoying_bot.application.agent.agent_service import AgentService
 from luoying_bot.application.commands.dispatcher import CommandDispatcher
 from luoying_bot.application.services.group_runtime import GroupRuntime
 from luoying_bot.application.services.quick_reply_service import QuickReplyService
+from luoying_bot.application.services.risk_control_service import RiskControlService
 from luoying_bot.domain.message import UniMessage
 from luoying_bot.domain.message import MessageSegment
 from luoying_bot.domain.result import Reply
@@ -20,6 +22,7 @@ class EventHandler:
             commands: CommandDispatcher, 
             agent: AgentService, 
             quick_reply_service: QuickReplyService,
+            risk_control_service: RiskControlService,
             trigger_prefix: list[str], 
             bot_qq: str, 
             bot_name: str
@@ -29,12 +32,13 @@ class EventHandler:
         self.commands = commands
         self.agent = agent
         self.quick_reply_service=quick_reply_service
+        self.risk_control_service=risk_control_service
         self.trigger_prefix = trigger_prefix
         self.bot_qq = bot_qq
         self.bot_name = bot_name
     async def handle(self, message: UniMessage) -> Reply:
         context = message.context
-
+        
         #沉默回复
         if not context: 
             return Reply(text='', silent=True)
@@ -83,7 +87,9 @@ class EventHandler:
         
         #如果处于复读模式
         if self.runtime.repeat_mode.get(context.target.conversation_id, False):
+            query = self.risk_control_service.do_output_risk_control(query)
             reply = Reply(text=query)
+            
             await self.transport.send_text(
                 context, 
                 reply.text
@@ -91,7 +97,13 @@ class EventHandler:
             return reply
         
         #其他情况，进入agent处理
-        reply = Reply(text=await self.agent.reply(message))
+
+        message=self.risk_control_service.do_input_risk_control_any(message)
+        rp_msg=await self.agent.reply(message)
+        rp_msg=self.risk_control_service.do_output_risk_control_any(rp_msg)
+        reply = Reply(
+            text=self.risk_control_service.do_output_risk_control(rp_msg)
+        )
         
         
         if not reply.silent and reply.text:

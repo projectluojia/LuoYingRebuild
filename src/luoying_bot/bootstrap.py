@@ -10,6 +10,7 @@ from luoying_bot.application.services.reminder_service import ReminderService
 from luoying_bot.application.services.user_service import UserService
 from luoying_bot.application.services.memo_service import MemoService
 from luoying_bot.application.services.quick_reply_service import QuickReplyService
+from luoying_bot.application.services.risk_control_service import RiskControlService
 from luoying_bot.application.services.script_workspace_service import ScriptWorkspaceService
 from luoying_bot.config import settings
 from luoying_bot.infra.llm.openai_chat import OpenAICompatibleChatModel
@@ -28,6 +29,7 @@ class AppContainer:
     reminder_service: ReminderService
     builtin_schedule_service: BuiltinScheduleService
     script_workspace_service: ScriptWorkspaceService
+    risk_control_service: RiskControlService
     memo_service: MemoService
     quick_reply_service: QuickReplyService
     commands: CommandDispatcher
@@ -52,6 +54,8 @@ async def build_qq_container() -> AppContainer:
         scheduler, 
         transport
     )
+    risk_control_service = RiskControlService()
+
     builtin_schedule_service = BuiltinScheduleService(
         scheduler=scheduler,
         transport=transport,
@@ -91,7 +95,8 @@ async def build_qq_container() -> AppContainer:
         'reminder_service': reminder_service, 
         'memo_service': memo_service,
         'script_workspace_service': script_workspace_service,
-        'memory': memory
+        'memory': memory,
+        'risk_control_service':risk_control_service
     }
 
     #指令
@@ -112,7 +117,8 @@ async def build_qq_container() -> AppContainer:
         quick_reply_service=quick_reply_service, 
         trigger_prefix=settings.trigger_prefix, 
         bot_qq=settings.bot_qq, 
-        bot_name=settings.bot_name
+        bot_name=settings.bot_name,
+        risk_control_service=risk_control_service
     )
     return AppContainer(
         transport=transport, 
@@ -122,6 +128,7 @@ async def build_qq_container() -> AppContainer:
         builtin_schedule_service=builtin_schedule_service,
         memo_service=memo_service,
         quick_reply_service=quick_reply_service,
+        risk_control_service=risk_control_service,
         script_workspace_service=script_workspace_service,
         commands=commands, 
         skills=skills, 
