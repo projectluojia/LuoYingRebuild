@@ -11,9 +11,11 @@ from langchain_core.runnables import RunnableConfig
 from luoying_bot.application.agent.skill_base import BaseSkill,SkillRequest,SkillResult
 from luoying_bot.config import settings
 from luoying_bot.constants import CODING_AGENT_SYSTEM_PROMPT
+from luoying_bot.domain.context import Platform
 
 class CodingAgentSkill(BaseSkill):
     name = "coding_agent"
+    platform = [Platform.QQ, Platform.WEB]
     description = (
         "编程子agent。适合创建、查看、列出、删除、覆盖、发送脚本文件，"
         "支持写 Python/Rust/C++/C/Java/JS 等任意语言源码；"

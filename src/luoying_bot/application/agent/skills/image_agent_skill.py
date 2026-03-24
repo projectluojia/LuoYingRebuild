@@ -15,9 +15,11 @@ from langgraph.checkpoint.memory import InMemorySaver
 from luoying_bot.application.agent.skill_base import BaseSkill, SkillRequest, SkillResult
 from luoying_bot.config import settings
 from luoying_bot.constants import IMAGE_AGENT_SYSTEM_PROMPT
+from luoying_bot.domain.context import Platform
 
 class ImageAgentSkill(BaseSkill):
     name = "image_agent"
+    platform = [Platform.QQ, Platform.WEB]
     description = (
         "图片识别子agent。用于处理用户消息中的一张或多张图片。"
         "支持：图片描述、OCR文字提取、截图界面识别、多图比较、找差异、按序号分析指定图片、综合回答。"

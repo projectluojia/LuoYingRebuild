@@ -9,6 +9,8 @@ import re
 from luoying_bot.application.agent.skill_base import BaseSkill, SkillRequest, SkillResult
 from luoying_bot.config import settings
 from luoying_bot.constants import FORTUNE_DO,FORTUNE_LEVELS
+from luoying_bot.domain.context import Platform
+
 """
 #测试通过
 class UserProfileSkill(BaseSkill):
@@ -20,6 +22,7 @@ class UserProfileSkill(BaseSkill):
 #测试通过
 class ReminderSkill(BaseSkill):
     name = 'reminder'
+    platform = [Platform.QQ, Platform.WEB]
     description = (
         '创建、查看、删除提醒事项。'
         '如果你不确定时间，必须先调用TimeSkill来查看当前时间'
@@ -39,6 +42,7 @@ class ReminderSkill(BaseSkill):
 #测试通过
 class WeatherSkill(BaseSkill):
     name = 'weather'
+    platform = [Platform.QQ, Platform.WEB]
     description = '查询武汉天气。'
     async def run(self, req: SkillRequest) -> SkillResult:
         if not settings.qweather_api_key: 
@@ -60,6 +64,7 @@ class WeatherSkill(BaseSkill):
 #测试通过
 class WebSearchSkill(BaseSkill):
     name = 'web_search'
+    platform = [Platform.QQ, Platform.WEB]
     description = '联网搜索信息。payload 需要 query 查询内容，k 返回条数，最多 5 '
     
     def _tavily_search(self,query: str, k: int = 5) -> Optional[str]:
@@ -163,6 +168,7 @@ class WebSearchSkill(BaseSkill):
 #测试通过
 class MemoSkill(BaseSkill):
     name = "memo"
+    platform = [Platform.QQ, Platform.WEB]
     description = (
         "读写用户备忘录。"
         "支持 action=list/read/add/update/delete/search/clear/overwrite。"
@@ -282,6 +288,7 @@ class MemoSkill(BaseSkill):
 #测试通过
 class TimeSkill(BaseSkill):
     name = "time"
+    platform = [Platform.QQ, Platform.WEB]
     description = "查询当前时间"
     async def run(self, req: SkillRequest) -> SkillResult:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -292,6 +299,7 @@ class TimeSkill(BaseSkill):
 #测试通过
 class FortuneSkill(BaseSkill):
     name = "fortune"
+    platform = [Platform.QQ, Platform.WEB]
     description = "获取运势 payload 无需提供内容"
     async def run(self,req: SkillRequest) -> SkillResult:
         user_id = str(req.context.user.user_id)
@@ -351,6 +359,7 @@ class FortuneSkill(BaseSkill):
 #测试通过
 class ArxivSkill(BaseSkill):
     name = 'arxiv'
+    platform = [Platform.QQ, Platform.WEB]
     description = (
         '查询arxiv论文'
         'payload 应包含 query = 【查询关键词，最好英语】 max_results=【查询篇数，最多5】'

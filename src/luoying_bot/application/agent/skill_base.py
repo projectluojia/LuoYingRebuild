@@ -20,6 +20,7 @@ class SkillResult:
 class BaseSkill(ABC):
     name: str = ''
     description: str = ''
+    platform = []
     def __init__(self, services: dict): self.services = services
     @abstractmethod
     async def run(self, req: SkillRequest) -> SkillResult: ...

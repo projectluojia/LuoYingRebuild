@@ -4,10 +4,12 @@ from datetime import datetime
 from typing import Any
 
 from luoying_bot.application.agent.skill_base import BaseSkill, SkillRequest, SkillResult
+from luoying_bot.domain.context import Platform
 
 
 class GroupInfoSkill(BaseSkill):
     name = "group_info"
+    platform = [Platform.QQ]
     description = (
         "查询当前群聊结构、完整群成员信息、或指定成员信息。"
         "仅适用于群聊。"

@@ -5,6 +5,7 @@ import inspect
 import pkgutil
 
 from luoying_bot.application.agent.skill_base import BaseSkill
+from luoying_bot.domain.context import Platform
 
 
 class SkillRegistry:
@@ -22,7 +23,8 @@ class SkillRegistry:
             for _, cls in inspect.getmembers(sub_module, inspect.isclass):
                 if not issubclass(cls, BaseSkill) or cls is BaseSkill or cls.__module__ != sub_module.__name__:
                     continue
-                self.register(cls(self.services))
+                if self.services.transport.platfrom.value in cls.platform:
+                    self.register(cls(self.services))
 
     def summary(self) -> str:
         return '\n'.join(f'- {skill.name}: {skill.description}' for skill in self.skills.values())
