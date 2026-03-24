@@ -13,6 +13,7 @@ from luoying_bot.ports.transport import ChatTransport
 class QQWsTransport(ChatTransport):
     def __init__(self, settings: Settings):
         self.settings = settings
+        self.platfrom = Platform.QQ
         self.websocket = None
     
     #连接到WebSocket
