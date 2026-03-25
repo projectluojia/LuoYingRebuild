@@ -45,6 +45,12 @@ async def send_midnight_rest(
 ) -> None:
     await service.send_group_text(group_id, '夜深了，注意休息(´•ω•｀)')
 
+async def send_class_remind(
+    service: 'BuiltinScheduleService',
+    group_id: str,
+    job: ScheduledJob
+) -> None:
+    await service.send_group_text(group_id, '要上课了，记得打卡哦！')
 
 async def whWeather() -> str:
     if not settings.qweather_api_key: 
@@ -103,5 +109,11 @@ BUILTIN_JOBS: list[BuiltinJobSpec] = [
         hour=8,
         minute=0,
         handler=send_morning_greeting,
+    ),
+    BuiltinJobSpec(
+        job_key='class_remind',
+        hour=9,
+        minute=35,
+        handler=send_class_remind,
     ),
 ]

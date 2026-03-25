@@ -9,7 +9,7 @@ class TransportCapabilityError(RuntimeError):
 
 class ChatTransport(ABC):
     
-    platfrom=Platform.QQ
+    platform=Platform.QQ
 
     #连接到。。。。
     @abstractmethod

@@ -13,7 +13,7 @@ from luoying_bot.ports.transport import ChatTransport
 class QQWsTransport(ChatTransport):
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.platfrom = Platform.QQ
+        self.platform = Platform.QQ
         self.websocket = None
 
         self._reader_task: asyncio.Task | None = None
