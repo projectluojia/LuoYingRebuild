@@ -31,7 +31,7 @@ class RepeatCommand(BaseCommand):
 #测试通过
 class BindCommand(BaseCommand):
     name = '/bind' 
-    args_requried = True
+    args_required = True
     required_args = {
         '--college': ['-c'], 
         '--year': ['-y'], 
@@ -58,7 +58,7 @@ class BindCommand(BaseCommand):
 #测试通过
 class UpdCommand(BaseCommand):
     name = '/upd'
-    args_requried = True
+    args_required = True
     optional_args = {
         '--college': ['-c'], 
         '--year': ['-y'], 
@@ -92,7 +92,7 @@ class WithdrawCommand(BaseCommand):
 class BanCommand(BaseCommand):
     name = '/ban'
     op_required = True
-    args_requried = True 
+    args_required = True 
     required_args = {'--id': ['-i']}
     async def validate(self, args):
         if not args['--id'].isdigit(): raise ValueError('--id 必须是QQID')
@@ -104,7 +104,7 @@ class BanCommand(BaseCommand):
 class UnBanCommand(BaseCommand):
     name = '/unban'
     op_required = True
-    args_requried = True
+    args_required = True
     required_args = {'--id': ['-i']}
     async def validate(self, args):
         if not args['--id'].isdigit(): raise ValueError('--id 必须是QQID')
@@ -135,7 +135,7 @@ class RandomOneCommand(BaseCommand):
 #测试通过
 class TitleCommand(BaseCommand):
     name = '/title'
-    args_requried = True
+    args_required = True
     required_args = {'--title': ['-t']}
     async def validate(self, args): return args
     async def execute(self, context, args):
