@@ -94,7 +94,7 @@ from luoying_bot.domain.result import Reply
 class YourCommand(BaseCommand):
     name = "\six_seven"
     async def validate(self, args): return args
-	async def execute(self, context, args):
+    async def execute(self, context, args):
         return Reply(
             text="""刘夫妻🫳🫴小子🧒正在和刘琦先生🧑🏫闹矛盾💥🗣️刘夫妻小子最近在波波播课📱说了这个你和其他的六十七孩子有矛盾吗🤬是的✅你有吗你认为谁是六七真的的代表🤵MR六七还是六十七KID🤔🤔🤔"""
         )
@@ -121,7 +121,7 @@ class BaseCommand(ABC):
     name: str = ''
     aliases: list[str] = []
     op_required: bool = False
-    args_requried: bool = False
+    args_required: bool = False
     required_args: dict[str, list[str]] = {}
     optional_args: dict[str, list[str]] = {}
 
@@ -139,7 +139,7 @@ class BaseCommand(ABC):
     def _parse_args(self, args: list[str] | None) -> dict[str, str]:
         if not self.args_requried:
             return {}
-        if len(args) % 2 != 0: raise ValueError(f'参数数量应为偶数，但收到 {len(args)} 个参数')
+        if len(args) % 2 != 0: raise ValueError(f'参数数量应与值数量相等，但收到 {len(args)} 个内容块')
         alias_map = self._build_alias_map(); normalized: dict[str, str] = {}
         for raw_key, value in zip(args[::2], args[1::2]):
             if raw_key not in alias_map: raise ValueError(f'未知参数: {raw_key}')
@@ -163,18 +163,18 @@ class BaseCommand(ABC):
         return await self.execute(context, parsed)
 ```
 
-`BaseSkill` 是所有 Skill 的基类。任何自定义 Skill 都必须继承它。
+`BaseCommand` 是所有 Command 的基类。任何自定义 Command 都必须继承它。
 
 #### 类属性
 
 - `name: str` 指令的**唯一标识符**，也是指令的触发名称，必须以 `\` 开头，例如 `\help` 、 `\ban`。如果重复会引起错误。
-- `aliase` 一个由**字符串组成的列表**。代表该指令的别称，可以为空或不实现。不可以重复。同样必须以 `\` 开头。
+- `aliases` 一个由**字符串组成的列表**。代表该指令的别称，可以为空或不实现。不可以重复。同样必须以 `\` 开头。
 - `op_required: bool` 一个布尔值，表示该指令是否需要管理员权限才能执行，默认不需要。关于管理员权限，可以在环境变量中设置或在 `config.py` 中设置默认值。详见 `Config与Constants.md`
-- `args_requried: bool` 一个布尔值，表示该指令是否需要接受参数。默认不接受参数。
+- `args_required: bool` 一个布尔值，表示该指令是否需要接受参数。默认不接受参数。
 - `required_args: dict[str, list[str]]` 一个字典，声明该指令所有的必需参数及其别名（简称）。别名（简称）在同一指令内不可以重复。
 - `optional_args: dict[str, list[str]]` 一个字典，声明该指令所有的非必需参数及其别名（简称）。别名（简称）在同一指令内不可以重复。
 
-如果 `args_requried` 设为 `False` ，则不需要实现 `required_args` 和 `optional_args`。
+如果 `args_required` 设为 `False` ，则不需要实现 `required_args` 和 `optional_args`。
 
 参数应该是严格的**一参数一值**，即一个参数名对应一个唯一值。
 
@@ -253,9 +253,9 @@ service = self.services.get("service_name")
 
 ```python
 {
-    "--name":"熊大"
-    "--college":"狗熊岭"
-    "--year":"2007"
+    "--name":"熊大",
+    "--college":"狗熊岭",
+    "--year":"2007",
 }
 ```
 
@@ -287,7 +287,7 @@ async def validate(self, args):
 
 请注意，如果发现参数不符合你的规则，你**必须抛出异常**来结束函数。
 
-在函数结束，验证通过的时候，你**必须原封不动的返回`args`**，以便 `process` 将其传递给 `execute`。
+在函数结束，验证通过的时候，你**必须返回`args`**，以便 `process` 将其传递给 `execute`。
 
 `execute` 是指令的执行核心。
 

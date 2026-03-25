@@ -10,7 +10,7 @@ class BaseCommand(ABC):
     name: str = ''
     aliases: list[str] = [] #这个是指令别名
     op_required: bool = False
-    args_requried: bool = False
+    args_required: bool = False
     required_args: dict[str, list[str]] = {}
     optional_args: dict[str, list[str]] = {}
 
