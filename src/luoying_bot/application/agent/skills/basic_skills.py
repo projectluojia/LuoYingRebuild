@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional
 import httpx
 import asyncio
+import logging
 import hashlib
 import re
 from luoying_bot.application.agent.skill_base import BaseSkill, SkillRequest, SkillResult
@@ -10,25 +11,61 @@ from luoying_bot.config import settings
 from luoying_bot.constants import FORTUNE_DO,FORTUNE_LEVELS
 from luoying_bot.domain.context import Platform
 
+logger = logging.getLogger(__name__)
+
 #测试通过
 class ReminderSkill(BaseSkill):
     name = 'reminder'
     platform = [Platform.QQ, Platform.WEB]
     description = (
         '创建、查看、删除提醒事项。'
-        '如果你不确定时间，必须先调用TimeSkill来查看当前时间'
-        'payload 里可带 action=create/list/delete run_time=%Y-%m-%d %H:%M （这是格式，请填入数字） content=（提醒的内容） repeat=True/False （是否每日重复）indexes=[（一个列表，是要删除的编号，编号不是从0而是从1开始！）]'
+        '你不能假装知道时间！你不知道目前的时间！'
+        '在使用之前，必须先调用TimeSkill来查看当前时间！'
+        'payload 里可带 action=create/list/delete run_time=YYYY-MM-DD HH:MM （这是格式：年-月-日 时:分，请填入数字，禁止任何额外内容） content=（提醒的内容） repeat=True/False （是否每日重复）indexes=[（一个列表，是要删除的编号，编号不是从0而是从1开始！）]'
     )
+
+    def _parse_run_time(self,value: str) -> datetime:
+        text = str(value).strip()
+        formats = [
+            '%Y-%m-%d %H:%M:%S',
+            '%Y-%m-%d %H:%M',
+            '%Y-%m-%dT%H:%M:%S',
+            '%Y-%m-%dT%H:%M',
+        ]
+        for fmt in formats:
+            try:
+                return datetime.strptime(text, fmt)
+            except ValueError:
+                pass
+        raise ValueError(
+            f"无法识别的时间格式：{value}。请使用 YYYY-MM-DD HH:MM 或 YYYY-MM-DD HH:MM:SS"
+        )
+    
+    def _to_bool(self,value) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in {'true', '1', 'yes', 'y'}
+        return bool(value)
+
     async def run(self, req: SkillRequest) -> SkillResult:
         action = req.payload.get('action', 'list') 
-        svc = self.services['reminder_service']
+        svc = self.services.reminder_service
         if action == 'list': 
             return SkillResult(text=svc.list_for_user(req.context))
         if action == 'delete': 
             return SkillResult(text=svc.delete_by_indexes(req.context, req.payload.get('indexes', [])))
         if action == 'create':
-            run_time = datetime.strptime(req.payload['run_time'], '%Y-%m-%d %H:%M')
-            return SkillResult(text=await svc.create(req.context, run_time, req.payload['content'], req.payload.get('repeat', False)))
+            run_time=self._parse_run_time(req.payload['run_time'])
+            repeat = self._to_bool(req.payload.get('repeat', False))
+            return SkillResult(
+                text=await svc.create(
+                    req.context, 
+                    run_time,
+                    req.payload['content'], 
+                    repeat,
+                )
+            )
         return SkillResult(text='暂不支持这个提醒动作')
 #测试通过
 class WeatherSkill(BaseSkill):
@@ -190,7 +227,7 @@ class MemoSkill(BaseSkill):
     )
 
     async def run(self, req: SkillRequest) -> SkillResult:
-        self.memo_service = self.services['memo_service']
+        self.memo_service = self.services.memo_service
         user_id = str(req.context.user.user_id)
         action = (req.payload.get("action") or "list").strip().lower()
 
@@ -367,6 +404,7 @@ class ArxivSkill(BaseSkill):
     platform = [Platform.QQ, Platform.WEB]
     description = (
         '查询arxiv论文'
+        '你可以选择性返回信息，但是必须告诉用户原文链接！！！！'
         'payload 应包含 query = 【查询关键词，最好英语】 max_results=【查询篇数，最多5】'
     )
     async def run(self,req: SkillRequest) -> SkillResult:

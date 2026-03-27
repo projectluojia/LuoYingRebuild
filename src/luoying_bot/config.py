@@ -51,9 +51,16 @@ class Settings:
     script_send_chunk_size: int = int(os.getenv('SCRIPT_SEND_CHUNK_SIZE', '1200'))
     script_max_output_chars: int = int(os.getenv('SCRIPT_MAX_OUTPUT_CHARS', '12000'))
 
+
+    memory_max_messages_per_thread: int = int(os.getenv('MEMORY_MAX_MESSAGES_PER_THREAD', '80'))
+    agent_skill_timeout_sec: float = float(os.getenv('AGENT_SKILL_TIMEOUT_SEC', '30'))
+    agent_total_timeout_sec: float = float(os.getenv('AGENT_TOTAL_TIMEOUT_SEC', '90'))
+    max_concurrent_message_tasks: int = int(os.getenv('MAX_CONCURRENT_MESSAGE_TASKS', '200'))
+
     ops: List[str] = field(default_factory=lambda: _split_csv(os.getenv('OPS', '')))
     specific_group_ids: List[str] = field(default_factory=lambda: _split_csv(os.getenv('SPECIFIC_GROUP_IDS', '')))
     trigger_prefix: List[str] = field(default_factory=lambda: _split_csv(os.getenv('TRIGGER_PREFIX', '/,!')))
 
 settings = Settings()
+
 #别的文件只需要import这个就能拿到配置

@@ -1,7 +1,10 @@
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Dict
+
+from luoying_bot.application.service_hub import ServiceHub
 from luoying_bot.domain.context import ChatContext
 from luoying_bot.domain.message import UniMessage
 
@@ -21,6 +24,8 @@ class BaseSkill(ABC):
     name: str = ''
     description: str = ''
     platform = []
-    def __init__(self, services: dict): self.services = services
+
+    def __init__(self, services: ServiceHub): self.services = services
+
     @abstractmethod
     async def run(self, req: SkillRequest) -> SkillResult: ...

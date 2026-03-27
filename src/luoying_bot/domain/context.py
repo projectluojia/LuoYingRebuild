@@ -13,6 +13,9 @@ class ChannelType(str, Enum):
 class Platform(str, Enum):
     QQ = 'qq'
     WEB = 'web'
+    DINGDING = 'dingding'
+    FEISHU = 'feishu'
+    WHATSAPP = 'whatsapp'
 
 # 用户身份信息，用户是谁
 @dataclass(slots=True)

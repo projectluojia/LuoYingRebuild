@@ -20,7 +20,6 @@ class UniMessage:
     raw_event: Dict[str, Any] = field(default_factory=dict) # 原始事件
     context: Optional[ChatContext] = None # 该条消息上下文策略
     segments: List[MessageSegment] = field(default_factory=list)
-
     reply_message: Optional['UniMessage']=None
 
     # 向该消息添加一个段
@@ -31,6 +30,13 @@ class UniMessage:
     def get_plain_text(self) -> str:
         return ''.join(str(seg.data.get('text', '')) for seg in self.segments if seg.type == 'text').strip()
 
+    def has_at(self,user_id:str)->bool:
+        user_id = str(user_id)
+        return any(seg.type == 'at' and str(seg.data.get('user_id','')) == user_id for seg in self.segments)
+
+    def get_images(self) -> list[str]:
+        return [str(seg.data.get('file', '')) for seg in self.segments if seg.type == 'image']
+    
     # 将消息转换成更适合大模型理解的文本
     def _segment_to_llm_text(self,include_reply_segment:bool=True) -> str:
         parts: List[str] = []

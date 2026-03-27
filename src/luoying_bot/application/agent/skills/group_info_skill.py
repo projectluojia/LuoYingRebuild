@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
+
 from datetime import datetime
 from typing import Any
 
 from luoying_bot.application.agent.skill_base import BaseSkill, SkillRequest, SkillResult
 from luoying_bot.domain.context import Platform
 
+logger = logging.getLogger(__name__)
 
 class GroupInfoSkill(BaseSkill):
     name = "group_info"
@@ -59,8 +62,8 @@ class GroupInfoSkill(BaseSkill):
         return SkillResult(text="不支持的 mode，可用值：summary / full / user / self")
 
     async def _get_members(self, req: SkillRequest) -> list[dict[str, Any]]:
-        runtime = self.services["runtime"]
-        transport = self.services["transport"]
+        runtime = self.services.runtime
+        transport = self.services.transport
         group_id = str(req.context.target.conversation_id)
 
         members = await transport.get_group_members(req.context)
@@ -212,7 +215,7 @@ class GroupInfoSkill(BaseSkill):
         is_robot = bool(target_member.get("is_robot", False))
         title = target_member.get("title") or "无"
 
-        user_service = self.services.get("user_service")
+        user_service = self.services.user_service
         user_repo = getattr(user_service, "repo", None)
         profile = user_repo.get(target_qq) if user_repo else None
 

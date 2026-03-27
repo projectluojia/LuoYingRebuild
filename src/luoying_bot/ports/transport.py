@@ -24,6 +24,10 @@ class ChatTransport(ABC):
     @abstractmethod
     async def recv_message(self) -> UniMessage: ...
     
+    def format_mention(self,context:ChatContext,user_id:str)->str:
+        return ""
+
+
     #发文本
     @abstractmethod
     async def send_text(self, context: ChatContext, text: str) -> None: ...

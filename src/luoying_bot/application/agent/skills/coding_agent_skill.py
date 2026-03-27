@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from typing import Any
 
 from langchain.agents import create_agent
@@ -13,6 +15,8 @@ from luoying_bot.config import settings
 from luoying_bot.constants import CODING_AGENT_SYSTEM_PROMPT
 from luoying_bot.domain.context import Platform
 
+logger = logging.getLogger(__name__)
+
 class CodingAgentSkill(BaseSkill):
     name = "coding_agent"
     platform = [Platform.QQ, Platform.WEB]
@@ -24,8 +28,8 @@ class CodingAgentSkill(BaseSkill):
     )
 
     async def run(self, req: SkillRequest) -> SkillResult:
-        script_service = self.services["script_workspace_service"]
-        transport = self.services["transport"]
+        script_service = self.services.script_workspace_service
+        transport = self.services.transport
 
         user_id = str(req.context.user.user_id)
         instruction = (req.payload.get("instruction") or req.message.get_plain_text() or "").strip()

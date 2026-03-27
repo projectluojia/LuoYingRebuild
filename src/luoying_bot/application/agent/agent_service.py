@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -9,10 +12,12 @@ from luoying_bot.application.agent.skill_base import SkillRequest
 from luoying_bot.application.agent.skill_registry import SkillRegistry
 from luoying_bot.domain.message import UniMessage
 from luoying_bot.domain.context import Platform,ChannelType
+from luoying_bot.infra.logging_setup import context_log_extra
 from luoying_bot.ports.llm import ChatModel
 from luoying_bot.ports.memory import ConversationMemory
 from luoying_bot.constants import QQ_GROUP_SYSTEM_PROMPT,REACT_INSTRUCTION,WEB_SYSTEM_PROMPT
 
+logger = logging.getLogger(__name__)
 
 @dataclass
 class AgentStep:
@@ -29,12 +34,29 @@ class AgentService:
         memory:ConversationMemory,
         skills:SkillRegistry,
         max_steps:int=20,
+        skill_timeout_sec: float = 30.0,
+        total_timeout_sec: float = 90.0,
     ):
         self.model=model
         self.memory=memory
         self.skills=skills
         self.max_steps=max_steps
-        self.system_pro:str=None
+        self.skill_timeout_sec=skill_timeout_sec
+        self.total_timeout_sec=total_timeout_sec
+
+    def _select_system_prompt(self,platform: Platform,channel_type: ChannelType)->str:
+        if platform == Platform.QQ and channel_type == ChannelType.GROUP:
+            return QQ_GROUP_SYSTEM_PROMPT
+        elif platform == Platform.QQ and channel_type == ChannelType.PRIVATE:
+            pass
+        elif platform == Platform.WHATSAPP :
+            pass
+        elif platform == Platform.FEISHU:
+            pass
+        elif platform == Platform.DINGDING:
+            pass
+        elif platform == Platform.WEB:
+            return WEB_SYSTEM_PROMPT
 
     def _build_react_messages(
         self,
@@ -42,6 +64,7 @@ class AgentService:
         user_text:str,
         scratchpad:list[AgentStep],
         step_index:int,
+        system_prompt:str,
     )->list[dict[str,str]]:
         history=self.memory.read(thread_id=thread_id)
         skill_summary=self.skills.summary()
@@ -58,7 +81,7 @@ class AgentService:
         )
 
         return [
-            {"role":"system","content":self.system_pro},
+            {"role":"system","content":system_prompt},
             {"role":"system","content":REACT_INSTRUCTION},
             *history,
             {"role":"user","content":user_prompt},
@@ -95,6 +118,8 @@ class AgentService:
         thread_id:str,
         user_text:str,
         scratchpad:list[AgentStep],
+        system_prompt: str,
+        deadline: float | None,
     )->str:
         prompt=(
             f"用户消息：\n{user_text}\n\n"
@@ -102,12 +127,13 @@ class AgentService:
             "你之前没有成功给出最终回答。现在请直接自然地回复用户，不要提技能、工具、JSON、调用过程。"
         )
 
-        raw= await self.model.chat(
+        raw= await self._chat_with_budget(
             [
-                {"role":"system","content":self.system_pro},
+                {"role":"system","content":system_prompt},
                 *self.memory.read(thread_id=thread_id),
                 {"role":"user","content":prompt},
-            ]
+            ],
+            deadline=deadline,
         )
         return raw.strip()
 
@@ -169,36 +195,66 @@ class AgentService:
             f"会话ID：{conversation_id}\n"
             f"消息内容：\n{message_text}"
         )
+
+    def _remaining_timeout(self,deadline:float | None)->float | None:
+        if deadline is None:
+            return None
+        remaining = deadline - time.monotonic()
+        return max(0.01, remaining)
     
-    def _decide_system_prompt(self,pltf:Platform,cntp:ChannelType):
-        if pltf.value=='qq' and cntp.value=='group':
-            self.system_pro=QQ_GROUP_SYSTEM_PROMPT
-        elif pltf.value=='web':
-            self.system_pro=WEB_SYSTEM_PROMPT
+    async def _chat_with_budget(self, messages: list[dict[str, str]], deadline: float | None) -> str:
+        timeout = self._remaining_timeout(deadline)
+        if timeout is None:
+            return await self.model.chat(messages)
+        return await asyncio.wait_for(self.model.chat(messages), timeout=timeout)
+    
+    async def _run_skill_with_budget(self, skill, request: SkillRequest, deadline: float | None):
+        timeout = self.skill_timeout_sec if self.skill_timeout_sec > 0 else None
+        remaining = self._remaining_timeout(deadline)
+        if remaining is not None:
+            timeout = min(timeout, remaining) if timeout is not None else remaining
+        if timeout is None:
+            return await skill.run(request)
+        return await asyncio.wait_for(skill.run(request), timeout=timeout)
 
     async def reply(self,message:UniMessage)->str:
+        context=message.context
+        extra=context_log_extra(context)
+        start_at=time.monotonic()
+        deadline=start_at+self.total_timeout_sec if self.total_timeout_sec>0 else None
+
+
         thread_id=message.context.thread_id
         user_text=self._render_user_message_for_agent(message)
-        
         pltf=message.platform
         cntp=message.context.target.channel_type
-        self._decide_system_prompt(pltf,cntp)
+        system_prompt=self._select_system_prompt(pltf,cntp)
 
-        print(pltf)
-        print(user_text)
-
+        logger.info("主 Agent 开始处理消息", extra=extra)
         scratchpad: list[AgentStep]=[]
-
         answer=None
+
+
         for step_index in range(1,self.max_steps+1):
+            if deadline is not None and time.monotonic() >= deadline:
+                scratchpad.append(AgentStep(kind="observation", content="总执行预算已耗尽，请直接给出最终回答。"))
+                logger.warning("主 Agent 总预算耗尽，转入 fallback", extra=extra)
+                break
+
             llm_messages=self._build_react_messages(
                 thread_id=thread_id,
                 user_text=user_text,
                 scratchpad=scratchpad,
                 step_index=step_index,
+                system_prompt=system_prompt,
             )
+            try:
+                raw= await self._chat_with_budget(llm_messages,deadline=deadline)
+            except asyncio.TimeoutError:
+                scratchpad.append(AgentStep(kind="observation", content="模型思考超时，请直接给出最终回答。"))
+                logger.warning("主模型思考超时，转入 fallback", extra=extra)
+                break
 
-            raw= await self.model.chat(llm_messages)
             action=self._safe_parse_action(raw)
 
             if action["type"]=="final":
@@ -228,6 +284,7 @@ class AgentService:
                     )
                 )
                 continue
+
             scratchpad.append(
                 AgentStep(
                     kind="action",
@@ -237,18 +294,24 @@ class AgentService:
                 )
             )
 
+            logger.info("调用技能 %s",skill_name,extra=extra)
             try:
-                skill_result=await skill.run(
+                skill_result=await self._run_skill_with_budget(
+                    skill,
                     SkillRequest(
                         message=message,
                         context=message.context,
                         payload=payload,
-                    )
+                    ),
+                    deadline=deadline,
                 )
-
                 observation_text=self._normalize_skill_result(skill_result)
+            except asyncio.TimeoutError:
+                observation_text = f"技能 {skill_name} 执行超时"
+                logger.warning("技能 %s 执行超时", skill_name, extra=extra)
             except Exception as e:
                 observation_text=f"技能 {skill_name} 执行失败：{type(e).__name__}: {e}"
+                logger.exception("技能 %s 执行失败", skill_name, extra=extra)
             
             scratchpad.append(
                 AgentStep(
@@ -260,13 +323,18 @@ class AgentService:
             )
 
         if not answer:
-            answer=await self._fallback_answer(
-                thread_id=thread_id,
-                user_text=user_text,
-                scratchpad=scratchpad,
-            )
+            try:
+                answer = await self._fallback_answer(
+                    thread_id=thread_id,
+                    user_text=user_text,
+                    scratchpad=scratchpad,
+                    system_prompt=system_prompt,
+                    deadline=deadline,
+                )
+            except asyncio.TimeoutError:
+                answer = "我这边刚刚处理超时了，能再发一次或者换个更具体的说法吗？"
         
         self.memory.append(thread_id,"user",user_text)
         self.memory.append(thread_id,"assistant",answer)
-        print(answer)
+        logger.info("主 Agent 完成处理，耗时 %.2fs", time.monotonic() - start_at, extra=extra)
         return answer

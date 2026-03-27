@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import mimetypes
 import os
+import logging
 from typing import Any, Optional
 
 from langchain.agents import create_agent
@@ -16,6 +17,8 @@ from luoying_bot.application.agent.skill_base import BaseSkill, SkillRequest, Sk
 from luoying_bot.config import settings
 from luoying_bot.constants import IMAGE_AGENT_SYSTEM_PROMPT
 from luoying_bot.domain.context import Platform
+
+logger = logging.getLogger(__name__)
 
 class ImageAgentSkill(BaseSkill):
     name = "image_agent"
@@ -283,32 +286,6 @@ class ImageAgentSkill(BaseSkill):
 
         print(images)
         return images
-    """
-    def _collect_images(self, req: SkillRequest) -> list[dict[str, Any]]:
-        images: list[dict[str, Any]] = []
-        idx = 1
-
-        def collect_from_message(msg,source:str)->None:
-
-
-
-        for seg in req.message.segments:
-            if seg.type != "image":
-                continue
-            file_name = str(seg.data.get("file") or "").strip()
-            if not file_name:
-                continue
-            images.append(
-                {
-                    "index": idx,
-                    "file_name": file_name,
-                    "local_path": None,
-                }
-            )
-            idx += 1
-        print(images)
-        return images
-    """
         
     def _normalize_indexes(self, value: Any) -> list[int]:
         if value is None:
@@ -380,7 +357,7 @@ class ImageAgentSkill(BaseSkill):
         if os.path.isabs(file_name) and os.path.exists(file_name):
             return file_name
         print(f"download_image input: {file_name}")
-        transport = self.services["transport"]
+        transport = self.services.transport
         try:
             local_path = await transport.download_image(file_name)
             print(f"download_image output: {local_path}")

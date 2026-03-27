@@ -50,7 +50,7 @@ async def send_class_remind(
     group_id: str,
     job: ScheduledJob
 ) -> None:
-    await service.send_group_text(group_id, '要上课了，记得打卡哦！')
+    await service.send_group_text(group_id, '要上课了，需要点到的同学记得打卡哦！')
 
 async def whWeather() -> str:
     if not settings.qweather_api_key: 
@@ -113,7 +113,7 @@ BUILTIN_JOBS: list[BuiltinJobSpec] = [
     BuiltinJobSpec(
         job_key='class_remind',
         hour=9,
-        minute=35,
+        minute=40,
         handler=send_class_remind,
     ),
 ]

@@ -2,11 +2,14 @@ from __future__ import annotations
 import asyncio, json, os, re, tempfile, uuid
 from typing import Any, Dict, List, Optional
 import websockets
+import logging
 from PIL import Image
 from luoying_bot.config import Settings
 from luoying_bot.domain.context import ChannelType, ChatContext, ConversationTarget, Platform, UserIdentity
 from luoying_bot.domain.message import UniMessage
 from luoying_bot.ports.transport import ChatTransport
+
+logger = logging.getLogger(__name__)
 
 # QQ平台适配器
 
@@ -222,16 +225,12 @@ class QQWsTransport(ChatTransport):
 
     #接受onebot事件
     async def recv_message(self) -> UniMessage:
-        """
-        raw = await self.websocket.recv()#收到消息
-        data: Dict[str, Any] = json.loads(raw)#json成data
-        """
 
         data: Dict[str, Any] = await self._event_queue.get()
         if data.get("post_type") == "__transport_error__":
             raise RuntimeError(f"QQ transport reader 异常：{data.get('error')}")
 #打印事件，调试时候可以de注释一下
-        print(json.dumps(data, indent=4, ensure_ascii=False))
+        logger.debug("收到 QQ 事件：%s", json.dumps(data, ensure_ascii=False))
 
         if data.get('post_type') not in {'message', 'notice'}:# meta事件和request事件忽略不处理
             return UniMessage(platform=Platform.QQ, raw_event=data)
@@ -288,6 +287,12 @@ class QQWsTransport(ChatTransport):
                     }
                 }
             )
+
+
+    def format_mention(self, context, user_id):
+        if context.target.channel_type == ChannelType.GROUP:
+            return f"[CQ:at,qq={user_id}] "
+        return ""
     
     #给你贴表情
     async def send_reaction(self, context: ChatContext, emoji_id: int) -> None:
@@ -362,7 +367,7 @@ class QQWsTransport(ChatTransport):
                 }
             )
         ).get('data')
-        print(fetch)
+        logger.debug("fetch_message 返回：%s", fetch)
         return fetch
     
     #拉取图片路径

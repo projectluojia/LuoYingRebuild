@@ -1,23 +1,27 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
+
 from luoying_bot.application.agent.agent_service import AgentService
 from luoying_bot.application.agent.skill_registry import SkillRegistry
 from luoying_bot.application.commands.dispatcher import CommandDispatcher
 from luoying_bot.application.event_handler import EventHandler
+from luoying_bot.application.message_processor import MessageProcessor
+from luoying_bot.application.service_hub import ServiceHub
 from luoying_bot.application.services.builtin_schedule_service import BuiltinScheduleService
 from luoying_bot.application.services.group_runtime import GroupRuntime
-from luoying_bot.application.services.reminder_service import ReminderService
-from luoying_bot.application.services.user_service import UserService
 from luoying_bot.application.services.memo_service import MemoService
 from luoying_bot.application.services.quick_reply_service import QuickReplyService
+from luoying_bot.application.services.reminder_service import ReminderService
 from luoying_bot.application.services.risk_control_service import RiskControlService
 from luoying_bot.application.services.script_workspace_service import ScriptWorkspaceService
+from luoying_bot.application.services.user_service import UserService
 from luoying_bot.config import settings
 from luoying_bot.infra.llm.openai_chat import OpenAICompatibleChatModel
 from luoying_bot.infra.memory.in_memory import InMemoryConversationMemory
+from luoying_bot.infra.repos.json_memo_repo import JsonMemoRepo
 from luoying_bot.infra.repos.json_reminder_repo import JsonReminderRepo
 from luoying_bot.infra.repos.json_user_repo import JsonUserRepo
-from luoying_bot.infra.repos.json_memo_repo import JsonMemoRepo
 from luoying_bot.infra.scheduler.async_scheduler import AsyncScheduler
 from luoying_bot.infra.transports.qq_ws_transport import QQWsTransport
 
@@ -36,40 +40,29 @@ class AppContainer:
     skills: SkillRegistry
     agent: AgentService
     event_handler: EventHandler
+    message_processor: MessageProcessor
     scheduler: AsyncScheduler
+    services: ServiceHub
 
 async def build_qq_container() -> AppContainer:
     transport = QQWsTransport(settings)
     runtime = GroupRuntime(enabled_groups={gid: True for gid in settings.specific_group_ids})
-    user_service = UserService(
-        JsonUserRepo(
-            settings.user_db_file
-        )
-    )
+    
+    user_service = UserService(JsonUserRepo(settings.user_db_file))
     scheduler = AsyncScheduler()
     reminder_service = ReminderService(
-        JsonReminderRepo(
-            settings.reminder_db_file
-        ), 
-        scheduler, 
-        transport
+        JsonReminderRepo(settings.reminder_db_file),
+        scheduler,
+        transport,
     )
     risk_control_service = RiskControlService()
-
     builtin_schedule_service = BuiltinScheduleService(
         scheduler=scheduler,
         transport=transport,
         runtime=runtime,
     )
-    memo_service = MemoService(
-        JsonMemoRepo(
-            settings.memo_dir
-        )
-    )
-    quick_reply_service=QuickReplyService(
-        settings.quick_reply_file
-    )
-
+    memo_service = MemoService(JsonMemoRepo(settings.memo_dir))
+    quick_reply_service = QuickReplyService(settings.quick_reply_file)
     script_workspace_service = ScriptWorkspaceService(
         root_dir=settings.script_workspace_dir,
         python_timeout_sec=settings.python_script_timeout_sec,
@@ -77,7 +70,9 @@ async def build_qq_container() -> AppContainer:
         max_output_chars=settings.script_max_output_chars,
     )
     
-    memory = InMemoryConversationMemory()
+    memory = InMemoryConversationMemory(
+        max_messages_per_thread=settings.memory_max_messages_per_thread
+    )
     model = OpenAICompatibleChatModel(
         settings.openai_base_url, 
         settings.openai_api_key, 
@@ -85,19 +80,19 @@ async def build_qq_container() -> AppContainer:
         settings.llm_temperature
     )
     #把以上东西打个包
-    services = {
-        'ops': settings.ops, 
-        'HELP': settings.HELP,
-        'LOG': settings.LOG,
-        'transport': transport, 
-        'runtime': runtime, 
-        'user_service': user_service, 
-        'reminder_service': reminder_service, 
-        'memo_service': memo_service,
-        'script_workspace_service': script_workspace_service,
-        'memory': memory,
-        'risk_control_service':risk_control_service
-    }
+    services = ServiceHub(
+        ops=settings.ops,
+        HELP=settings.HELP,
+        LOG=settings.LOG,
+        transport=transport,
+        runtime=runtime,
+        user_service=user_service,
+        reminder_service=reminder_service,
+        memo_service=memo_service,
+        script_workspace_service=script_workspace_service,
+        memory=memory,
+        risk_control_service=risk_control_service,
+    )
 
     #指令
     commands = CommandDispatcher(services) 
@@ -108,7 +103,15 @@ async def build_qq_container() -> AppContainer:
     skills.auto_register()
     
     #agent
-    agent = AgentService(model, memory, skills)
+    agent = AgentService(
+        model, 
+        memory, 
+        skills,
+        max_steps=20,
+        skill_timeout_sec=settings.agent_skill_timeout_sec,
+        total_timeout_sec=settings.agent_total_timeout_sec,
+    )
+
     event_handler = EventHandler(
         transport=transport, 
         runtime=runtime, 
@@ -120,19 +123,26 @@ async def build_qq_container() -> AppContainer:
         bot_name=settings.bot_name,
         risk_control_service=risk_control_service
     )
+    message_processor = MessageProcessor(
+        event_handler=event_handler,
+        max_concurrent_tasks=settings.max_concurrent_message_tasks,
+    )
+
     return AppContainer(
-        transport=transport, 
-        runtime=runtime, 
-        user_service=user_service, 
+        transport=transport,
+        runtime=runtime,
+        user_service=user_service,
         reminder_service=reminder_service,
         builtin_schedule_service=builtin_schedule_service,
         memo_service=memo_service,
         quick_reply_service=quick_reply_service,
         risk_control_service=risk_control_service,
         script_workspace_service=script_workspace_service,
-        commands=commands, 
-        skills=skills, 
-        agent=agent, 
-        event_handler=event_handler, 
-        scheduler=scheduler
+        commands=commands,
+        skills=skills,
+        agent=agent,
+        event_handler=event_handler,
+        message_processor=message_processor,
+        scheduler=scheduler,
+        services=services,
     )

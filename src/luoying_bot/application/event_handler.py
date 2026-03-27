@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import random
 
 from luoying_bot.application.agent.agent_service import AgentService
@@ -11,8 +12,11 @@ from luoying_bot.application.services.risk_control_service import RiskControlSer
 from luoying_bot.domain.message import UniMessage
 from luoying_bot.domain.message import MessageSegment
 from luoying_bot.domain.result import Reply
+from luoying_bot.infra.logging_setup import context_log_extra
 from luoying_bot.ports.transport import ChatTransport
 from luoying_bot.constants import NOTIFYS
+
+logger=logging.getLogger(__name__)
 
 class EventHandler:
     def __init__(
@@ -38,19 +42,24 @@ class EventHandler:
         self.bot_name = bot_name
     async def handle(self, message: UniMessage) -> Reply:
         context = message.context
-        
+        extra = context_log_extra(context)
+
         #沉默回复
         if not context: 
             return Reply(text='', silent=True)
 
         raw_event = message.raw_event or {}
         
+        logger.info("收到消息，开始处理",extra=extra)
+
         #如果用户被ban则沉默
         if self.runtime.is_user_banned(context.user.user_id): 
+            logger.info("用户已被封禁，忽略消息",extra=extra)
             return Reply(text='', silent=True)
         
         #如果群聊不允许则沉默
         if context.target.platform.value == 'qq' and not self.runtime.is_group_enabled(context.target.conversation_id):
+            logger.info("群未启用，忽略消息",extra=extra)
             return Reply(text='', silent=True)
 
         #特判戳一戳
@@ -65,23 +74,36 @@ class EventHandler:
         
         text = message.get_plain_text().strip() or message.to_llm_text().strip()
         query = self._normalize_query(text)
+        mentioned = message.has_at(self.bot_qq)
 
-        #快速回复
-        quick_reply=self.quick_reply_service.match(text=query)
-        if quick_reply :
-            await self.transport.send_text(context=message.context,text=quick_reply)
-            return Reply(text='', silent=True)
+
+        if context.target.channel_type.value == 'group':
+            quick_reply=self.quick_reply_service.match(text=query)
+            if quick_reply :
+                await self.transport.send_text(context=message.context,text=quick_reply)
+                logger.info("命中快速回复", extra=extra)
+                return Reply(text='', silent=True)
         
-        if MessageSegment(type="at",data={"user_id":self.bot_qq}) not in message.segments:
+        if not mentioned and context.target.platform.value =='qq':
             return Reply(text='', silent=True)
-        
+        """
+        扩展指南：
+        如果添加别的平台，此处可以添加类似代码：
+        if not mentioned and context.target.platform.value =='dingding':
+            return Reply(text='', silent=True)
+        诸如此类。
+        """
+
+
+
         #进入指令执行器
         if query.startswith('/'):
             reply = await self.commands.dispatch(query, context) or Reply(text='未知命令')
             if not reply.silent and reply.text:
+                prefix = self.transport.format_mention(context,context.user.user_id)    
                 await self.transport.send_text(
                     context, 
-                    self._at_prefix(context) + reply.text if context.target.platform.value == 'qq' else reply.text
+                    prefix+reply.text,
                 )
             return reply
         
@@ -107,9 +129,12 @@ class EventHandler:
         
         
         if not reply.silent and reply.text:
-            await self.transport.send_text(context, self._at_prefix(context) + reply.text if context.target.platform.value == 'qq' else reply.text)
+            prefix = self.transport.format_mention(context,context.user.user_id) 
+            await self.transport.send_text(
+                context, 
+                prefix + reply.text
+            )
         return reply
+    
     def _normalize_query(self, text: str) -> str:
         return text.strip().replace(f'@{self.bot_name}', '').strip()
-    def _at_prefix(self, context) -> str:
-        return f"[CQ:at,qq={context.user.user_id}] " if context.target.platform.value == 'qq' else ''

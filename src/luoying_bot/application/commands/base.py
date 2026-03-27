@@ -1,6 +1,9 @@
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from typing import Optional
+
+from luoying_bot.application.service_hub import ServiceHub
 from luoying_bot.domain.context import ChatContext
 from luoying_bot.domain.result import Reply
 
@@ -15,7 +18,7 @@ class BaseCommand(ABC):
     optional_args: dict[str, list[str]] = {}
 
 
-    def __init__(self, services: dict):
+    def __init__(self, services: ServiceHub):
         self.services = services
 
     #建立别名映射
@@ -23,7 +26,8 @@ class BaseCommand(ABC):
         alias_map: dict[str, str] = {}
         for canonical, aliases in {**self.required_args, **self.optional_args}.items():
             alias_map[canonical] = canonical
-            for alias in aliases: alias_map[alias] = canonical
+            for alias in aliases: 
+                alias_map[alias] = canonical
         return alias_map
     
     #初步验证
@@ -48,7 +52,7 @@ class BaseCommand(ABC):
     async def execute(self, context: ChatContext, args: dict[str, str]) -> Reply: ...
 
     async def process(self, context: ChatContext, args: Optional[list[str]]) -> Reply:
-        if self.op_required and context.user.user_id not in self.services.get('ops', []):
+        if self.op_required and context.user.user_id not in self.services.ops:
             return Reply(text='权限不足')
         parsed = await self.validate(self._parse_args(args))
         return await self.execute(context, parsed)

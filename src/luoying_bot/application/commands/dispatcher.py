@@ -1,11 +1,12 @@
 from __future__ import annotations
 import importlib, inspect, pkgutil
 from luoying_bot.application.commands.base import BaseCommand
+from luoying_bot.application.service_hub import ServiceHub
 from luoying_bot.domain.context import ChatContext
 from luoying_bot.domain.result import Reply
 
 class CommandDispatcher:
-    def __init__(self, services: dict):
+    def __init__(self, services: ServiceHub):
         self.services = services
         self.commands: dict[str, BaseCommand] = {}
 

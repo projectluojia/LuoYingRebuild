@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from datetime import datetime, timedelta
 import uuid
 
@@ -38,7 +40,7 @@ class ReminderService:
     def _build_job(self, record: ReminderRecord) -> ScheduledJob:
         async def callback(job: ScheduledJob) -> None:
             ctx = record.context
-            prefix = f"[CQ:at,qq={record.user_id}] " if ctx.target.platform.value == 'qq' else ''
+            prefix = self.transport.format_mention(ctx, record.user_id)
             await self.transport.send_text(ctx, f'{prefix}提醒：{record.content}')
             if record.repeat:
                 next_time = record.run_time + timedelta(days=1)
