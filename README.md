@@ -1,44 +1,46 @@
-# 珞樱 Luoying Bot V2 开发者参考文档
+# 珞樱 Luoying Bot V2.0.0
 
-珞樱（Luoying）是一个面向 QQ 群聊场景的智能 Agent 机器人项目。
-本项目由武汉大学人工智能学院相关场景驱动开发，当前版本采用了相对清晰的分层架构：传输层、应用层、能力层、基础设施层彼此解耦，并在自然语言处理上引入了主 Agent + Skill + 子 Agent 的能力编排模式。
+珞樱（Luoying）是一个面向 QQ 群聊场景构建的智能 Agent 机器人项目，也提供了可用于调试与扩展的 Web 入口。项目以“命令系统 + 自然语言 Agent + Skill / 子 Agent”混合架构为核心，强调可维护、可扩展、可二次开发，而不是单纯的规则回复机器人。
 
-与早期“规则回复 + 命令触发”为主的机器人不同，V2 更强调：
+V2.0.0 标志着珞樱从早期快照迭代进入一个更完整、可持续演进的正式版本阶段：
 
-- 面向工程维护的模块化设计
-- 指令系统与自然语言 Agent 并存
-- 技能自动注册与统一调度
-- 多轮记忆与群聊上下文感知
-- 图片理解子 Agent
-- 编程子 Agent
-- 可恢复的提醒调度系统
-- 兼容 Web 入口的统一事件处理模型
+- 保留命令式交互，适合稳定、明确、低歧义操作
+- 保留自然语言 Agent，适合模糊表达、多步任务与技能编排
+- 使用统一的消息模型与事件处理链路
+- 支持提醒、备忘录、群信息、天气、联网搜索、图片理解、脚本工作区等能力
+- 后端已完成一轮结构优化，包括消息处理并发化、统一预算控制、结构化日志、`ServiceHub` 注入、快捷回复文件化等改进
 
-本仓库主要面向开发者阅读与二次开发，不是一个“只改配置即可直接部署全部功能”的傻瓜包。
+本仓库主要面向开发者、维护者和二次开发者阅读，不是“只改配置即可一键部署全部功能”的傻瓜包。
 
-------
+---
 
-## 1. 项目目标
+## 1. 项目定位
 
-本项目尝试解决的不是“做一个能聊天的 QQ bot”这么简单，而是构建一个：
+珞樱并不只是一个“能在群里说话”的 QQ bot。它更接近一个轻量级、多能力、面向具体场景持续生长的 Agent 系统。
 
-- 能接入 QQ / Web 等多种输入源
-- 能区分命令、闲聊、任务型请求
-- 能自动选择技能或子 Agent 处理复杂任务
-- 能在群聊环境下保持用户身份、会话、回复链等上下文
-- 能持续扩展更多校园场景能力
+它试图解决的问题包括：
 
-的轻量级多能力 Agent 系统。
+- 接入 QQ / Web 等不同输入源
+- 区分命令、闲聊、任务型请求
+- 在群聊环境中保留用户、会话、回复链等上下文
+- 通过 Skill 或子 Agent 处理复杂任务
+- 在保证扩展性的同时，让后端结构保持清晰
 
-------
+如果你想做的是：
 
-## 2. 当前能力概览
+- 一个可持续迭代的校园场景 Agent
+- 一个带命令系统的群聊机器人框架
+- 一个适合研究 QQ / Web 双入口统一消息处理模型的项目
 
-基于当前代码实现，项目已经具备以下核心能力：
+那么这个仓库是一个比较合适的起点。
 
-### 指令系统
+---
 
-支持通过 `/xxx` 形式触发明确命令，例如：
+## 2. 核心能力概览
+
+### 2.1 指令系统
+
+项目支持通过 `/xxx` 形式触发明确命令，适合高确定性任务。根据当前 README，现有指令包括：
 
 - `/help`
 - `/clear`
@@ -60,9 +62,9 @@
 - `/dice`
 - `/version`
 
-### Agent 自然语言能力
+### 2.2 自然语言 Agent
 
-主 Agent 目前通过 ReAct 风格循环驱动，可根据用户消息自动选择 skill 执行，例如：
+主 Agent 采用受控的 ReAct 风格循环，可根据用户请求自动选择 Skill 或直接回复。目前 README 中列出的能力包括：
 
 - 查询武汉天气
 - 获取当前时间
@@ -74,9 +76,9 @@
 - 图片理解
 - 编程工作区操作
 
-### 图片理解子 Agent
+### 2.3 图片理解子 Agent
 
-支持：
+图片理解能力支持：
 
 - 图片描述
 - 图中文字提取
@@ -85,9 +87,9 @@
 - 回复消息中的图片理解
 - 指定第几张图片分析
 
-### 编程子 Agent
+### 2.4 编程子 Agent
 
-支持：
+编程能力围绕“用户脚本工作区”展开，支持：
 
 - 列出用户脚本
 - 读取脚本
@@ -97,27 +99,49 @@
 - 运行 Python 脚本
 - 将脚本发送到当前会话
 
-### 数据与业务能力
+### 2.5 数据与运行时能力
 
-支持：
+项目当前还包含：
 
 - 用户资料 JSON 持久化
 - 备忘录按用户存储
 - 提醒任务持久化与恢复
-- 群启用状态 / 封禁 / 复读模式等运行时控制
+- 群启用状态、封禁、复读模式等运行时控制
 
-### 传输与接口
+### 2.6 接入方式
 
-目前已实现：
+当前已实现：
 
 - QQ OneBot WebSocket 输入输出适配
 - 简单 Web API 聊天接口
 
-------
+---
 
-## 3. 项目结构
+## 3. V2.0.0 相比早期版本的重要变化
 
-当前主要目录如下：
+V2.0.0 不再只是快照版本的延续，而是把此前多轮后端整理正式落到了主线架构中。根据后端优化方案，当前版本新增或强化了以下能力：
+
+- 引入 `MessageProcessor`，实现“跨会话并发、会话内串行”的消息处理模型
+- `AgentService` 去除共享可变状态，并增加统一的 Skill 超时控制与总预算控制
+- 新增结构化日志，便于按 `req / thread / msg / user / conv` 追踪问题
+- `QuickReplyService` 支持从配置文件读取规则
+- 会话记忆增加数量上限，避免无限增长
+- `ChatTransport` 进一步收口平台相关能力，例如 mention 格式化
+- 引入 `ServiceHub` 统一管理服务注入，减少 magic dict 带来的不透明依赖
+- QQ 与 Web 入口进一步统一到新的消息处理链路中
+
+这些变化的直接收益是：
+
+- 慢技能、慢模型不再轻易拖死整个主循环
+- 日志更可追踪，排障成本更低
+- 新增命令、技能、服务时，结构更稳定
+- 平台解耦程度更高，更利于继续扩展
+
+---
+
+## 4. 项目结构
+
+目录结构如下：
 
 ```text
 src/
@@ -136,64 +160,64 @@ src/
    │  │  ├─ skill_base.py
    │  │  └─ skill_registry.py
    │  ├─ commands/               # 指令系统
-   │  ├─ jobs/                   # 预留/任务相关
    │  ├─ services/               # 业务服务层
+   │  ├─ message_processor.py    # 消息处理调度
    │  └─ event_handler.py        # 统一事件入口
    │
    ├─ domain/                    # 领域模型
-   │  ├─ context.py
-   │  ├─ message.py
-   │  └─ result.py
-   │
    ├─ infra/                     # 基础设施层
-   │  ├─ llm/                    # LLM 适配
-   │  ├─ memory/                 # 会话记忆实现
-   │  ├─ repos/                  # JSON 仓储实现
-   │  ├─ scheduler/              # 调度器
-   │  ├─ transports/             # 传输层适配
-   │  └─ web/                    # Web API
+   │  ├─ llm/
+   │  ├─ memory/
+   │  ├─ repos/
+   │  ├─ scheduler/
+   │  ├─ transports/
+   │  └─ web/
    │
    ├─ ports/                     # 抽象接口层
-   ├─ bootstrap.py               # 容器构建入口
+   ├─ bootstrap.py               # 容器装配入口
    ├─ config.py                  # 配置中心
    ├─ constants.py               # 常量与系统提示词
+   ├─ service_hub.py             # 统一服务注入中心
+   ├─ logging_setup.py           # 日志初始化
    ├─ main_qq.py                 # QQ 入口
    └─ main_web.py                # Web 入口
 ```
 
-------
+不同仓库提交之间目录细节可能略有差异，但整体分层思路应保持一致。
 
-## 4. 架构说明
+---
 
-### 4.1 总体分层
+## 5. 架构概览
 
-本项目整体可以理解为如下分层：
+### 5.1 分层思路
 
-- `domain`：纯领域对象，表达统一消息、上下文、回复等概念
-- `ports`：抽象接口，定义传输、存储、记忆、LLM 等能力边界
-- `infra`：接口实现层，例如 WebSocket QQ 适配器、JSON 仓储、内存记忆
-- `application/services`：业务服务层，负责提醒、备忘录、用户信息、运行时状态等
-- `application/commands`：命令系统
-- `application/agent`：主 Agent、skill 注册与执行
-- `application/event_handler.py`：统一消息入口，串起快捷回复、命令、Agent 等行为
+项目整体可理解为以下几层：
 
-### 4.2 启动流程
+- `domain`：统一消息、上下文、回复等领域对象
+- `ports`：抽象接口，定义传输、记忆、存储等边界
+- `infra`：接口实现，例如 QQ 适配器、JSON 仓储、内存记忆、Web API
+- `application/services`：提醒、备忘录、用户信息、运行时控制等业务服务
+- `application/commands`：指令系统
+- `application/agent`：主 Agent、Skill 注册与执行
+- `application/message_processor.py`：消息并发/串行调度
+- `application/event_handler.py`：统一消息入口
 
-以 QQ 主入口 `main_qq.py` 为例，启动逻辑大致如下：
+### 5.2 启动流程
 
-1. 调用 `build_qq_container()` 构建应用容器
-2. 建立 QQ WebSocket 连接
-3. 恢复历史提醒任务
-4. 注册内置定时事件
-5. 启动调度器
-6. 持续接收平台消息
-7. 将消息交给 `EventHandler` 统一处理
+以 QQ 入口为例，一个典型启动流程大致为：
 
-也就是说，整个系统是围绕一个 `AppContainer` 组织起来的。
+1. 调用 `build_qq_container()` 构建容器
+2. 初始化传输层与运行时服务
+3. 恢复提醒任务
+4. 注册内置计划事件
+5. 启动异步调度器
+6. 启动消息接收循环
+7. 由 `MessageProcessor` 调度到 `EventHandler`
+8. 根据消息类型分发到快捷回复、命令系统或主 Agent
 
-### 4.3 容器装配
+### 5.3 容器装配
 
-`bootstrap.py` 负责装配以下对象：
+当前架构强调“集中装配，分层调用”。常见装配对象包括：
 
 - `QQWsTransport`
 - `GroupRuntime`
@@ -209,94 +233,87 @@ src/
 - `SkillRegistry`
 - `AgentService`
 - `EventHandler`
+- `MessageProcessor`
+- `ServiceHub`
 
-这让项目具备比较明显的“依赖集中装配”特点，后续替换实现时比较方便。
+这种方式的好处是：
 
-------
+- 依赖关系更清楚
+- 更容易替换实现
+- 更容易调试与测试
+- 更适合继续往后做平台扩展与模块拆分
 
-## 5. 消息处理链路
+---
 
-`EventHandler` 是整个系统的统一入口。
+## 6. 消息处理链路
 
-一个 QQ 事件进入后，大致会按以下顺序处理：
+`EventHandler` 是业务入口，`MessageProcessor` 是处理调度入口。当前推荐心智模型如下：
 
-1. 检查上下文是否存在
-2. 检查用户是否被封禁
-3. 检查当前群是否启用
-4. 特判戳一戳通知
-5. 提取普通文本 / LLM 文本
-6. 匹配快捷回复
-7. 检查是否 `@机器人`
-8. 若是 `/命令`，进入命令分发器
-9. 若当前群处于复读模式，则直接复读
-10. 其他情况进入主 Agent
+1. 传输层接收平台消息
+2. 转成统一 `UniMessage`
+3. 交给 `MessageProcessor`
+4. `MessageProcessor` 保证：
+   - 不同会话可并发处理
+   - 同一会话内部保持串行，避免记忆乱序
+5. `EventHandler` 继续执行业务判断：
+   - 检查上下文
+   - 检查封禁与群启用状态
+   - 处理特殊平台事件
+   - 处理快捷回复
+   - 判断是否为命令
+   - 判断是否进入复读模式
+   - 其他情况交给主 Agent
 
-这条链路非常重要，因为你之后无论扩展什么能力，最终都要考虑它应该接在这里的哪个分支上。
+这条链路决定了你以后新增能力时，应该插在什么位置，以及它会不会影响整条系统链路。
 
-------
+---
 
-## 6. 主 Agent 设计
+## 7. 主 Agent 设计
 
-### 6.1 执行模式
+### 7.1 执行模式
 
-`AgentService` 目前采用的是一个简化版 ReAct 循环：
+`AgentService` 使用受控 ReAct 风格循环。核心思路是：
 
-- 读取可用技能摘要
-- 读取当前线程的历史记忆
-- 把当前用户消息包装成结构化文本
-- 要求模型只能输出两种 JSON：
-  - 调用某个 skill
+- 从当前平台筛出可用 Skill
+- 读取当前线程的记忆
+- 将用户消息包装为结构化输入
+- 要求模型只输出两类 JSON：
+  - 调用某个 Skill
   - 给出最终回答
-- 每一步只允许做一件事
-- 将每一步 action / observation 记入 scratchpad
-- 最终得到 answer 或走 fallback
+- 将每步 action / observation 写入 scratchpad
+- 最终得到 answer，或者触发 fallback
 
-### 6.2 为什么这么设计
+### 7.2 V2.0.0 的新增约束
 
-这套设计比“直接让模型自己说自己要调什么工具”更受控，主要优点是：
+当前版本建议注意这些后端控制：
 
-- skill 边界更清晰
-- 便于调试中间过程
-- 便于扩展新能力
-- 失败时能 fallback 为普通自然语言回答
-- 主 Agent 与 skill 实现解耦
+- 单个 Skill 有统一超时限制
+- 一次 Agent 运行有总预算限制
+- 会话记忆有上限，不再无限增长
+- 结构化日志可追踪单次请求的执行路径
 
-### 6.3 当前主 Agent 的局限
+这些限制并不是“削弱能力”，而是为了让系统在真实群聊环境中更稳定。
 
-基于当前实现，有几点需要开发者注意：
+---
 
-- skill 调度依赖模型输出严格 JSON
-- JSON 不合法时，会进入 observation 重试
-- `max_steps` 默认为 20，复杂任务可能较慢
-- 记忆当前为内存实现，重启后丢失
-- 主 Agent 输出风格高度受 `constants.py` 中系统提示词影响
+## 8. Skill 系统
 
-------
+### 8.1 自动注册
 
-## 7. Skill 系统
+`SkillRegistry` 会自动扫描 `luoying_bot.application.agent.skills` 目录下的模块，并注册继承 `BaseSkill` 的合法 Skill。
 
-### 7.1 自动注册
+开发一个新 Skill 的基本步骤通常是：
 
-`SkillRegistry` 会自动扫描：
+1. 在 `application/agent/skills/` 下新建 `.py`
+2. 继承 `BaseSkill`
+3. 定义唯一 `name`
+4. 写清楚 `description`
+5. 实现 `run(req: SkillRequest) -> SkillResult`
+6. 保证模块能被正常 import
 
-```python
-luoying_bot.application.agent.skills
-```
+### 8.2 当前技能形态
 
-目录下的所有模块，并注册继承 `BaseSkill` 的类。
-
-这意味着你新增 skill 的基本步骤是：
-
-1. 在 `application/agent/skills/` 下新建一个 `.py`
-2. 定义一个继承 `BaseSkill` 的类
-3. 实现 `name`、`description`、`run()`
-4. 保证模块可被 import
-
-启动后即可自动注册，无需手动改总表。
-
-### 7.2 当前已有 skill
-
-根据当前代码，主要包括：
+根据现有 README，项目已有的主要 Skill 包括：
 
 - `ReminderSkill`
 - `WeatherSkill`
@@ -306,23 +323,20 @@ luoying_bot.application.agent.skills
 - `CodingAgentSkill`
 - `ImageAgentSkill`
 
-其中后两个本质上已经不是“简单工具 skill”，而是“skill 封装了一个子 Agent”。
+其中后两个本质上已经不是“简单工具”，而是“Skill 封装子 Agent”。
 
-------
+### 8.3 开发建议
 
-## 8. 指令系统
+- `description` 要尽量写清楚使用时机和参数格式
+- 需要 IO 的 Skill 尽量保持纯异步
+- 通用逻辑尽量下沉到 `services`
+- 不要在 Skill 里自行重复创建框架本已管理的服务实例
 
-### 8.1 自动注册机制
+---
 
-命令系统和 skill 很像，`CommandDispatcher` 会自动扫描：
+## 9. 指令系统
 
-```python
-luoying_bot.application.commands
-```
-
-目录下的命令类并注册。
-
-### 8.2 适合用命令的场景
+### 9.1 适合什么场景
 
 命令系统适合：
 
@@ -336,79 +350,74 @@ luoying_bot.application.commands
 - 绑定资料
 - 更新资料
 - 管理员操作
-- 开关模式
-- 查看版本
+- 模式开关
 - 清空会话记忆
+- 查看版本
 
-### 8.3 适合用 Agent 的场景
+### 9.2 自动注册
 
-自然语言 Agent 更适合：
+命令系统与 Skill 类似，`CommandDispatcher` 会自动扫描 `luoying_bot.application.commands` 目录中的命令类并注册。
 
-- 模糊表达
-- 多步任务
-- 用户不愿记命令
-- 图像 / 搜索 / 推理类请求
+### 9.3 当前架构建议
 
-项目同时保留两套入口，是一个很合理的工程折中。
+在 V2.0.0 中，命令与 Skill 建议统一使用 `ServiceHub` 获取依赖，而不要继续散落使用不透明的 magic dict。这会让：
 
-------
+- IDE 类型提示更友好
+- 重构更安全
+- 依赖关系更明确
 
-## 9. 图片理解子 Agent
+---
 
-`ImageAgentSkill` 是当前比较有特色的一块。
+## 10. 图片理解子 Agent
 
-### 9.1 支持来源
+图片理解是当前比较有特色的一块能力。
 
-它会同时尝试收集：
+### 10.1 支持来源
+
+系统会尝试收集：
 
 - 当前消息中的图片
-- 用户回复的那条消息中的图片
+- 用户回复消息中的图片
 
-并且只保留一层 reply，不会无限递归展开。
+当前只展开一层 reply，不会无限递归展开。
 
-### 9.2 支持能力
+### 10.2 支持能力
 
-当前可用的工具包括：
+图片子 Agent 目前可覆盖：
 
-- `list_current_images`
-- `describe_images`
-- `answer_about_images`
+- 图片描述
+- 提取文字
+- 多图比较
+- 回答与图片有关的问题
 
-### 9.3 实现特点
+### 10.3 实现思路
 
-图片能力并不是主 Agent 自己直接看图，而是：
+主 Agent 不直接看图，而是：
 
-1. 主 Agent 决定调用 `image_agent`
+1. 判断需要调用 `image_agent`
 2. `ImageAgentSkill` 收集图片
-3. 通过 OneBot 获取原图路径，必要时压缩
-4. 再把任务交给单独的 LangChain 子 Agent
+3. 由平台接口拉取图片资源并做必要处理
+4. 再把任务交给图片子 Agent
 
-### 9.4 开发注意事项
+这让图片相关复杂度不会污染主 Agent 的主链路。
 
-- 回复消息图片理解依赖平台能正确返回被回复消息
-- 本地图片路径依赖 OneBot `get_image`
-- 大图会走压缩逻辑
-- 目前系统提示词和多图决策逻辑对模型行为影响很大
+---
 
-------
-
-## 10. 编程子 Agent
+## 11. 编程子 Agent
 
 `CodingAgentSkill` 面向“用户自己的脚本工作区”。
 
-### 10.1 工作区模型
+### 11.1 工作区模型
 
-每个用户在：
+每个用户拥有独立脚本目录：
 
 ```text
 data/scripts/<user_id>/
 ```
 
-下拥有自己的文件空间。
+### 11.2 支持操作
 
-### 10.2 支持操作
-
-通过 LangChain tool 暴露给子 Agent 的包括：
+典型操作包括：
 
 - `list_scripts`
 - `read_script`
@@ -418,116 +427,90 @@ data/scripts/<user_id>/
 - `run_python_script`
 - `send_script`
 
-### 10.3 安全设计
+### 11.3 安全边界
 
-脚本服务 `ScriptWorkspaceService` 做了路径约束：
+脚本工作区服务会进行路径约束：
 
 - 不允许绝对路径
 - 不允许 `..`
 - 不允许越界到用户目录之外
 
-所以这是一个“受限工作区”设计，而不是给模型整机文件访问权限。
+当前边界仍包括：
 
-### 10.4 当前边界
+- 仅直接运行 `.py`
+- 不支持任意 shell 命令
+- 不支持访问系统敏感资源
+- 默认不以“整机控制器”身份运行
 
-- 只支持直接运行 `.py`
-- 不支持安装依赖
-- 不支持 shell 命令
-- 不支持访问外部网络
-- 发送脚本依赖传输层上传文件能力
+---
 
-------
+## 12. 数据存储与运行时数据
 
-## 11. 数据存储
+当前项目仍以轻量 JSON 存储为主，适合中小规模使用与开发期调试。
 
-当前项目的数据层以 JSON 为主，属于轻量实现。
+常见数据位置包括：
 
-### 用户资料
+- `data/userdatabase.json`：用户资料
+- `data/reminders.json`：提醒事项
+- `data/quick_replies.json`：快捷回复规则
+- `data/memo/`：用户备忘录
+- `data/scripts/<user_id>/`：用户脚本工作区
 
-```
-src/data/userdatabase.json
-```
-
-### 提醒事项
-
-```
-src/data/reminders.json
-```
-
-### 快捷回复
-
-```
-src/data/quick_replies.json
-```
-
-### 用户备忘录
-
-```
-src/data/memo/
-```
-
-通常为一个用户一个文件。
-
-### 用户脚本工作区
-
-```
-src/data/scripts/<user_id>/
-```
-
-### 优缺点
-
-优点：
+### 12.1 优点
 
 - 易读
 - 易调试
 - 无需数据库依赖
-- 适合早期开发和小规模部署
+- 对小团队和单机部署友好
 
-缺点：
+### 12.2 局限
 
 - 并发能力一般
 - 原子性有限
 - 不适合大规模场景
-- 长期来看应考虑迁移数据库或 KV 存储
+- 长期来看适合迁移到 SQLite / PostgreSQL / KV 存储
 
-------
+---
 
-## 12. 提醒与调度系统
+## 13. 提醒与调度系统
 
-### 12.1 组成
-
-提醒能力由以下部分配合完成：
+提醒能力当前由以下部分协作完成：
 
 - `ReminderService`
 - `JsonReminderRepo`
 - `AsyncScheduler`
+- `BuiltinScheduleService`
 
-### 12.2 运行特性
+### 13.1 运行特性
 
-系统启动时会：
+系统启动时通常会：
 
 - 从 `reminders.json` 恢复任务
-- 注册内置定时任务
+- 注册内置计划事件
 - 启动调度器
 
-### 12.3 内置计划事件
+### 13.2 内置计划事件
 
 当前内置逻辑包括：
 
 - 每日早安 / 天气播报
 - 每日睡觉提醒
 
-### 12.4 开发注意事项
+### 13.3 V2.0.0 的改进点
 
-如果你后续想加更多计划事件，建议统一放到 `BuiltinScheduleService` 里，不要散落在入口脚本里硬写。
+你应优先把所有计划事件统一收口到调度服务中，而不是散落在入口脚本里。这样：
 
-------
+- 更好维护
+- 更容易观察调度状态
+- 更便于以后加入 misfire 策略、执行状态记录、运行日志等增强能力
 
-## 13. QQ 传输层
+---
+
+## 14. QQ 传输层
 
 `QQWsTransport` 是当前 QQ 平台适配器。
 
-### 13.1 主要职责
+它负责：
 
 - 连接 OneBot WebSocket
 - 收发原始事件
@@ -538,37 +521,30 @@ src/data/scripts/<user_id>/
 - 下载图片
 - 发送文本
 - 发送文件
-- 戳一戳等平台动作
+- 执行戳一戳等平台动作
 
-### 13.2 重要细节
+### 14.1 当前架构方向
 
-项目目前已经处理了“回复消息可见性”这一点：
+V2.0.0 更强调“平台能力下沉”。业务层不应到处散落 QQ 语义，而应尽量通过 transport 暴露统一能力，例如：
 
-- 当前消息会保留 reply segment
-- 被回复消息会被抓取并构造成 `reply_message`
-- 但回复链只展开一层
+- mention 格式化
+- 平台特定消息能力
+- 文件发送
+- 平台动作
 
-这对图片场景和上下文理解很关键。
+这会让后续接 Web、其他 IM 平台时轻松很多。
 
-### 13.3 适配器意义
+---
 
-有了这层适配，你以后要接其他平台时，理论上只需要：
+## 15. Web 入口
 
-- 实现新的 transport
-- 保持输出 `UniMessage`
-- 复用上层 event handler / command / agent 逻辑
+`main_web.py` 与 `infra/web/api.py` 提供了一个简单 Web 接口，用于调试与后续扩展。
 
-------
-
-## 14. Web 入口
-
-`main_web.py` + `infra/web/api.py` 提供了一个简单 Web 接口。
-
-当前接口形态为：
+当前接口形态可理解为：
 
 - `POST /chat`
 
-请求体：
+典型请求体：
 
 ```json
 {
@@ -579,7 +555,7 @@ src/data/scripts/<user_id>/
 }
 ```
 
-返回体：
+典型返回体：
 
 ```json
 {
@@ -587,19 +563,24 @@ src/data/scripts/<user_id>/
 }
 ```
 
-这个 Web 入口目前更适合：
+在当前版本里，Web 入口更适合：
 
 - 本地调试 Agent
-- 为后续前端页面预留接口
-- 测试统一事件模型
+- 做前端页面前的接口预留
+- 测试统一消息处理模型
 
-从代码注释和实现完整度来看，它目前属于可用但偏轻量的实验接口。
+---
 
-------
+## 16. 环境要求
 
-## 15. 环境要求
+建议环境：
 
-当前项目依赖见 `requirements.txt`：
+- Python 3.11+
+- Windows / Linux
+- 可访问对应 LLM API
+- 若启用 QQ 机器人，需要 OneBot WebSocket 服务端
+
+当前 README 提到的主要依赖包括：
 
 - fastapi
 - uvicorn
@@ -611,16 +592,11 @@ src/data/scripts/<user_id>/
 - langchain
 - langchain-openai
 
-建议环境：
+建议以仓库中的 `requirements.txt` 为准。
 
-- Python 3.11+
-- Windows / Linux 均可
-- 可访问对应 LLM API
-- 若启用 QQ 机器人，需要 OneBot WebSocket 服务端
+---
 
-------
-
-## 16. 安装
+## 17. 安装
 
 建议先创建虚拟环境：
 
@@ -634,30 +610,30 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-------
+如果你使用 conda，也可以自行按环境需求创建等价环境。
 
-## 17. 配置
+---
 
-项目通过 `.env` 读取配置，配置入口位于：
+## 18. 配置
+
+项目通过 `.env` 读取配置，统一入口位于：
 
 ```python
 src/luoying_bot/config.py
 ```
 
-### 主要配置项
-
-#### QQ / 基础信息
+### 18.1 基础配置
 
 ```env
 WS_URL=ws://127.0.0.1:3001
 BOT_QQ=3949843218
 BOT_NAME=珞樱
-VERSION=dev
+VERSION=V2.0.0
 HELP=
 LOG=
 ```
 
-#### 主 LLM
+### 18.2 主模型配置
 
 ```env
 OPENAI_BASE_URL=https://api.deepseek.com
@@ -666,7 +642,7 @@ OPENAI_MODEL=deepseek-chat
 LLM_TEMPERATURE=1.0
 ```
 
-#### 编程子 Agent 模型
+### 18.3 编程子 Agent 配置
 
 ```env
 CODER_BASE_URL=https://api.deepseek.com
@@ -675,7 +651,7 @@ CODER_MODEL=deepseek-reasoner
 CODER_TEMPERATURE=0.2
 ```
 
-#### 图片能力模型
+### 18.4 图片能力配置
 
 ```env
 IMAGE_BASE_URL=
@@ -683,9 +659,7 @@ IMAGE_API_KEY=
 IMAGE_MODEL=
 ```
 
-说明：当前图片子 Agent 实际仍主要使用 `OPENAI_*` 配置，而不是完全独立走 `IMAGE_*` 配置，后续可以考虑统一或彻底拆开。
-
-#### 天气 / 搜索
+### 18.5 天气 / 搜索
 
 ```env
 QWEATHER_API_KEY=
@@ -693,7 +667,7 @@ WEATHER_BASE_URL=https://pn6yvyt6je.re.qweatherapi.com/v7/weather/now
 TAVILY_API_KEY=
 ```
 
-#### 数据目录
+### 18.6 数据目录
 
 ```env
 DATA_DIR=./data
@@ -704,15 +678,21 @@ REMINDER_DB_FILE=./data/reminders.json
 SCRIPT_WORKSPACE_DIR=./data/scripts
 ```
 
-#### 脚本运行控制
+### 18.7 运行限制
+
+在完成后端优化后，建议保留或补充这类限制项：
 
 ```env
 PYTHON_SCRIPT_TIMEOUT_SEC=15
 SCRIPT_SEND_CHUNK_SIZE=1200
 SCRIPT_MAX_OUTPUT_CHARS=12000
+MEMORY_MAX_MESSAGES_PER_THREAD=80
+AGENT_SKILL_TIMEOUT_SEC=360
+AGENT_TOTAL_TIMEOUT_SEC=6000
+MAX_CONCURRENT_MESSAGE_TASKS=200
 ```
 
-#### 权限 / 群开关 / 触发前缀
+### 18.8 权限 / 群开关 / 触发前缀
 
 ```env
 OPS=
@@ -720,51 +700,48 @@ SPECIFIC_GROUP_IDS=
 TRIGGER_PREFIX=/,!
 ```
 
-------
+---
 
-## 18. 启动方式
+## 19. 启动方式
 
-### 启动 QQ 机器人
+### 19.1 启动 QQ 机器人
 
 ```bash
 cd src
 python -m luoying_bot.main_qq
 ```
 
-如果你的环境变量与模块路径配置不同，也可以在仓库根目录下自行调整启动方式。
-
-### 启动 Web API
-
-需要自行用 uvicorn 包一层，例如：
+### 19.2 启动 Web API
 
 ```bash
 uvicorn src.luoying_bot.main_web:create_app --factory --host 0.0.0.0 --port 8000
 ```
 
-------
+如果你的模块路径组织或启动脚本不同，可按实际仓库结构调整。
 
-## 19. 开发指南
+---
 
-### 19.1 新增一个命令
+## 20. 开发指南
 
-步骤：
+### 20.1 新增一个 Command
+
+基本步骤：
 
 1. 在 `application/commands/` 下新建文件
 2. 定义一个继承 `BaseCommand` 的类
-3. 设置 `name`
+3. 设置命令名
 4. 实现 `validate()` 与 `execute()`
-5. 保证构造函数继承父类逻辑可用
-6. 启动后由 `CommandDispatcher.auto_register()` 自动注册
+5. 启动后由 `CommandDispatcher` 自动注册
 
 适合场景：
 
-- 明确、快速、低歧义的操作
+- 参数明确
+- 行为确定
+- 希望响应稳定快速
 
-------
+### 20.2 新增一个 Skill
 
-### 19.2 新增一个 skill
-
-步骤：
+基本步骤：
 
 1. 在 `application/agent/skills/` 下新建模块
 2. 继承 `BaseSkill`
@@ -774,125 +751,92 @@ uvicorn src.luoying_bot.main_web:create_app --factory --host 0.0.0.0 --port 8000
 
 建议：
 
-- `description` 要写具体，方便主 Agent 正确决策
-- 参数格式最好写进说明里
-- 返回尽量结构化，必要时同时给 `text` 与 `data`
+- `description` 写清楚触发时机与参数格式
+- IO 逻辑尽量使用异步实现
+- 通用业务尽量放进 `services`
+- Skill 尽量只管业务，而不是顺手承担基础设施职责
 
-------
+### 20.3 新增 Quick Reply
 
-### 19.3 新增业务服务
+快捷回复适合：
 
-如果一个能力已经不只是“简单查询”，建议先沉到 `application/services/` 中封装业务逻辑，再由命令或 skill 调用，而不是在命令类 / skill 类里堆业务代码。
+- 高频固定问候
+- 简短关键词响应
+- 不需要进入主 Agent 的轻量交互
 
-这样更便于：
+当前推荐把规则维护在：
 
-- 单元测试
-- 重用
-- 后续替换存储实现
+```text
+data/quick_replies.json
+```
 
-------
+一条典型规则通常形如：
 
-### 19.4 替换存储实现
+```json
+{
+  "trigger": "早",
+  "reply": "早呀～"
+}
+```
 
-当前仓储是 JSON 实现。
-如果想迁移数据库，建议从 `ports` 层定义新的抽象开始，或直接替换 `infra/repos` 下对应实现，再尽量保持 `services` 层接口不变。
+### 20.4 新增业务服务
 
-------
+当一个能力已经不只是“简单查一下”，建议先封装到 `application/services/`，再由命令或 Skill 调用，而不是把业务代码堆在命令类 / Skill 类中。
 
-### 19.5 替换模型供应商
+### 20.5 替换存储实现
 
-当前 LLM 接入位于：
+当前项目默认是 JSON 实现。
+如果未来迁移数据库，建议优先保持 `services` 层接口稳定，再去替换 `infra/repos` 层。
+
+### 20.6 替换模型供应商
+
+当前 LLM 接入通常位于：
 
 - `infra/llm/openai_chat.py`
-- LangChain 子 Agent 中的 `ChatOpenAI(...)`
+- 各子 Agent 内部的模型初始化逻辑
 
-如果要替换：
+如果要替换模型供应商：
 
-- 主 Agent：改 `OpenAICompatibleChatModel`
-- 子 Agent：改 skill 中的 `ChatOpenAI` 初始化逻辑
+- 主 Agent：优先改统一 LLM 适配层
+- 子 Agent：优先改各 Skill 内部对应初始化逻辑
 
-------
+---
 
-## 20. 已知特点与注意事项
+## 21. 已知特点与注意事项
 
-### 20.1 当前默认强依赖系统提示词
+- 当前系统提示词仍然会显著影响主 Agent 与子 Agent 输出风格
+- 默认记忆实现如果仍使用内存型方案，重启后会丢失
+- JSON 存储适合轻量场景，不适合高并发大规模部署
+- Web 端目前更接近调试入口，而不是完整产品形态
+- 图片 / 回复链能力会受到平台协议实现质量影响
 
-`constants.py` 中的提示词较长、角色设定较强，会显著影响主 Agent 与子 Agent 输出风格。
+V2.0.0 不再是快照版，但它依然是一个持续演进中的工程项目，而不是“已经彻底平台无关、完全产品化、完整安全审计完成”的通用框架。
 
-如果你想把项目改成更通用的 Agent 框架，第一件事往往是拆分这些 prompt。
+---
 
-### 20.2 记忆目前是内存记忆
+## 22. 推荐阅读顺序
 
-当前 `InMemoryConversationMemory` 重启即丢失。
-如果你希望真正跨重启保留上下文，需要自行实现持久化 memory。
-
-### 20.3 JSON 存储适合轻量场景
-
-现阶段用于个人机器人、小群测试没问题，但如果将来多群高频使用，建议尽早迁移。
-
-### 20.4 Web 端仍偏轻量
-
-当前 Web 接口更像调试入口，不是完整前后端产品。
-
-### 20.5 图片 / 回复逻辑依赖平台实现
-
-OneBot 对回复消息、图片文件路径、消息段格式的支持情况，会直接影响系统表现。
-
-------
-
-## 21. 未来可改进方向
-
-从当前代码看，比较自然的演进方向包括：
-
-- 引入持久化会话记忆
-- 将 JSON 仓储迁移到 SQLite / PostgreSQL
-- 拆分更严格的权限系统
-- 为 skill 增加显式 schema 校验
-- 给 reminder / memo / script 等服务补测试
-- 让 Web 入口具备完整前端页面
-- 更彻底地分离图片模型与主模型配置
-- 引入更稳定的日志与监控机制
-- 为 event handler 增加更细粒度的 middleware 设计
-
-------
-
-## 22. 开发者建议阅读顺序
-
-如果你是第一次接手这个项目，推荐按以下顺序阅读：
+如果你第一次接手这个项目，推荐按以下顺序阅读代码：
 
 1. `config.py`
 2. `main_qq.py`
 3. `bootstrap.py`
-4. `application/event_handler.py`
-5. `application/commands/`
-6. `application/agent/agent_service.py`
-7. `application/agent/skills/`
-8. `application/services/`
-9. `infra/transports/qq_ws_transport.py`
+4. `application/message_processor.py`
+5. `application/event_handler.py`
+6. `application/commands/`
+7. `application/agent/agent_service.py`
+8. `application/agent/skills/`
+9. `application/services/`
+10. `infra/transports/qq_ws_transport.py`
 
-这样你会比较快建立整体心智模型。
-
-------
-
-## 23. 免责声明
-
-本项目当前更适合作为：
-
-- 个人 / 小团队开发中的校园场景 Agent 项目
-- QQ 机器人系统重构实践
-- 命令系统 + Agent 混合架构样例
-- 图片 / 编程子 Agent 集成实验
-
-而不是一个已经彻底产品化、平台无关、具备完整安全审计的通用框架。
-
-使用前请根据自己的部署环境、平台协议、模型供应商和权限需求进行必要调整。
-
-------
-
-## 24. 致谢
-
-感谢所有参与需求提出、测试、催更、赞助和提供真实使用反馈的人。
-一个群聊机器人能走到 Agent 架构这一步，从来不是“模型一接就行”，而是大量脏活累活、边界问题和使用场景一点点磨出来的。
+这样会更快建立整体心智模型。
 
 ---
 
+## 23. 致谢
+
+感谢所有参与需求提出、测试、催更、赞助、使用与反馈的人。
+
+一个群聊机器人能走到 Agent 架构这一步，从来不是“把模型接上就完了”，而是无数边界问题、脏活累活、异常情况、平台限制和真实使用反馈一点点磨出来的。
+
+如果你正在继续维护它，也欢迎你把它做得更稳、更清晰、更好扩展。
