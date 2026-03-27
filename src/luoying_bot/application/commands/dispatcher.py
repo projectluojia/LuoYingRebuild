@@ -1,9 +1,12 @@
 from __future__ import annotations
 import importlib, inspect, pkgutil
+import logging
 from luoying_bot.application.commands.base import BaseCommand
 from luoying_bot.application.service_hub import ServiceHub
 from luoying_bot.domain.context import ChatContext
 from luoying_bot.domain.result import Reply
+
+logger=logging.getLogger(__name__)
 
 class CommandDispatcher:
     def __init__(self, services: ServiceHub):
@@ -39,6 +42,8 @@ class CommandDispatcher:
             parts = text.split();
             if not parts: return None
             command = self.commands.get(parts[0])
+            logger.info("解析参数成功")
             return None if not command else await command.process(context, parts[1:])
         except Exception as e:
+            logger.error(f"捕捉到异常：{e}")
             return Reply(text=f"出错：{e}")

@@ -104,7 +104,7 @@ class WebSearchSkill(BaseSkill):
             api_key = settings.tavily_api_key
 
             if not api_key:
-                print("Tavily 搜索失败")
+                logger.error("Tavily API 未配置")
                 return None
 
             client = TavilyClient(api_key=api_key)
@@ -132,10 +132,10 @@ class WebSearchSkill(BaseSkill):
                     content = content[:160] + "…"
                 lines.append(f"{i}. {title}\n{url}\n{content}")
 
-            print("Tavily 搜索成功")
+            logger.info("Tavily 搜索成功")
             return "\n".join(lines).strip()
         except Exception:
-            print("Tavily 搜索失败")
+            logger.error("Tavily 搜索失败")
             return None
 
     async def _tavily_search(self, query: str, k: int = 5) -> Optional[str]:
@@ -171,7 +171,7 @@ class WebSearchSkill(BaseSkill):
                 break
 
         if not results:
-            print("DDG 搜索失败")
+            logger.error("DDG 搜索失败")
             return "未搜索到结果（DDG 兜底可能被限制/结构变更）。"
 
         lines = ["【结果】"]
@@ -180,7 +180,7 @@ class WebSearchSkill(BaseSkill):
                 snippet = snippet[:160] + "…"
             lines.append(f"{i}. {title}\n{link}\n{snippet}")
 
-        print("DDG 搜索成功")
+        logger.info("DDG 搜索成功")
         return "\n".join(lines)
     
     async def run(self, req: SkillRequest) -> SkillResult:
@@ -195,13 +195,13 @@ class WebSearchSkill(BaseSkill):
         try:
             tavily_out = await self._tavily_search(query=query, k=k)
             if tavily_out:
-                print("Tavily called")
+                logger.info("Tavily 请求")
                 return SkillResult(text=tavily_out)
         except Exception as e:
             print(str(e))
 
         try:
-            print("ddg called")
+            logger.info("DDG 请求")
             return SkillResult(text=await self._ddg_search(query=query, k=k))
         except Exception as e:
             return SkillResult(text=f'联网搜索失败：{e}')
@@ -233,11 +233,11 @@ class MemoSkill(BaseSkill):
 
         try:
             if action == "list":
-                print("LIST Called")
+                logger.info("备忘录 list 请求")
                 result = self.memo_service.list_items(user_id)
 
             elif action == "read":
-                print("READ Called")
+                logger.info("备忘录 read 请求")
                 result = self.memo_service.read_one(
                     user_id=user_id,
                     index=self._to_int(req.payload.get("index")),
@@ -245,7 +245,7 @@ class MemoSkill(BaseSkill):
                 )
 
             elif action == "add":
-                print("ADD Called")
+                logger.info("备忘录 add 请求")
                 result = self.memo_service.add_item(
                     user_id=user_id,
                     content=req.payload.get("content", ""),
@@ -253,13 +253,14 @@ class MemoSkill(BaseSkill):
                 )
 
             elif action == "overwrite":
+                logger.info("备忘录 overwrite 请求")
                 result = self.memo_service.overwrite_all(
                     user_id=user_id,
                     content=req.payload.get("content", ""),
                 )
 
             elif action == "update":
-                print("UPDATE Called")
+                logger.info("备忘录 update 请求")
                 result = self.memo_service.update_item(
                     user_id=user_id,
                     index=self._to_int(req.payload.get("index")),
@@ -269,7 +270,7 @@ class MemoSkill(BaseSkill):
                 )
 
             elif action == "delete":
-                print("DELETE Called")
+                logger.info("备忘录 delete 请求")
                 result = self.memo_service.delete_item(
                     user_id=user_id,
                     index=self._to_int(req.payload.get("index")),
@@ -277,14 +278,14 @@ class MemoSkill(BaseSkill):
                 )
 
             elif action == "search":
-                print("SEARCH Called")
+                logger.info("备忘录 search 请求")
                 result = self.memo_service.search_items(
                     user_id=user_id,
                     keyword=req.payload.get("keyword", ""),
                 )
 
             elif action == "clear":
-                print("CLEAR Called")
+                logger.info("备忘录 clear 请求")
                 result = self.memo_service.clear_all(user_id)
 
             else:
@@ -337,6 +338,7 @@ class TimeSkill(BaseSkill):
         today = datetime.now()
         weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
         weekday_str = weekdays[today.weekday()] 
+        logger.info(f"当前时间是 {now} {weekday_str}")
         return SkillResult(text=f"当前时间是 {now} {weekday_str}")   
 #测试通过
 class FortuneSkill(BaseSkill):
@@ -364,7 +366,7 @@ class FortuneSkill(BaseSkill):
         s = sum(weights.values())
         r = (h % 10000) / 10000 * s
         acc = 0
-        print(f"运势工具Call，原哈希码：{h} ，映射哈希码：{r}")
+        logger.info(f"运势工具请求，原哈希码：{h} ，映射哈希码：{r}")
         for lv in FORTUNE_LEVELS:
             acc += weights[lv]
             if r <= acc:
@@ -412,7 +414,7 @@ class ArxivSkill(BaseSkill):
         query=req.payload.get('query') or 'AI' 
         max_results=req.payload.get('max_results') or 5 
         max_results = max(1, min(int(max_results or 5), 10))
-        print(f"论文推荐工具 调用 query：{query} 最大数量：{max_results}")
+        logger.info(f"论文推荐工具 调用 query：{query} 最大数量：{max_results}")
         try:
             client = arxiv.Client()
             search = arxiv.Search(
@@ -422,13 +424,12 @@ class ArxivSkill(BaseSkill):
             )
             results = client.results(search)
         except Exception as e:
-            print(f"论文推荐工具 结束，出错：{e}")
+            logger.error(f"论文推荐工具 结束，出错：{e}")
             return f"Arxiv出错：{e}"
-        print("论文推荐工具 拉取论文成功")
+        logger.info("论文推荐工具 拉取论文成功")
         rt_list=[]
 
         for r in results:
             rt_list.append(f"第一篇论文：{r.title}，论文地址：{r.links}，论文summary：{r.summary}")
 
-        print("论文推荐工具 结束")
         return "\n".join(rt_list)

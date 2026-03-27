@@ -262,6 +262,7 @@ class AgentService:
                 break
 
             if action["type"]!="act":
+                logger.warning(f"主模型输出了无效动作：{raw.strip()}", extra=extra)
                 scratchpad.append(
                     AgentStep(
                         kind="observation",
@@ -275,6 +276,7 @@ class AgentService:
             skill=self.skills.get(skill_name)
 
             if not skill:
+                logger.warning(f"主模型调用了不存在的 Skill：{skill_name}", extra=extra)
                 scratchpad.append(
                     AgentStep(
                         kind="observation",
@@ -284,7 +286,7 @@ class AgentService:
                     )
                 )
                 continue
-
+            
             scratchpad.append(
                 AgentStep(
                     kind="action",
@@ -293,8 +295,8 @@ class AgentService:
                     content=f"调用技能 {skill_name}，参数：{self._json_dumps(payload)}"
                 )
             )
-
             logger.info("调用技能 %s",skill_name,extra=extra)
+            
             try:
                 skill_result=await self._run_skill_with_budget(
                     skill,

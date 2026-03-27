@@ -27,7 +27,7 @@ class MessageProcessor:
     async def process(self,message: UniMessage)->Reply:
         key=self._thread_key(message)
         lock = self._thread_locks.setdefault(key,asyncio.Lock())
-
+    
         async with self._semaphore:
             async with lock:
                 return await self.event_handler.handle(message)
@@ -43,6 +43,7 @@ class MessageProcessor:
         )
         self._tasks.add(task)
         task.add_done_callback(self._on_task_done)
+        logger.info("消息已提交到协程")
         return task
 
     def _on_task_done(self, task: asyncio.Task) -> None:
@@ -63,3 +64,4 @@ class MessageProcessor:
         if tasks:
             await asyncio.gather(*tasks,return_exceptions=True)
         self._tasks.clear()
+        logger.info("所有协程已关闭")

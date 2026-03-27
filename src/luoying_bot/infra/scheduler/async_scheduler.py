@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Awaitable, Callable, Dict
 
+logger=logging.getLogger(__name__)
+
 @dataclass(slots=True)
 class ScheduledJob:
     job_id: str
@@ -37,13 +39,14 @@ class AsyncScheduler:
         except asyncio.CancelledError:
             raise
         except Exception:
-            logging.exception("计划任务执行失败，job_id=%s", job.job_id)
+            logger.exception("计划任务执行失败，job_id=%s", job.job_id)
 
         if not self.running:
             return
 
         current = self.jobs.get(job.job_id)
         if current is not job:
+            logger.warning("计划任务不存在，job_id=%s", job.job_id)
             return
 
         if job.repeat_daily:
@@ -52,6 +55,8 @@ class AsyncScheduler:
             self._wake_event.set()
         else:
             self.jobs.pop(job.job_id, None)
+
+        logger.info("计划任务执行成功，job_id=%s", job.job_id)
 
     async def start(self) -> None:
         self.running = True

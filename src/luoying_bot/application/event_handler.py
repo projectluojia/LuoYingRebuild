@@ -56,7 +56,7 @@ class EventHandler:
         if self.runtime.is_user_banned(context.user.user_id): 
             logger.info("用户已被封禁，忽略消息",extra=extra)
             return Reply(text='', silent=True)
-        
+
         #如果群聊不允许则沉默
         if context.target.platform.value == 'qq' and not self.runtime.is_group_enabled(context.target.conversation_id):
             logger.info("群未启用，忽略消息",extra=extra)
@@ -70,6 +70,7 @@ class EventHandler:
             
             reply = Reply(text=response)
             await self.transport.send_text(context, reply.text)
+            logger.info("命中戳一戳",extra=extra)
             return reply
         
         text = message.get_plain_text().strip() or message.to_llm_text().strip()
@@ -85,6 +86,7 @@ class EventHandler:
                 return Reply(text='', silent=True)
         
         if not mentioned and context.target.platform.value =='qq':
+            logger.info("收到 QQ 消息，但 mentioned 为 False",extra=extra)
             return Reply(text='', silent=True)
         """
         扩展指南：
@@ -98,7 +100,9 @@ class EventHandler:
 
         #进入指令执行器
         if query.startswith('/'):
+            logger.info("命中指令执行器",extra=extra)
             reply = await self.commands.dispatch(query, context) or Reply(text='未知命令')
+            
             if not reply.silent and reply.text:
                 prefix = self.transport.format_mention(context,context.user.user_id)    
                 await self.transport.send_text(
@@ -109,6 +113,7 @@ class EventHandler:
         
         #如果处于复读模式
         if self.runtime.repeat_mode.get(context.target.conversation_id, False):
+            logger.info("命中复读模式",extra=extra)
             query = self.risk_control_service.do_output_risk_control(query)
             reply = Reply(text=query)
             
@@ -130,6 +135,7 @@ class EventHandler:
         
         if not reply.silent and reply.text:
             prefix = self.transport.format_mention(context,context.user.user_id) 
+            logger.info("主 Agent 已返回 final",extra=extra)
             await self.transport.send_text(
                 context, 
                 prefix + reply.text
