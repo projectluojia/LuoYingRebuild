@@ -20,7 +20,7 @@ class ClearCommand(BaseCommand):
     async def execute(self, context, args):
         self.services.memory.clear(context.thread_id); 
         return Reply(text='已清除当前会话记忆')
-
+"""
 #测试通过
 class RepeatCommand(BaseCommand):
     name = '/repeat'
@@ -28,7 +28,7 @@ class RepeatCommand(BaseCommand):
     async def execute(self, context, args):
         enabled = self.services.runtime.toggle_repeat(context.target.conversation_id)
         return Reply(text='复读模式已开启' if enabled else '复读模式已关闭')
-
+"""
 #测试通过
 class BindCommand(BaseCommand):
     name = '/bind' 
