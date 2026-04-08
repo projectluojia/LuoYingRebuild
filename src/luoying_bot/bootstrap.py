@@ -16,7 +16,9 @@ from luoying_bot.application.services.reminder_service import ReminderService
 from luoying_bot.application.services.risk_control_service import RiskControlService
 from luoying_bot.application.services.script_workspace_service import ScriptWorkspaceService
 from luoying_bot.application.services.user_service import UserService
+from luoying_bot.application.services.user_memory_service import UserMemoryService
 from luoying_bot.config import settings
+from luoying_bot.infra.repos.text_user_memory_repo import TextUserMemoryRepo
 from luoying_bot.infra.llm.openai_chat import OpenAICompatibleChatModel
 from luoying_bot.infra.memory.in_memory import InMemoryConversationMemory
 from luoying_bot.infra.repos.json_memo_repo import JsonMemoRepo
@@ -69,7 +71,11 @@ async def build_qq_container() -> AppContainer:
         send_chunk_size=settings.script_send_chunk_size,
         max_output_chars=settings.script_max_output_chars,
     )
-    
+    user_memory_service = UserMemoryService(
+        TextUserMemoryRepo(settings.user_memory_dir)
+    )
+
+
     memory = InMemoryConversationMemory(
         max_messages_per_thread=settings.memory_max_messages_per_thread
     )
@@ -92,6 +98,7 @@ async def build_qq_container() -> AppContainer:
         script_workspace_service=script_workspace_service,
         memory=memory,
         risk_control_service=risk_control_service,
+        user_memory_service=user_memory_service,
     )
 
     #指令

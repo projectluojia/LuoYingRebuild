@@ -27,3 +27,4 @@ class ServiceHub:
     script_workspace_service: 'ScriptWorkspaceService'
     memory: 'ConversationMemory'
     risk_control_service: 'RiskControlService'
+    user_memory_service: 'UserMemoryService'

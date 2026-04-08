@@ -45,6 +45,8 @@ class Settings:
     quick_reply_file: Path = Path(os.getenv('QUICK_REPLY_FILE', './data/quick_replies.json'))
     user_db_file: Path = Path(os.getenv('USER_DB_FILE', './data/userdatabase.json'))
     reminder_db_file: Path = Path(os.getenv('REMINDER_DB_FILE', './data/reminders.json'))
+    user_memory_dir: Path = Path(os.getenv('USER_MEMORY_DIR', './data/user_memory'))
+
 
     script_workspace_dir: Path = Path(os.getenv('SCRIPT_WORKSPACE_DIR', './data/scripts'))
     python_script_timeout_sec: int = int(os.getenv('PYTHON_SCRIPT_TIMEOUT_SEC', '15'))

@@ -62,6 +62,7 @@ class AgentService:
         self,
         thread_id:str,
         user_text:str,
+        user_memory_text:str,
         scratchpad:list[AgentStep],
         step_index:int,
         system_prompt:str,
@@ -80,12 +81,32 @@ class AgentService:
             '- {"type":"final","answer":"..."}'
         )
 
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": REACT_INSTRUCTION},
+        ]
+
+        if user_memory_text.strip():
+            messages.append({
+                "role": "system",
+                "content": (
+                    "以下是系统保存的该用户长期记忆。这是一段简短的用户简介。"
+                    "它不是本轮用户消息。仅在相关时参考；如果与用户本轮明确表述冲突，以本轮明确表述为准。\n\n"
+                    f"{user_memory_text}"
+                ),
+            })
+
+        messages.extend(history)
+        messages.append({"role": "user", "content": user_prompt})
+        return messages
+
+        """
         return [
             {"role":"system","content":system_prompt},
             {"role":"system","content":REACT_INSTRUCTION},
             *history,
             {"role":"user","content":user_prompt},
-        ]
+        ]"""
     
     def _render_scratchpad(self,scratchpad:list[AgentStep])->str:
         if not scratchpad:
@@ -117,6 +138,7 @@ class AgentService:
         self,
         thread_id:str,
         user_text:str,
+        user_memory_text:str,
         scratchpad:list[AgentStep],
         system_prompt: str,
         deadline: float | None,
@@ -127,6 +149,25 @@ class AgentService:
             "你之前没有成功给出最终回答。现在请直接自然地回复用户，不要提技能、工具、JSON、调用过程。"
         )
 
+        messages = [
+            {"role": "system", "content": system_prompt},
+        ]
+
+        if user_memory_text.strip():
+            messages.append({
+                "role": "system",
+                "content": (
+                    "以下是系统保存的该用户长期记忆。这是一段简短的用户简介。"
+                    "仅在相关时参考；如果与本轮用户明确表述冲突，以本轮为准。\n\n"
+                    f"{user_memory_text}"
+                ),
+            })
+
+        messages.extend(self.memory.read(thread_id=thread_id))
+        messages.append({"role": "user", "content": prompt})
+
+        raw = await self._chat_with_budget(messages, deadline=deadline)
+        """
         raw= await self._chat_with_budget(
             [
                 {"role":"system","content":system_prompt},
@@ -134,7 +175,7 @@ class AgentService:
                 {"role":"user","content":prompt},
             ],
             deadline=deadline,
-        )
+        )"""
         return raw.strip()
 
     def _json_dumps(self,obj:Any)->str:
@@ -229,6 +270,10 @@ class AgentService:
         pltf=message.platform
         cntp=message.context.target.channel_type
         system_prompt=self._select_system_prompt(pltf,cntp)
+        user_id=str(message.context.user.user_id)
+        user_memory_text=self.skills.services.user_memory_service.build_prompt_block(user_id)
+
+
 
         logger.info("主 Agent 开始处理消息", extra=extra)
         scratchpad: list[AgentStep]=[]
@@ -244,6 +289,7 @@ class AgentService:
             llm_messages=self._build_react_messages(
                 thread_id=thread_id,
                 user_text=user_text,
+                user_memory_text=user_memory_text,
                 scratchpad=scratchpad,
                 step_index=step_index,
                 system_prompt=system_prompt,
