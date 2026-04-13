@@ -10,6 +10,8 @@ from typing import List
 from luoying_bot.domain.context import ChatContext
 from luoying_bot.ports.transport import ChatTransport
 
+SCRIPT_OUT_FILE = "_script_out.txt"
+
 @dataclass(slots=True)
 class ScriptOpResult:
     ok: bool
@@ -56,6 +58,14 @@ class ScriptWorkspaceService:
             raise ValueError("文件路径越界")
         return target
     
+    def _script_out_file(self, user_id: str) -> Path:
+        return self._user_dir(user_id) / SCRIPT_OUT_FILE
+
+    def _write_script_out(self, user_id: str, content: str) -> Path:
+        target = self._script_out_file(user_id)
+        target.write_text(content, encoding="utf-8")
+        return target
+
     def _truncate(self,text:str)->str:
         if len(text)<=self.max_output_chars:
             return text
@@ -63,8 +73,12 @@ class ScriptWorkspaceService:
     
     def list_scripts(self,user_id:str)->ScriptOpResult:
         base = self._user_dir(user_id=user_id)
-        files=[p for p in base.rglob("*")  if p.is_file()]
-        rels = [str(p.relative_to(base)).replace("\\", "/") for p in files]
+        files = [p for p in base.rglob("*") if p.is_file()]
+        rels = [
+            str(p.relative_to(base)).replace("\\", "/")
+            for p in files
+            if p.name != SCRIPT_OUT_FILE
+        ]
         rels.sort()
 
         if not rels:
@@ -137,17 +151,38 @@ class ScriptWorkspaceService:
         except asyncio.TimeoutError:
             proc.kill()
             await proc.communicate()
+            full_combined = (
+                f"script: {file_path}\n"
+                f"args: {args or '(none)'}\n"
+                f"exit_code: timeout\n\n"
+                f"[stdout]\n(timeout before capture completed)\n\n"
+                f"[stderr]\n脚本运行超时：{self.python_timeout_sec}s"
+            )
+            out_file = self._write_script_out(user_id, full_combined)
+
             return ScriptOpResult(
                 False,
-                f"脚本运行超时（>{self.python_timeout_sec}s）",
-                {"file_path": file_path, "timeout": self.python_timeout_sec},
+                self._truncate(full_combined),
+                {
+                    "file_path": file_path,
+                    "timeout": self.python_timeout_sec,
+                    "output_written": True,
+                    "output_file": SCRIPT_OUT_FILE,
+                    "output_path": str(out_file),
+                },
             )
 
         out = (stdout or b"").decode("utf-8", errors="replace")
         err = (stderr or b"").decode("utf-8", errors="replace")
-        combined = self._truncate(
-            f"退出码：{proc.returncode}\n\n[stdout]\n{out or '(空)'}\n\n[stderr]\n{err or '(空)'}"
+        full_combined = (
+            f"script: {file_path}\n"
+            f"args: {args or '(none)'}\n"
+            f"exit_code: {proc.returncode}\n\n"
+            f"[stdout]\n{out or '(empty)'}\n\n"
+            f"[stderr]\n{err or '(empty)'}"
         )
+        out_file = self._write_script_out(user_id, full_combined)
+        combined = self._truncate(full_combined)
         return ScriptOpResult(
             proc.returncode == 0,
             combined,
@@ -156,9 +191,12 @@ class ScriptWorkspaceService:
                 "returncode": proc.returncode,
                 "stdout": self._truncate(out),
                 "stderr": self._truncate(err),
+                "output_written": True,
+                "output_file": SCRIPT_OUT_FILE,
+                "output_path": str(out_file),
             },
         )
-    
+        
     async def send_script_to_transport(
         self,
         user_id: str,

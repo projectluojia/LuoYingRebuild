@@ -105,16 +105,32 @@ class CodingAgentSkill(BaseSkill):
 
         @tool
         async def run_python_script(file_path: str, canshu: str = "") -> str:
-            """运行指定 Python 脚本
-            有一个必须参数
+            """
+            运行指定 Python 脚本
+            有一个必填参数
             file_path:str 是当前工作区下要运行的脚本的相对路径
             一个可选参数
             canshu:str 代表命令行参数
-            只能运行 .py 文件。
-            返回运行情况
+            只能运行 .py 文件
+            返回运行情况；并自动把 _script_out.txt 发送到当前会话
             """
             print(f"编程子Agent：运行脚本被调用了")
             result = await script_service.run_python_script(user_id, file_path, args=canshu)
+            if result.data.get("output_written"):
+                try:
+                    send_result = await script_service.send_script_to_transport(
+                        user_id=user_id,
+                        file_path=result.data.get("output_file", "_script_out.txt"),
+                        context=req.context,
+                        transport=transport,
+                    )
+                except Exception as e:
+                    return f"{result.text}\n\n运行输出文件发送异常：{type(e).__name__}: {e}"
+
+                if send_result.ok:
+                    return f"{result.text}\n\n已自动发送运行输出文件：{result.data.get('output_file', '_script_out.txt')}"
+                return f"{result.text}\n\n运行输出文件发送失败：{send_result.text}"
+
             return result.text
 
         @tool

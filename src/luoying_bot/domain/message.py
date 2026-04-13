@@ -37,6 +37,9 @@ class UniMessage:
     def get_images(self) -> list[str]:
         return [str(seg.data.get('file', '')) for seg in self.segments if seg.type == 'image']
     
+    def get_files(self) -> list[dict[str, Any]]:
+        return [dict(seg.data) for seg in self.segments if seg.type == 'file']
+
     # 将消息转换成更适合大模型理解的文本
     def _segment_to_llm_text(self,include_reply_segment:bool=True) -> str:
         parts: List[str] = []
@@ -52,6 +55,13 @@ class UniMessage:
                 parts.append(f"[QQ表情:{seg.data.get('face_id')}]")
             elif seg.type == 'image':
                 parts.append(f"[图片:{seg.data.get('file')}]")
+            elif seg.type == 'file':
+                name = seg.data.get('name') or seg.data.get('file') or seg.data.get('file_id') or 'unknown'
+                size = seg.data.get('size') or seg.data.get('file_size')
+                if size:
+                    parts.append(f"[文件:{name}, 大小={size}]")
+                else:
+                    parts.append(f"[文件:{name}]")
             else:
                 parts.append(f"[{seg.type}:{seg.data}]")
         return ' '.join(p for p in parts if p).strip()
