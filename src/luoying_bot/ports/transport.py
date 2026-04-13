@@ -46,5 +46,12 @@ class ChatTransport(ABC):
         raise TransportCapabilityError('当前 transport 不支持获取消息详情')
     async def download_image(self, file_name: str) -> Optional[str]:
         raise TransportCapabilityError('当前 transport 不支持下载图片')
+    async def download_file(
+        self,
+        file_id: str,
+        context: ChatContext | None = None,
+        metadata: Dict[str, Any] | None = None,
+    ) -> Optional[str]:
+        raise TransportCapabilityError('当前 transport 不支持下载文件')
     async def upload_file(self,context: ChatContext, file: str):
         raise TransportCapabilityError('当前 transport 不支持上传文件')

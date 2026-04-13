@@ -50,6 +50,8 @@ class EventHandler:
 
         raw_event = message.raw_event or {}
         
+    #    print(json.dumps(obj=raw_event,ensure_ascii=False,indent=4))
+
         logger.info("收到消息，开始处理",extra=extra)
 
         #如果用户被ban则沉默
