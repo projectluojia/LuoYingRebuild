@@ -15,6 +15,7 @@ from luoying_bot.domain.context import Platform,ChannelType
 from luoying_bot.infra.logging_setup import context_log_extra
 from luoying_bot.ports.llm import ChatModel
 from luoying_bot.ports.memory import ConversationMemory
+from luoying_bot.ports.transport import TransportCapabilityError
 from luoying_bot.constants import QQ_GROUP_SYSTEM_PROMPT,REACT_INSTRUCTION,WEB_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -77,7 +78,7 @@ class AgentService:
             f"用户消息：\n{user_text}\n\n"
             f"你当前已有的中间记录如下：\n{scratchpad_text}\n\n"
             "现在请决定下一步，只能输出一个 JSON：\n"
-            '- {"type":"act","skill":"技能名","payload":{...}}\n'
+            '- {"type":"act","skill":"技能名","payload":{...},"summary":"给用户看的短句，说明这一步要做什么"}\n'
             '- {"type":"final","answer":"..."}'
         )
 
@@ -201,11 +202,74 @@ class AgentService:
         if data.get("type") == "act":
             skill = data.get("skill")
             payload = data.get("payload", {})
+            summary = data.get("summary", "")
             if isinstance(skill, str) and skill.strip() and isinstance(payload, dict):
-                return {"type": "act", "skill": skill, "payload": payload}
+                if not isinstance(summary, str):
+                    summary = ""
+                return {
+                    "type": "act",
+                    "skill": skill,
+                    "payload": payload,
+                    "summary": summary.strip(),
+                }
             return {"type": "invalid", "raw": text}
         
         return {"type": "invalid", "raw": text}
+
+    def _build_action_track_text(
+        self,
+        *,
+        skill_name: str,
+        payload: dict[str, Any],
+        summary: str,
+    ) -> str:
+        summary = summary.strip()
+        if summary:
+            return summary
+        return f"我先调用 {skill_name} 处理这一步。"
+
+    async def _send_action_track(
+        self,
+        message: UniMessage,
+        *,
+        step_index: int,
+        skill_name: str,
+        payload: dict[str, Any],
+        summary: str,
+    ) -> None:
+        context = message.context
+        if context is None:
+            return
+
+        transport = getattr(getattr(self.skills, "services", None), "transport", None)
+        if transport is None:
+            return
+
+        track_text = self._build_action_track_text(
+            skill_name=skill_name,
+            payload=payload,
+            summary=summary,
+        )
+        if not track_text:
+            return
+
+        metadata = {
+            "step_index": step_index,
+            "skill": skill_name,
+            "payload": payload,
+        }
+
+        try:
+            await transport.send_track(
+                context,
+                track_text,
+                kind="agent_action",
+                metadata=metadata,
+            )
+        except TransportCapabilityError:
+            return
+        except Exception:
+            logger.warning("发送 Agent 中间状态失败", exc_info=True, extra=context_log_extra(context))
     
 
     def _render_user_message_for_agent(self, message: UniMessage) -> str:
@@ -319,6 +383,7 @@ class AgentService:
 
             skill_name=action.get("skill","")
             payload=action.get("payload",{})
+            summary=action.get("summary","")
             skill=self.skills.get(skill_name)
 
             if not skill:
@@ -332,6 +397,14 @@ class AgentService:
                     )
                 )
                 continue
+
+            await self._send_action_track(
+                message,
+                step_index=step_index,
+                skill_name=skill_name,
+                payload=payload,
+                summary=summary,
+            )
             
             scratchpad.append(
                 AgentStep(
@@ -375,6 +448,7 @@ class AgentService:
                 answer = await self._fallback_answer(
                     thread_id=thread_id,
                     user_text=user_text,
+                    user_memory_text=user_memory_text,
                     scratchpad=scratchpad,
                     system_prompt=system_prompt,
                     deadline=deadline,

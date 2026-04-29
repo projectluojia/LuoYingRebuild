@@ -288,6 +288,16 @@ class QQWsTransport(ChatTransport):
                 }
             )
 
+    async def send_track(
+        self,
+        context: ChatContext,
+        text: str,
+        *,
+        kind: str = "agent_action",
+        metadata: Dict[str, Any] | None = None,
+    ) -> None:
+        return
+
 
     def format_mention(self, context, user_id):
         if context.target.channel_type == ChannelType.GROUP:

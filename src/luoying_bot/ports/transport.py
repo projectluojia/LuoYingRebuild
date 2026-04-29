@@ -32,6 +32,16 @@ class ChatTransport(ABC):
     @abstractmethod
     async def send_text(self, context: ChatContext, text: str) -> None: ...
 
+    async def send_track(
+        self,
+        context: ChatContext,
+        text: str,
+        *,
+        kind: str = "agent_action",
+        metadata: Dict[str, Any] | None = None,
+    ) -> None:
+        raise TransportCapabilityError('当前 transport 不支持中间状态消息')
+
     async def send_reaction(self, context: ChatContext, emoji_id: int) -> None:
         raise TransportCapabilityError('当前 transport 不支持消息表情反应')
     async def set_special_title(self, context: ChatContext, title: str) -> None:
