@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 #测试通过
 class ReminderSkill(BaseSkill):
     name = 'reminder'
-    platform = [Platform.QQ, Platform.WEB]
+    platform = [Platform.QQ, Platform.WEB, Platform.CLI]
     description = (
         '创建、查看、删除提醒事项。'
         '你不能假装知道时间！你不知道目前的时间！'
@@ -70,7 +70,7 @@ class ReminderSkill(BaseSkill):
 #测试通过
 class WeatherSkill(BaseSkill):
     name = 'weather'
-    platform = [Platform.QQ, Platform.WEB]
+    platform = [Platform.QQ, Platform.WEB, Platform.CLI]
     description = '查询武汉天气。'
     async def run(self, req: SkillRequest) -> SkillResult:
         if not settings.qweather_api_key: 
@@ -95,7 +95,7 @@ class WeatherSkill(BaseSkill):
 #测试通过
 class WebSearchSkill(BaseSkill):
     name = 'web_search'
-    platform = [Platform.QQ, Platform.WEB]
+    platform = [Platform.QQ, Platform.WEB, Platform.CLI]
     description = '联网搜索信息。payload 需要 query 查询内容，k 返回条数，最多 5 '
 
     def _tavily_search_sync(self, query: str, k: int = 5) -> Optional[str]:
@@ -198,7 +198,7 @@ class WebSearchSkill(BaseSkill):
                 logger.info("Tavily 请求")
                 return SkillResult(text=tavily_out)
         except Exception as e:
-            print(str(e))
+            logger.warning("Tavily 搜索异常，准备使用 DDG 兜底：%s", e, exc_info=True)
 
         try:
             logger.info("DDG 请求")
@@ -210,7 +210,7 @@ class WebSearchSkill(BaseSkill):
 #测试通过
 class MemoSkill(BaseSkill):
     name = "memo"
-    platform = [Platform.QQ, Platform.WEB]
+    platform = [Platform.QQ, Platform.WEB, Platform.CLI]
     description = (
         "读写用户备忘录。"
         "支持 action=list/read/add/update/delete/search/clear/overwrite。"
@@ -331,7 +331,7 @@ class MemoSkill(BaseSkill):
 #测试通过
 class TimeSkill(BaseSkill):
     name = "time"
-    platform = [Platform.QQ, Platform.WEB]
+    platform = [Platform.QQ, Platform.WEB, Platform.CLI]
     description = "查询当前时间"
     async def run(self, req: SkillRequest) -> SkillResult:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -343,7 +343,7 @@ class TimeSkill(BaseSkill):
 #测试通过
 class FortuneSkill(BaseSkill):
     name = "fortune"
-    platform = [Platform.QQ, Platform.WEB]
+    platform = [Platform.QQ, Platform.WEB, Platform.CLI]
     description = "获取运势 payload 无需提供内容"
     async def run(self,req: SkillRequest) -> SkillResult:
         user_id = str(req.context.user.user_id)
@@ -403,7 +403,7 @@ class FortuneSkill(BaseSkill):
 #测试通过
 class ArxivSkill(BaseSkill):
     name = 'arxiv'
-    platform = [Platform.QQ, Platform.WEB]
+    platform = [Platform.QQ, Platform.WEB, Platform.CLI]
     description = (
         '查询arxiv论文'
         '你可以选择性返回信息，但是必须告诉用户原文链接！！！！'

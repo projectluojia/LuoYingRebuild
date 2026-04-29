@@ -138,7 +138,7 @@ class EventHandler:
         if not reply.silent and reply.text:
             prefix = self.transport.format_mention(context,context.user.user_id) 
             logger.info("主 Agent 已返回 final",extra=extra)
-            await self.transport.send_text(
+            await self.transport.send_text_stream(
                 context, 
                 prefix + reply.text
             )

@@ -25,11 +25,13 @@ from luoying_bot.infra.repos.json_memo_repo import JsonMemoRepo
 from luoying_bot.infra.repos.json_reminder_repo import JsonReminderRepo
 from luoying_bot.infra.repos.json_user_repo import JsonUserRepo
 from luoying_bot.infra.scheduler.async_scheduler import AsyncScheduler
+from luoying_bot.infra.transports.cli_transport import CliTransport
 from luoying_bot.infra.transports.qq_ws_transport import QQWsTransport
+from luoying_bot.ports.transport import ChatTransport
 
 @dataclass(slots=True)
 class AppContainer:
-    transport: QQWsTransport
+    transport: ChatTransport
     runtime: GroupRuntime
     user_service: UserService
     reminder_service: ReminderService
@@ -49,7 +51,14 @@ class AppContainer:
 async def build_qq_container() -> AppContainer:
     transport = QQWsTransport(settings)
     runtime = GroupRuntime(enabled_groups={gid: True for gid in settings.specific_group_ids})
-    
+    return await _build_container(transport, runtime)
+
+async def build_cli_container() -> AppContainer:
+    transport = CliTransport()
+    runtime = GroupRuntime(enabled_groups={})
+    return await _build_container(transport, runtime)
+
+async def _build_container(transport: ChatTransport, runtime: GroupRuntime) -> AppContainer:
     user_service = UserService(JsonUserRepo(settings.user_db_file))
     scheduler = AsyncScheduler()
     reminder_service = ReminderService(

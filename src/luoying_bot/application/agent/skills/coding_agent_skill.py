@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class CodingAgentSkill(BaseSkill):
     name = "coding_agent"
-    platform = [Platform.QQ, Platform.WEB]
+    platform = [Platform.QQ, Platform.WEB, Platform.CLI]
     description = (
         "编程子agent。适合创建、查看、列出、删除、覆盖、发送脚本文件，"
         "支持写 Python/Rust/C++/C/Java/JS 等任意语言源码；"
@@ -34,9 +34,9 @@ class CodingAgentSkill(BaseSkill):
         user_id = str(req.context.user.user_id)
         instruction = (req.payload.get("instruction") or req.message.get_plain_text() or "").strip()
         if not instruction:
-            print(f"编程子Agent：任务内容为空")
+            logger.warning("编程子 Agent 任务内容为空")
             return SkillResult(text="没有收到编程任务内容")
-        print(f"编程子Agent：{instruction}")
+        logger.info("编程子 Agent 开始处理任务：%s", instruction)
 
         checkpointer=InMemorySaver()
         config:RunnableConfig = {
@@ -52,7 +52,7 @@ class CodingAgentSkill(BaseSkill):
             无需参数
             返回该用户所有脚本
             """
-            print(f"编程子Agent：列出脚本被调用了")
+            logger.debug("编程子 Agent 调用 list_scripts")
             result = script_service.list_scripts(user_id)
             return result.text
 
@@ -63,7 +63,7 @@ class CodingAgentSkill(BaseSkill):
             file_path:str 是当前工作区下要读取的脚本的相对路径， 例如 hello.py 或 src/main.rs。
             返回读取的脚本的内容
             """
-            print(f"编程子Agent：读取脚本被调用了")
+            logger.debug("编程子 Agent 调用 read_script，file_path=%s", file_path)
             result = script_service.read_script(user_id, file_path)
             return result.text
 
@@ -75,7 +75,7 @@ class CodingAgentSkill(BaseSkill):
             content:str 是要写入的内容
             返回脚本创建情况
             """
-            print(f"编程子Agent：创建脚本被调用了")
+            logger.debug("编程子 Agent 调用 create_script，file_path=%s", file_path)
             result = script_service.write_script(user_id, file_path, content, overwrite=False)
             return result.text
 
@@ -87,7 +87,7 @@ class CodingAgentSkill(BaseSkill):
             content:str 是要覆写的内容
             返回覆写情况
             """
-            print(f"编程子Agent：覆写脚本被调用了")
+            logger.debug("编程子 Agent 调用 overwrite_script，file_path=%s", file_path)
             result = script_service.write_script(user_id, file_path, content, overwrite=True)
             return result.text
 
@@ -99,7 +99,7 @@ class CodingAgentSkill(BaseSkill):
             返回删除的情况
             """
             
-            print(f"编程子Agent：删除脚本被调用了")
+            logger.debug("编程子 Agent 调用 delete_script，file_path=%s", file_path)
             result = script_service.delete_script(user_id, file_path)
             return result.text
 
@@ -114,7 +114,7 @@ class CodingAgentSkill(BaseSkill):
             只能运行 .py 文件
             返回运行情况；并自动把 _script_out.txt 发送到当前会话
             """
-            print(f"编程子Agent：运行脚本被调用了")
+            logger.debug("编程子 Agent 调用 run_python_script，file_path=%s", file_path)
             result = await script_service.run_python_script(user_id, file_path, args=canshu)
             if result.data.get("output_written"):
                 try:
@@ -140,7 +140,7 @@ class CodingAgentSkill(BaseSkill):
             file_path:str 是当前工作区下要发送的脚本的相对路径
             返回发送情况
             """
-            print(f"编程子Agent：发送脚本被调用了")
+            logger.debug("编程子 Agent 调用 send_script，file_path=%s", file_path)
             result = await script_service.send_script_to_transport(
                 user_id=user_id,
                 file_path=file_path,
@@ -186,11 +186,11 @@ class CodingAgentSkill(BaseSkill):
                 config=config,
             )
         except Exception as e:
-            print(f"编程子Agent：出错 {e}")
+            logger.exception("编程子 Agent 执行失败")
             return SkillResult(text=f"编程子agent执行失败：{type(e).__name__}: {e}")
 
         final_text = self._extract_final_text(state)
-        print(f"编程子Agent：结果 {final_text}")
+        logger.info("编程子 Agent 完成处理")
         return SkillResult(
             text=final_text or "编程任务已处理，但没有拿到明确文本结果",
             data={"ok": True, "instruction": instruction},

@@ -1,0 +1,85 @@
+from __future__ import annotations
+
+import asyncio
+from typing import Any, Dict, List, Optional
+
+from luoying_bot.domain.context import ChatContext, Platform
+from luoying_bot.domain.message import UniMessage
+from luoying_bot.ports.transport import ChatTransport, TransportCapabilityError
+
+
+class CliTransport(ChatTransport):
+    def __init__(self) -> None:
+        self.platform = Platform.CLI
+        self.events: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        self.stream_chunk_delay_sec = 0.015
+
+    async def connect(self) -> None:
+        return
+
+    async def close(self) -> None:
+        return
+
+    async def recv_message(self) -> UniMessage:
+        raise TransportCapabilityError("CLI transport 不支持被动接收消息")
+
+    def format_mention(self, context: ChatContext, user_id: str) -> str:
+        return ""
+
+    async def send_text(self, context: ChatContext, text: str) -> None:
+        await self.send_text_stream(context, text)
+
+    async def send_text_stream(
+        self,
+        context: ChatContext,
+        text: str,
+        *,
+        chunk_size: int = 12,
+    ) -> None:
+        await self.events.put({"type": "text_start", "context": context})
+        for i in range(0, len(text), max(1, chunk_size)):
+            await self.events.put(
+                {
+                    "type": "text_delta",
+                    "text": text[i:i + max(1, chunk_size)],
+                    "context": context,
+                }
+            )
+            await asyncio.sleep(self.stream_chunk_delay_sec)
+        await self.events.put({"type": "text_end", "context": context})
+
+    async def send_track(
+        self,
+        context: ChatContext,
+        text: str,
+        *,
+        kind: str = "agent_action",
+        metadata: Dict[str, Any] | None = None,
+    ) -> None:
+        await self.events.put(
+            {
+                "type": "track",
+                "kind": kind,
+                "text": text,
+                "metadata": metadata or {},
+                "context": context,
+            }
+        )
+
+    async def upload_file(self, context: ChatContext, file: str):
+        await self.events.put(
+            {
+                "type": "file",
+                "file": file,
+                "context": context,
+            }
+        )
+
+    async def get_group_members(self, context: ChatContext) -> List[Dict[str, Any]]:
+        raise TransportCapabilityError("CLI transport 不支持获取群成员")
+
+    async def fetch_message(self, message_id: str) -> Optional[Dict[str, Any]]:
+        raise TransportCapabilityError("CLI transport 不支持获取消息详情")
+
+    async def download_image(self, file_name: str) -> Optional[str]:
+        return file_name

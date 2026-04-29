@@ -1,4 +1,6 @@
 from __future__ import annotations
+import json
+from collections.abc import AsyncIterator
 from typing import Dict, List
 import httpx
 from luoying_bot.ports.llm import ChatModel
@@ -29,7 +31,13 @@ class OpenAICompatibleChatModel(ChatModel):
 
         if not self.api_key:
             last_user = next((m['content'] for m in reversed(messages) if m['role'] == 'user'), '')
-            return f'{{"type":"final","answer":" [LLM未配置] 我收到了：{last_user[:120]}"}}'
+            return json.dumps(
+                {
+                    "type": "final",
+                    "answer": f" [LLM未配置] 我收到了：{last_user[:120]}",
+                },
+                ensure_ascii=False,
+            )
         
         #这是payload
         payload = {
@@ -59,3 +67,54 @@ class OpenAICompatibleChatModel(ChatModel):
             data = resp.json()
             return data['choices'][0]['message']['content']
 """
+
+    async def chat_stream(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float | None = None,
+    ) -> AsyncIterator[str]:
+        if not self.api_key:
+            fallback = await self.chat(messages, temperature=temperature)
+            for char in fallback:
+                yield char
+            return
+
+        payload = {
+            'model': self.model,
+            'messages': messages,
+            'temperature': self.default_temperature if temperature is None else temperature,
+            'stream': True,
+        }
+        headers = {
+            'Authorization': f'Bearer {self.api_key}',
+            'Content-Type': 'application/json',
+        }
+
+        async with self.client.stream(
+            'POST',
+            f'{self.base_url}/chat/completions',
+            json=payload,
+            headers=headers,
+        ) as resp:
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                line = line.strip()
+                if not line:
+                    continue
+                if line.startswith('data:'):
+                    line = line.removeprefix('data:').strip()
+                if line == '[DONE]':
+                    break
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                choices = data.get('choices') or []
+                if not choices:
+                    continue
+
+                delta = choices[0].get('delta') or {}
+                content = delta.get('content')
+                if content:
+                    yield content

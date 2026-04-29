@@ -8,11 +8,13 @@ class ChannelType(str, Enum):
     GROUP = 'group'
     PRIVATE = 'private'
     WEB = 'web'
+    CLI = 'cli'
 
 # 平台
 class Platform(str, Enum):
     QQ = 'qq'
     WEB = 'web'
+    CLI = 'cli'
     DINGDING = 'dingding'
     FEISHU = 'feishu'
     WHATSAPP = 'whatsapp'

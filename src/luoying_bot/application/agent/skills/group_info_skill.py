@@ -41,7 +41,7 @@ class GroupInfoSkill(BaseSkill):
 
         mode = str(req.payload.get("mode") or "summary").strip().lower()
 
-        print(f"查询群聊信息Skill：{mode}")
+        logger.info("查询群聊信息 Skill，mode=%s", mode)
 
 
         if mode == "summary":

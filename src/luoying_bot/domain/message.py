@@ -102,3 +102,13 @@ class UniMessage:
         msg = cls(platform=Platform.WEB, context=context)
         msg.add_segment('text', text=text)
         return msg
+
+    @classmethod
+    def from_cli_text(cls, session_id: str, user_id: str, user_name: str, text: str) -> 'UniMessage':
+        context = ChatContext(
+            user=UserIdentity(user_id=user_id, user_name=user_name),
+            target=ConversationTarget(channel_type=ChannelType.CLI, conversation_id=session_id, platform=Platform.CLI),
+        )
+        msg = cls(platform=Platform.CLI, context=context)
+        msg.add_segment('text', text=text)
+        return msg

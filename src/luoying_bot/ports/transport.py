@@ -32,6 +32,15 @@ class ChatTransport(ABC):
     @abstractmethod
     async def send_text(self, context: ChatContext, text: str) -> None: ...
 
+    async def send_text_stream(
+        self,
+        context: ChatContext,
+        text: str,
+        *,
+        chunk_size: int = 12,
+    ) -> None:
+        await self.send_text(context, text)
+
     async def send_track(
         self,
         context: ChatContext,

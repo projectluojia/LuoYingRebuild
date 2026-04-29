@@ -63,7 +63,7 @@ class ImageAgentSkill(BaseSkill):
         images = self._collect_images(req)
         
 
-        print("collect_images:", images)
+        logger.debug("图片子 Agent 收集到图片：%s", images)
 
         if requested_file_names:
             file_name_set = set(requested_file_names)
@@ -89,7 +89,7 @@ class ImageAgentSkill(BaseSkill):
             无参数。
             返回每张图片的序号与 file_name。
             """
-            print("list工具")
+            logger.debug("图片子 Agent 调用 list_current_images")
             if not images:
                 return "当前消息中没有图片"
             lines = ["当前可用图片如下（包括当前消息，以及被回复的那条消息中的图片）："]
@@ -114,7 +114,7 @@ class ImageAgentSkill(BaseSkill):
             - 对指定图片的逐张描述
            
             """
-            print("describe工具")
+            logger.debug("图片子 Agent 调用 describe_images，image_indexes=%s focus=%s", image_indexes, focus)
             selected = self._pick_images(images, image_indexes)
             if not selected:
                 return "没有匹配到要描述的图片序号"
@@ -160,7 +160,7 @@ class ImageAgentSkill(BaseSkill):
             - 对每张图的分析
             - 如果有多张图，再给出综合结论
             """
-            print("answer工具")
+            logger.debug("图片子 Agent 调用 answer_about_images，image_indexes=%s question=%s", image_indexes, question)
             selected = self._pick_images(images, image_indexes)
             if not selected:
                 return "没有匹配到要分析的图片序号"
@@ -192,8 +192,6 @@ class ImageAgentSkill(BaseSkill):
             )
 
             return "\n\n".join(analyses + [f"【综合结论】\n{final}"])
-
-        print(111)
 
         tools = [
             list_current_images,
@@ -242,7 +240,7 @@ class ImageAgentSkill(BaseSkill):
                 config=config,
             )
         except Exception as e:
-            print(e)
+            logger.exception("图片子 Agent 执行失败")
             return SkillResult(text=f"图片子agent执行失败：{type(e).__name__}: {e}")
 
         final_text = self._extract_final_text(state)
@@ -284,7 +282,7 @@ class ImageAgentSkill(BaseSkill):
         collect_from_message(req.message, "current")
         collect_from_message(getattr(req.message, "reply_message", None), "reply")
 
-        print(images)
+        logger.debug("当前消息图片列表：%s", images)
         return images
         
     def _normalize_indexes(self, value: Any) -> list[int]:
@@ -347,7 +345,7 @@ class ImageAgentSkill(BaseSkill):
             copied = dict(img)
             copied["local_path"] = local_path
             ready.append(copied)
-        print("ensure_local_paths result:", ready)
+        logger.debug("图片本地路径准备结果：%s", ready)
         return ready
 
     async def _resolve_image_path(self, req: SkillRequest, file_name: str) -> Optional[str]:
@@ -356,21 +354,21 @@ class ImageAgentSkill(BaseSkill):
 
         if os.path.isabs(file_name) and os.path.exists(file_name):
             return file_name
-        print(f"download_image input: {file_name}")
+        logger.debug("准备通过 transport 下载图片：%s", file_name)
         transport = self.services.transport
         try:
             local_path = await transport.download_image(file_name)
-            print(f"download_image output: {local_path}")
+            logger.debug("transport 下载图片返回：%s", local_path)
             if local_path and os.path.exists(local_path):
-                print(f"exists: {os.path.exists(local_path)}")
+                logger.debug("图片本地路径存在：%s", local_path)
                 return local_path
         except Exception:
-            pass
+            logger.exception("通过 transport 下载图片失败")
 
         return None
 
     async def _vision_infer(self, image_path: str, prompt: str) -> str:
-        print(f"_vision_infer image_path:{image_path}")
+        logger.debug("开始图片视觉推理，image_path=%s", image_path)
         mime_type, _ = mimetypes.guess_type(image_path)
         if not mime_type:
             mime_type = "image/jpeg"
@@ -406,7 +404,7 @@ class ImageAgentSkill(BaseSkill):
             return f"生成图片分析失败: {e}"
 
     async def _summarize_texts(self, instruction: str, texts: list[str]) -> str:
-        print(f"_summarize_texts {instruction}")
+        logger.debug("开始多图综合总结，instruction=%s", instruction)
         try:
             model = ChatOpenAI(
                 model=getattr(settings, "image_model", "") or settings.openai_model,
@@ -422,7 +420,7 @@ class ImageAgentSkill(BaseSkill):
             return f"多图综合总结失败: {e}"
 
     def _build_description_prompt(self, focus: str) -> str:
-        print(f"_build_description_prompt focus:{focus} ")
+        logger.debug("构建图片描述 prompt，focus=%s", focus)
         extra = f"\n额外关注点：{focus}" if focus else ""
         return f"""你是一个专业的图片描述助手，请对用户提供的图片进行全面、细致、结构化描述。
 
@@ -436,7 +434,12 @@ class ImageAgentSkill(BaseSkill):
 请开始描述这张图片。"""
 
     def _build_question_prompt(self, question: str, image_index: int, total: int) -> str:
-        print(f"_build_question_prompt question:{question} image_index:{image_index} total:{total}")
+        logger.debug(
+            "构建图片问答 prompt，question=%s image_index=%s total=%s",
+            question,
+            image_index,
+            total,
+        )
         return f"""请基于这张图片回答问题。
 
 上下文：

@@ -16,7 +16,7 @@ from luoying_bot.infra.logging_setup import context_log_extra
 from luoying_bot.ports.llm import ChatModel
 from luoying_bot.ports.memory import ConversationMemory
 from luoying_bot.ports.transport import TransportCapabilityError
-from luoying_bot.constants import QQ_GROUP_SYSTEM_PROMPT,REACT_INSTRUCTION,WEB_SYSTEM_PROMPT
+from luoying_bot.constants import CLI_SYSTEM_PROMPT,QQ_GROUP_SYSTEM_PROMPT,REACT_INSTRUCTION,WEB_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,10 @@ class AgentService:
             pass
         elif platform == Platform.WEB:
             return WEB_SYSTEM_PROMPT
+        elif platform == Platform.CLI:
+            return CLI_SYSTEM_PROMPT
+
+        return WEB_SYSTEM_PROMPT
 
     def _build_react_messages(
         self,
