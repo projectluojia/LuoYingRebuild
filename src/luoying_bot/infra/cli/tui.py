@@ -6,72 +6,117 @@ import textwrap
 
 
 class CliTui:
-    RESET = "\033[0m"
-    DIM = "\033[2m"
-    BOLD = "\033[1m"
-    CYAN = "\033[36m"
-    GREEN = "\033[32m"
-    MAGENTA = "\033[35m"
-    YELLOW = "\033[33m"
-    RED = "\033[31m"
+    _RESET = "\033[0m"
+    _DIM = "\033[2m"
+    _BOLD = "\033[1m"
+    _CYAN = "\033[36m"
+    _GREEN = "\033[32m"
+    _MAGENTA = "\033[35m"
+    _YELLOW = "\033[33m"
+    _RED = "\033[31m"
 
     def __init__(self) -> None:
         self.width = max(60, min(100, shutil.get_terminal_size((88, 20)).columns))
+        self.use_color = sys.stdout.isatty()
+        self._stream_indent = "  "
+        self._stream_at_line_start = False
 
     def banner(self) -> None:
+        title = " Luoying CLI "
+        subtitle = " Agent shell / type exit to quit "
         line = "-" * self.width
-        print(f"{self.CYAN}{line}{self.RESET}")
-        print(f"{self.BOLD}Luoying CLI{self.RESET} {self.DIM}欢迎使用珞樱 / 输入 exit 退出{self.RESET}")
-        print(f"{self.CYAN}{line}{self.RESET}")
+        print()
+        print(self._color(line, self._CYAN))
+        print(
+            self._color(title, self._BOLD)
+            + self._color(subtitle, self._DIM)
+        )
+        print(self._color(line, self._CYAN))
 
     def prompt(self) -> str:
-        return self._clean_input(input(f"{self.GREEN}You>{self.RESET} "))
+        prompt = self._color("\nYou", self._GREEN, self._BOLD) + self._color(" > ", self._DIM)
+        return self._clean_input(input(prompt))
 
     def track(self, text: str) -> None:
-        self._block("track", text, self.YELLOW)
+        self._event("track", text, self._YELLOW)
 
     def assistant(self, text: str) -> None:
-        self._block("Luoying", text, self.MAGENTA)
+        self._block("Luoying", text, self._MAGENTA)
 
     def assistant_stream_start(self) -> None:
-        print(f"{self.MAGENTA}Luoying>{self.RESET} ", end="", flush=True)
+        self._section_header("Luoying", self._MAGENTA)
+        print(self._stream_indent, end="", flush=True)
+        self._stream_at_line_start = False
 
     def assistant_stream_delta(self, text: str) -> None:
-        print(self._safe_text(str(text)), end="", flush=True)
+        safe = self._safe_text(str(text))
+        for char in safe:
+            if self._stream_at_line_start and char != "\n":
+                print(self._stream_indent, end="", flush=True)
+                self._stream_at_line_start = False
+            print(char, end="", flush=True)
+            if char == "\n":
+                self._stream_at_line_start = True
 
     def assistant_stream_end(self) -> None:
         print()
 
     def file(self, path: str) -> None:
-        self._block("file", path, self.CYAN)
+        self._event("file", path, self._CYAN)
 
     def error(self, text: str) -> None:
-        self._block("error", text, self.RED)
+        self._block("error", text, self._RED)
 
     def info(self, text: str) -> None:
-        print(f"{self.DIM}{text}{self.RESET}")
+        print(self._color(self._safe_text(str(text)), self._DIM))
 
     def _block(self, title: str, text: str, color: str) -> None:
-        prefix = f"{color}{title}>{self.RESET} "
+        self._section_header(title, color)
         text = self._safe_text(str(text))
-        content_width = max(20, self.width - len(title) - 2)
+        content_width = max(20, self.width - 4)
         lines: list[str] = []
         for raw_line in text.splitlines() or [""]:
             wrapped = textwrap.wrap(raw_line, width=content_width) or [""]
             lines.extend(wrapped)
 
         if not lines:
-            print(prefix)
+            print()
             return
 
-        print(prefix + lines[0])
-        pad = " " * (len(title) + 2)
+        for line in lines:
+            print(f"  {line}")
+
+    def _event(self, title: str, text: str, color: str) -> None:
+        label = self._color(f"{title:<5}", color, self._BOLD)
+        content = self._safe_text(str(text))
+        content_width = max(20, self.width - 10)
+        lines: list[str] = []
+        for raw_line in content.splitlines() or [""]:
+            wrapped = textwrap.wrap(raw_line, width=content_width) or [""]
+            lines.extend(wrapped)
+
+        if not lines:
+            print(f"{label} |")
+            return
+
+        print(f"{label} | {lines[0]}")
         for line in lines[1:]:
-            print(pad + line)
+            print(f"{'':5} | {line}")
+
+    def _section_header(self, title: str, color: str) -> None:
+        marker = self._color(title, color, self._BOLD)
+        rule_len = max(8, self.width - len(title) - 3)
+        rule = self._color("-" * rule_len, self._DIM)
+        print(f"\n{marker} {rule}")
 
     def _safe_text(self, text: str) -> str:
         encoding = sys.stdout.encoding or "utf-8"
         return text.encode(encoding, errors="replace").decode(encoding, errors="replace")
+
+    def _color(self, text: str, *codes: str) -> str:
+        if not self.use_color or not codes:
+            return text
+        return "".join(codes) + text + self._RESET
 
     def _clean_input(self, text: str) -> str:
         text = text.strip()
