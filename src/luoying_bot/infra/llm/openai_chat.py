@@ -29,7 +29,7 @@ class OpenAICompatibleChatModel(ChatModel):
 
         if not self.api_key:
             last_user = next((m['content'] for m in reversed(messages) if m['role'] == 'user'), '')
-            return f'{{"mode":"final","answer":" [LLM未配置] 我收到了：{last_user[:120]}"}}'
+            return f'{{"type":"final","answer":" [LLM未配置] 我收到了：{last_user[:120]}"}}'
         
         #这是payload
         payload = {
