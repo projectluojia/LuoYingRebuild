@@ -27,6 +27,7 @@ from luoying_bot.infra.repos.json_user_repo import JsonUserRepo
 from luoying_bot.infra.scheduler.async_scheduler import AsyncScheduler
 from luoying_bot.infra.transports.cli_transport import CliTransport
 from luoying_bot.infra.transports.qq_ws_transport import QQWsTransport
+from luoying_bot.infra.transports.web_transport import WebTransport
 from luoying_bot.ports.transport import ChatTransport
 
 @dataclass(slots=True)
@@ -55,6 +56,11 @@ async def build_qq_container() -> AppContainer:
 
 async def build_cli_container() -> AppContainer:
     transport = CliTransport()
+    runtime = GroupRuntime(enabled_groups={})
+    return await _build_container(transport, runtime)
+
+async def build_web_container() -> AppContainer:
+    transport = WebTransport()
     runtime = GroupRuntime(enabled_groups={})
     return await _build_container(transport, runtime)
 

@@ -130,7 +130,7 @@ class EventHandler:
         #其他情况，进入agent处理
 
         message=self.risk_control_service.do_input_risk_control_any(message)
-        if context.target.platform == Platform.CLI:
+        if context.target.platform in {Platform.CLI, Platform.WEB}:
             prefix = self.transport.format_mention(context, context.user.user_id)
             sent_parts: list[str] = []
 

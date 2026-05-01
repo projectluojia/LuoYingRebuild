@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Luoying</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <main class="shell" data-state="welcome">
+    <section class="hero" aria-label="欢迎页">
+      <div class="sakura-mark" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div class="hero-copy">
+        <p class="eyebrow">Luoying Web Agent</p>
+        <h1>欢迎来到珞樱</h1>
+        <p class="lead">一个接入完整 Agent 服务的轻量聊天入口。</p>
+        <button class="try-button" id="tryButton" type="button">Try Luoying</button>
+      </div>
+    </section>
+
+    <section class="ready" aria-hidden="true">
+      <div class="mini-sakura" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <p>现在就开始！</p>
+    </section>
+
+    <section class="chat-panel" aria-label="聊天">
+      <header class="chat-header">
+        <div class="agent-avatar" aria-hidden="true">
+          <span></span><span></span><span></span><span></span><span></span>
+        </div>
+        <div>
+          <strong>珞樱</strong>
+          <p id="chatStatus">随时待命</p>
+        </div>
+      </header>
+      <div class="messages" id="messages"></div>
+      <form class="composer" id="chatForm">
+        <input id="chatInput" name="message" type="text" autocomplete="off" placeholder="问问珞樱..." />
+        <button id="sendButton" type="submit">发送</button>
+      </form>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -413,23 +413,59 @@ class ArxivSkill(BaseSkill):
         import arxiv
         query=req.payload.get('query') or 'AI' 
         max_results=req.payload.get('max_results') or 5 
-        max_results = max(1, min(int(max_results or 5), 10))
-        logger.info(f"论文推荐工具 调用 query：{query} 最大数量：{max_results}")
         try:
-            client = arxiv.Client()
+            max_results = int(max_results or 5)
+        except Exception:
+            max_results = 5
+        max_results = max(1, min(max_results, 5))
+
+        async def track(text: str) -> None:
+            try:
+                await self.services.transport.send_track(
+                    req.context,
+                    f"[论文检索] {text}",
+                    kind="arxiv_debug",
+                )
+            except Exception:
+                logger.debug("发送 arxiv track 失败", exc_info=True)
+
+        logger.info(f"论文推荐工具 调用 query：{query} 最大数量：{max_results}")
+        await track(f"开始查询 arXiv：关键词={query}，数量={max_results}")
+
+        def fetch_results():
+            client = arxiv.Client(page_size=max_results, delay_seconds=3.0, num_retries=1)
             search = arxiv.Search(
                 query=query,
                 max_results=max_results,
                 sort_by=arxiv.SortCriterion.SubmittedDate
             )
-            results = client.results(search)
+            return list(client.results(search))
+
+        try:
+            results = await asyncio.to_thread(fetch_results)
         except Exception as e:
             logger.error(f"论文推荐工具 结束，出错：{e}")
-            return f"Arxiv出错：{e}"
+            await track("arXiv 当前限流或不可用，已停止等待")
+            return SkillResult(
+                text=(
+                    "arXiv 当前请求受限或服务暂时不可用，没能拉到论文结果。"
+                    "可以稍后重试，或者换一个更具体的英文关键词。"
+                ),
+                data={"ok": False, "query": query, "error": str(e)},
+            )
+
         logger.info("论文推荐工具 拉取论文成功")
+        await track(f"arXiv 返回 {len(results)} 条结果")
         rt_list=[]
 
-        for r in results:
-            rt_list.append(f"第一篇论文：{r.title}，论文地址：{r.links}，论文summary：{r.summary}")
+        for i, r in enumerate(results, start=1):
+            rt_list.append(
+                f"{i}. {r.title}\n"
+                f"论文地址：{r.entry_id}\n"
+                f"摘要：{r.summary}"
+            )
 
-        return "\n".join(rt_list)
+        if not rt_list:
+            return SkillResult(text=f"没有找到和 {query} 相关的 arXiv 论文。", data={"ok": True, "query": query, "count": 0})
+
+        return SkillResult(text="\n\n".join(rt_list), data={"ok": True, "query": query, "count": len(rt_list)})
