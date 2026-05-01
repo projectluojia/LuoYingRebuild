@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from typing import Any, Dict, List, Optional
 
 from luoying_bot.domain.context import ChatContext, Platform
@@ -12,7 +13,6 @@ class CliTransport(ChatTransport):
     def __init__(self) -> None:
         self.platform = Platform.CLI
         self.events: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-        self.stream_chunk_delay_sec = 0.015
 
     async def connect(self) -> None:
         return
@@ -27,26 +27,34 @@ class CliTransport(ChatTransport):
         return ""
 
     async def send_text(self, context: ChatContext, text: str) -> None:
-        await self.send_text_stream(context, text)
+        async def chunks() -> AsyncIterator[str]:
+            yield text
 
-    async def send_text_stream(
+        await self.send_text_iter(context, chunks())
+
+    async def send_text_iter(
         self,
         context: ChatContext,
-        text: str,
-        *,
-        chunk_size: int = 12,
+        chunks: AsyncIterator[str],
     ) -> None:
-        await self.events.put({"type": "text_start", "context": context})
-        for i in range(0, len(text), max(1, chunk_size)):
-            await self.events.put(
-                {
-                    "type": "text_delta",
-                    "text": text[i:i + max(1, chunk_size)],
-                    "context": context,
-                }
-            )
-            await asyncio.sleep(self.stream_chunk_delay_sec)
-        await self.events.put({"type": "text_end", "context": context})
+        started = False
+        try:
+            async for chunk in chunks:
+                if not chunk:
+                    continue
+                if not started:
+                    await self.events.put({"type": "text_start", "context": context})
+                    started = True
+                await self.events.put(
+                    {
+                        "type": "text_delta",
+                        "text": chunk,
+                        "context": context,
+                    }
+                )
+        finally:
+            if started:
+                await self.events.put({"type": "text_end", "context": context})
 
     async def send_track(
         self,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import random
+from collections.abc import AsyncIterator
 
 from luoying_bot.application.agent.agent_service import AgentService
 from luoying_bot.application.commands.dispatcher import CommandDispatcher
@@ -11,6 +12,7 @@ from luoying_bot.application.services.quick_reply_service import QuickReplyServi
 from luoying_bot.application.services.risk_control_service import RiskControlService
 from luoying_bot.domain.message import UniMessage
 from luoying_bot.domain.message import MessageSegment
+from luoying_bot.domain.context import Platform
 from luoying_bot.domain.result import Reply
 from luoying_bot.infra.logging_setup import context_log_extra
 from luoying_bot.ports.transport import ChatTransport
@@ -128,6 +130,23 @@ class EventHandler:
         #其他情况，进入agent处理
 
         message=self.risk_control_service.do_input_risk_control_any(message)
+        if context.target.platform == Platform.CLI:
+            prefix = self.transport.format_mention(context, context.user.user_id)
+            sent_parts: list[str] = []
+
+            async def output_chunks() -> AsyncIterator[str]:
+                if prefix:
+                    sent_parts.append(prefix)
+                    yield prefix
+                async for chunk in self.agent.reply_stream(message):
+                    safe_chunk = self.risk_control_service.do_output_risk_control(str(chunk))
+                    sent_parts.append(safe_chunk)
+                    yield safe_chunk
+
+            logger.info("主 Agent 进入 CLI 真流式输出", extra=extra)
+            await self.transport.send_text_iter(context, output_chunks())
+            return Reply(text=''.join(sent_parts))
+
         rp_msg=await self.agent.reply(message)
         rp_msg=self.risk_control_service.do_output_risk_control_any(rp_msg)
         reply = Reply(
@@ -138,7 +157,7 @@ class EventHandler:
         if not reply.silent and reply.text:
             prefix = self.transport.format_mention(context,context.user.user_id) 
             logger.info("主 Agent 已返回 final",extra=extra)
-            await self.transport.send_text_stream(
+            await self.transport.send_text(
                 context, 
                 prefix + reply.text
             )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from typing import Any, Dict, List, Optional
 from luoying_bot.domain.context import ChatContext,Platform
 from luoying_bot.domain.message import UniMessage
@@ -32,14 +33,15 @@ class ChatTransport(ABC):
     @abstractmethod
     async def send_text(self, context: ChatContext, text: str) -> None: ...
 
-    async def send_text_stream(
+    async def send_text_iter(
         self,
         context: ChatContext,
-        text: str,
-        *,
-        chunk_size: int = 12,
+        chunks: AsyncIterator[str],
     ) -> None:
-        await self.send_text(context, text)
+        text_parts: list[str] = []
+        async for chunk in chunks:
+            text_parts.append(chunk)
+        await self.send_text(context, "".join(text_parts))
 
     async def send_track(
         self,

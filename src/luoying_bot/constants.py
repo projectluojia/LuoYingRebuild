@@ -521,8 +521,4 @@ risk_control=[
       "content":"pornhub",
       "level":"danger"     
    },
-   {
-      "content":"张雪峰",
-      "level":"danger"     
-   },
 ]

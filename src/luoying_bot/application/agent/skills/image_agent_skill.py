@@ -4,7 +4,9 @@ import base64
 import mimetypes
 import os
 import logging
+import re
 from typing import Any, Optional
+from urllib.parse import unquote, urlparse
 
 from langchain.agents import create_agent
 from langchain.tools import tool
@@ -22,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 class ImageAgentSkill(BaseSkill):
     name = "image_agent"
-    platform = [Platform.QQ, Platform.WEB]
+    platform = [Platform.QQ, Platform.WEB, Platform.CLI]
     description = (
         "图片识别子agent。用于处理用户消息中的一张或多张图片。"
         "支持：图片描述、OCR文字提取、截图界面识别、多图比较、找差异、按序号分析指定图片、综合回答。"
@@ -47,23 +49,64 @@ class ImageAgentSkill(BaseSkill):
         "表示按图片 file_name 精确指定要分析的图片。"
         "适合外部已经拿到了某几张图片 file_name 的情况。"
         "如果同时传了 image_indexes 和 file_names，则先取当前消息图片，再同时按两者过滤。"
+        "\n"
+        "CLI 下 instruction 可以直接包含本地图片路径或 file:// 本地 URL。"
+    )
+
+    _IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tif", ".tiff")
+    _QUOTED_IMAGE_PATH_RE = re.compile(
+        r"""["'“”‘’]([^"'“”‘’]+?\.(?:png|jpe?g|webp|bmp|gif|tiff?))["'“”‘’]""",
+        re.IGNORECASE,
+    )
+    _UNQUOTED_IMAGE_PATH_RE = re.compile(
+        r"""(?:file://[^\r\n"'<>]+?\.(?:png|jpe?g|webp|bmp|gif|tiff?)|[A-Za-z]:[\\/][^\r\n"'<>]+?\.(?:png|jpe?g|webp|bmp|gif|tiff?)|(?:\.{1,2}[\\/]|/)[^\r\n"'<>]+?\.(?:png|jpe?g|webp|bmp|gif|tiff?))""",
+        re.IGNORECASE,
     )
 
     async def run(self, req: SkillRequest) -> SkillResult:
 
 
         instruction = (req.payload.get("instruction") or req.message.get_plain_text() or "").strip()
+        transport = self.services.transport
 
         if not instruction:
             instruction = "请识别并分析这些图片"
+        debug_counts = {
+            "collect_images": 0,
+            "list_current_images": 0,
+            "describe_images": 0,
+            "answer_about_images": 0,
+            "vision_infer": 0,
+            "summarize": 0,
+        }
+
+        async def debug_track(text: str) -> None:
+            try:
+                await transport.send_track(req.context, f"[图片调试] {text}", kind="image_debug")
+            except Exception:
+                logger.debug("发送 image debug track 失败", exc_info=True)
 
         requested_indexes = self._normalize_indexes(req.payload.get("image_indexes"))
         requested_file_names = self._normalize_file_names(req.payload.get("file_names"))
 
         images = self._collect_images(req)
+        local_path_text = "\n".join(
+            text
+            for text in (
+                instruction,
+                req.message.get_plain_text(),
+                req.message.to_llm_text(),
+            )
+            if text
+        )
+        images.extend(self._collect_instruction_images(local_path_text, start_index=len(images) + 1))
         
 
         logger.debug("图片子 Agent 收集到图片：%s", images)
+        debug_counts["collect_images"] += 1
+        await debug_track(
+            f"收集图片 #{debug_counts['collect_images']}：共 {len(images)} 张"
+        )
 
         if requested_file_names:
             file_name_set = set(requested_file_names)
@@ -71,6 +114,10 @@ class ImageAgentSkill(BaseSkill):
         if requested_indexes:
             index_set = set(requested_indexes)
             images = [img for img in images if img["index"] in index_set]
+        if requested_file_names or requested_indexes:
+            await debug_track(
+                f"筛选图片：剩余 {len(images)} 张，序号={requested_indexes or '全部'}，文件名={requested_file_names or '全部'}"
+            )
             
         if not images:
             return SkillResult(text="当前消息里没有找到可分析的图片")
@@ -90,6 +137,10 @@ class ImageAgentSkill(BaseSkill):
             返回每张图片的序号与 file_name。
             """
             logger.debug("图片子 Agent 调用 list_current_images")
+            debug_counts["list_current_images"] += 1
+            await debug_track(
+                f"列出图片 #{debug_counts['list_current_images']}：共 {len(images)} 张"
+            )
             if not images:
                 return "当前消息中没有图片"
             lines = ["当前可用图片如下（包括当前消息，以及被回复的那条消息中的图片）："]
@@ -115,16 +166,26 @@ class ImageAgentSkill(BaseSkill):
            
             """
             logger.debug("图片子 Agent 调用 describe_images，image_indexes=%s focus=%s", image_indexes, focus)
+            debug_counts["describe_images"] += 1
+            await debug_track(
+                f"描述图片 #{debug_counts['describe_images']}：序号={image_indexes or '全部'}，关注={focus or '无'}"
+            )
             selected = self._pick_images(images, image_indexes)
             if not selected:
                 return "没有匹配到要描述的图片序号"
 
+            await debug_track(f"准备图片：选中 {len(selected)} 张")
             selected = await self._ensure_local_paths(req, selected)
+            await debug_track(f"准备图片：可读取 {len(selected)} 张")
             if not selected:
                 return "图片读取失败，无法获取本地路径"
 
             parts: list[str] = []
             for img in selected:
+                debug_counts["vision_infer"] += 1
+                await debug_track(
+                    f"视觉识别 #{debug_counts['vision_infer']}：图片序号={img['index']}，模式=描述"
+                )
                 desc = await self._vision_infer(
                     image_path=img["local_path"],
                     prompt=self._build_description_prompt(focus),
@@ -161,16 +222,26 @@ class ImageAgentSkill(BaseSkill):
             - 如果有多张图，再给出综合结论
             """
             logger.debug("图片子 Agent 调用 answer_about_images，image_indexes=%s question=%s", image_indexes, question)
+            debug_counts["answer_about_images"] += 1
+            await debug_track(
+                f"图片问答 #{debug_counts['answer_about_images']}：序号={image_indexes or '全部'}，问题={question}"
+            )
             selected = self._pick_images(images, image_indexes)
             if not selected:
                 return "没有匹配到要分析的图片序号"
 
+            await debug_track(f"准备图片：选中 {len(selected)} 张")
             selected = await self._ensure_local_paths(req, selected)
+            await debug_track(f"准备图片：可读取 {len(selected)} 张")
             if not selected:
                 return "图片读取失败，无法获取本地路径"
 
             analyses: list[str] = []
             for img in selected:
+                debug_counts["vision_infer"] += 1
+                await debug_track(
+                    f"视觉识别 #{debug_counts['vision_infer']}：图片序号={img['index']}，模式=问答"
+                )
                 answer = await self._vision_infer(
                     image_path=img["local_path"],
                     prompt=self._build_question_prompt(question, img["index"], len(selected)),
@@ -180,6 +251,10 @@ class ImageAgentSkill(BaseSkill):
             if len(selected) == 1:
                 return analyses[0]
 
+            debug_counts["summarize"] += 1
+            await debug_track(
+                f"综合总结 #{debug_counts['summarize']}：图片数={len(selected)}"
+            )
             final = await self._summarize_texts(
                 instruction=(
                     f"用户问题：{question}\n"
@@ -218,6 +293,7 @@ class ImageAgentSkill(BaseSkill):
                 f"{img['index']}. file_name={img['file_name']}，来源={img.get('source', 'unknown')}"
                 for img in images
             )
+            await debug_track(f"启动图片子 Agent：图片数={len(images)}")
             state: dict[str, Any] = await agent.ainvoke(
                 {
                     "messages": [
@@ -284,6 +360,69 @@ class ImageAgentSkill(BaseSkill):
 
         logger.debug("当前消息图片列表：%s", images)
         return images
+
+    def _collect_instruction_images(self, instruction: str, start_index: int) -> list[dict[str, Any]]:
+        paths = self._extract_local_image_paths(instruction)
+        images: list[dict[str, Any]] = []
+        for offset, path in enumerate(paths):
+            images.append(
+                {
+                    "index": start_index + offset,
+                    "file_name": path,
+                    "local_path": path,
+                    "source": "instruction",
+                }
+            )
+        if images:
+            logger.debug("从 instruction 提取到本地图片：%s", images)
+        return images
+
+    def _extract_local_image_paths(self, text: str) -> list[str]:
+        if not text:
+            return []
+
+        candidates: list[str] = []
+        candidates.extend(match.group(1) for match in self._QUOTED_IMAGE_PATH_RE.finditer(text))
+        candidates.extend(match.group(0) for match in self._UNQUOTED_IMAGE_PATH_RE.finditer(text))
+
+        paths: list[str] = []
+        seen: set[str] = set()
+        for candidate in candidates:
+            path = self._normalize_local_image_path(candidate)
+            if not path:
+                continue
+            key = os.path.normcase(os.path.abspath(path))
+            if key in seen:
+                continue
+            seen.add(key)
+            paths.append(path)
+        return paths
+
+    def _normalize_local_image_path(self, raw_path: str) -> str | None:
+        path = str(raw_path or "").strip().strip("\"'“”‘’")
+        path = path.rstrip(".,;:，。；：)]}）】")
+        if not path:
+            return None
+
+        if path.lower().startswith("file:"):
+            parsed = urlparse(path)
+            if parsed.scheme.lower() != "file":
+                return None
+            file_path = unquote(parsed.path or "")
+            if parsed.netloc:
+                file_path = f"//{parsed.netloc}{file_path}"
+            if re.match(r"^/[A-Za-z]:[\\/]", file_path):
+                file_path = file_path[1:]
+            path = file_path
+
+        if not path.lower().endswith(self._IMAGE_EXTENSIONS):
+            return None
+
+        full_path = path if os.path.isabs(path) else os.path.abspath(path)
+        if not os.path.isfile(full_path):
+            logger.debug("instruction 中的图片路径不存在或不是文件：%s", full_path)
+            return None
+        return full_path
         
     def _normalize_indexes(self, value: Any) -> list[int]:
         if value is None:

@@ -47,7 +47,7 @@ class CodingAgentSkill(BaseSkill):
 
         async def debug_track(text: str) -> None:
             try:
-                await transport.send_track(req.context, f"[coding-debug] {text}", kind="coding_debug")
+                await transport.send_track(req.context, f"[编程调试] {text}", kind="coding_debug")
             except Exception:
                 logger.debug("发送 coding debug track 失败", exc_info=True)
 
@@ -81,7 +81,7 @@ class CodingAgentSkill(BaseSkill):
             return result.text
 
         @tool
-        def create_script(file_path: str, content: str) -> str:
+        async def create_script(file_path: str, content: str) -> str:
             """创建新脚本文件；若已存在则不会覆盖。
             需要两个参数
             file_path:str 是当前工作区下要创建的脚本的相对路径，
@@ -89,12 +89,15 @@ class CodingAgentSkill(BaseSkill):
             返回脚本创建情况
             """
             debug_counts["create_script"] += 1
+            await debug_track(
+                f"创建脚本 #{debug_counts['create_script']}：路径={file_path}"
+            )
             logger.debug("编程子 Agent 调用 create_script，file_path=%s", file_path)
             result = script_service.write_script(user_id, file_path, content, overwrite=False)
             return result.text
 
         @tool
-        def overwrite_script(file_path: str, content: str) -> str:
+        async def overwrite_script(file_path: str, content: str) -> str:
             """覆盖写入脚本文件；文件存在时会直接替换原内容。
             需要两个参数
             file_path:str 是当前工作区下要覆写的脚本的相对路径，
@@ -102,6 +105,9 @@ class CodingAgentSkill(BaseSkill):
             返回覆写情况
             """
             debug_counts["overwrite_script"] += 1
+            await debug_track(
+                f"覆盖脚本 #{debug_counts['overwrite_script']}：路径={file_path}"
+            )
             logger.debug("编程子 Agent 调用 overwrite_script，file_path=%s", file_path)
             result = script_service.write_script(user_id, file_path, content, overwrite=True)
             return result.text
@@ -131,7 +137,7 @@ class CodingAgentSkill(BaseSkill):
             """
             debug_counts["run_python_script"] += 1
             await debug_track(
-                f"run_python_script #{debug_counts['run_python_script']} file_path={file_path} args={canshu or '(none)'}"
+                f"运行脚本 #{debug_counts['run_python_script']}：路径={file_path}，参数={canshu or '无'}"
             )
             logger.debug("编程子 Agent 调用 run_python_script，file_path=%s", file_path)
             result = await script_service.run_python_script(user_id, file_path, args=canshu)
@@ -140,7 +146,7 @@ class CodingAgentSkill(BaseSkill):
                     debug_counts["auto_send_output"] += 1
                     output_file = result.data.get("output_file", "_script_out.txt")
                     await debug_track(
-                        f"auto_send_output #{debug_counts['auto_send_output']} file_path={output_file}"
+                        f"自动发送运行输出 #{debug_counts['auto_send_output']}：路径={output_file}"
                     )
                     send_result = await script_service.send_script_to_transport(
                         user_id=user_id,
@@ -165,7 +171,7 @@ class CodingAgentSkill(BaseSkill):
             返回发送情况
             """
             debug_counts["send_script"] += 1
-            await debug_track(f"send_script #{debug_counts['send_script']} file_path={file_path}")
+            await debug_track(f"发送脚本 #{debug_counts['send_script']}：路径={file_path}")
             logger.debug("编程子 Agent 调用 send_script，file_path=%s", file_path)
             result = await script_service.send_script_to_transport(
                 user_id=user_id,

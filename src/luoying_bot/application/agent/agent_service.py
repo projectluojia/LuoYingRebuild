@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -19,6 +20,31 @@ from luoying_bot.ports.transport import TransportCapabilityError
 from luoying_bot.constants import CLI_SYSTEM_PROMPT,QQ_GROUP_SYSTEM_PROMPT,REACT_INSTRUCTION,WEB_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
+
+CLI_STREAM_REACT_INSTRUCTION = """1. 判断是否需要调用技能
+2. 每轮对话必须调用长期记忆功能来更新对用户的记忆。
+3. 如果需要，可以多步调用多个技能
+4. 每次只能做一件事：要么调用一个技能，要么确认可以开始最终回答
+5. 不要把内部推理过程直接暴露给用户
+6. 当已有信息足够回答时，立即确认可以开始最终回答，不要继续调用技能
+
+你必须严格只输出 JSON，且只能是以下两种之一：
+
+1. 调用技能
+{"type":"act","skill":"技能名","payload":{...},"summary":"一句给用户看的中间状态，说明这一步准备做什么"}
+
+2. 确认可以开始最终回答
+{"type":"ok_to_answer"}
+
+规则：
+- 不要输出 JSON 之外的任何内容
+- 如果要调用技能，skill 必须来自可用技能列表
+- payload 必须是 JSON 对象
+- summary 必须简短、自然、面向用户，只说明当前要执行的操作，不要包含内部推理或不确定的承诺
+- 如果用户只是闲聊、寒暄、简单问答，直接输出 ok_to_answer
+- 如果用户要求查询个人资料、提醒、天气、备忘录等，优先考虑技能
+- 如果前面的观察结果已经足够回答，就直接输出 ok_to_answer
+"""
 
 @dataclass
 class AgentStep:
@@ -71,10 +97,17 @@ class AgentService:
         scratchpad:list[AgentStep],
         step_index:int,
         system_prompt:str,
+        *,
+        stream_final: bool = False,
     )->list[dict[str,str]]:
         history=self.memory.read(thread_id=thread_id)
         skill_summary=self.skills.summary()
         scratchpad_text=self._render_scratchpad(scratchpad)
+        final_action = (
+            '- {"type":"ok_to_answer"}'
+            if stream_final
+            else '- {"type":"final","answer":"..."}'
+        )
         
         user_prompt=(
             f"当前是第 {step_index} 步。\n\n"
@@ -83,12 +116,12 @@ class AgentService:
             f"你当前已有的中间记录如下：\n{scratchpad_text}\n\n"
             "现在请决定下一步，只能输出一个 JSON：\n"
             '- {"type":"act","skill":"技能名","payload":{...},"summary":"给用户看的短句，说明这一步要做什么"}\n'
-            '- {"type":"final","answer":"..."}'
+            f"{final_action}"
         )
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "system", "content": REACT_INSTRUCTION},
+            {"role": "system", "content": CLI_STREAM_REACT_INSTRUCTION if stream_final else REACT_INSTRUCTION},
         ]
 
         if user_memory_text.strip():
@@ -202,6 +235,9 @@ class AgentService:
             if isinstance(answer, str) and answer.strip():
                 return {"type": "final", "answer": answer}
             return {"type": "invalid", "raw": text}
+
+        if data.get("type") == "ok_to_answer":
+            return {"type": "ok_to_answer"}
         
         if data.get("type") == "act":
             skill = data.get("skill")
@@ -316,6 +352,57 @@ class AgentService:
         if timeout is None:
             return await self.model.chat(messages)
         return await asyncio.wait_for(self.model.chat(messages), timeout=timeout)
+
+    async def _chat_stream_with_budget(
+        self,
+        messages: list[dict[str, str]],
+        deadline: float | None,
+    ) -> AsyncIterator[str]:
+        stream = self.model.chat_stream(messages)
+        while True:
+            try:
+                if deadline is None:
+                    chunk = await anext(stream)
+                else:
+                    chunk = await asyncio.wait_for(
+                        anext(stream),
+                        timeout=self._remaining_timeout(deadline),
+                    )
+            except StopAsyncIteration:
+                break
+            yield chunk
+
+    def _build_direct_answer_messages(
+        self,
+        thread_id: str,
+        user_text: str,
+        user_memory_text: str,
+        scratchpad: list[AgentStep],
+        system_prompt: str,
+    ) -> list[dict[str, str]]:
+        prompt = (
+            f"用户消息：\n{user_text}\n\n"
+            f"你已有的中间记录：\n{self._render_scratchpad(scratchpad)}\n\n"
+            "现在请直接自然地回复用户。不要输出 JSON，不要提技能、工具、JSON、调用过程。"
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+        ]
+
+        if user_memory_text.strip():
+            messages.append({
+                "role": "system",
+                "content": (
+                    "以下是系统保存的该用户长期记忆。这是一段简短的用户简介。"
+                    "仅在相关时参考；如果与本轮用户明确表述冲突，以本轮为准。\n\n"
+                    f"{user_memory_text}"
+                ),
+            })
+
+        messages.extend(self.memory.read(thread_id=thread_id))
+        messages.append({"role": "user", "content": prompt})
+        return messages
     
     async def _run_skill_with_budget(self, skill, request: SkillRequest, deadline: float | None):
         timeout = self.skill_timeout_sec if self.skill_timeout_sec > 0 else None
@@ -472,3 +559,167 @@ class AgentService:
         self.memory.append(thread_id,"assistant",answer)
         logger.info("主 Agent 完成处理，耗时 %.2fs", time.monotonic() - start_at, extra=extra)
         return answer
+
+    async def reply_stream(self, message: UniMessage) -> AsyncIterator[str]:
+        context = message.context
+        extra = context_log_extra(context)
+        start_at = time.monotonic()
+        deadline = start_at + self.total_timeout_sec if self.total_timeout_sec > 0 else None
+
+        thread_id = message.context.thread_id
+        user_text = self._render_user_message_for_agent(message)
+        pltf = message.platform
+        cntp = message.context.target.channel_type
+        system_prompt = self._select_system_prompt(pltf, cntp)
+        user_id = str(message.context.user.user_id)
+        user_memory_text = self.skills.services.user_memory_service.build_prompt_block(user_id)
+
+        logger.info("主 Agent 开始处理 CLI 流式消息", extra=extra)
+        scratchpad: list[AgentStep] = []
+        answer: str | None = None
+        invalid_action_count = 0
+        max_invalid_actions = 3
+
+        for step_index in range(1, self.max_steps + 1):
+            if deadline is not None and time.monotonic() >= deadline:
+                scratchpad.append(AgentStep(kind="observation", content="总执行预算已耗尽，请直接给出最终回答。"))
+                logger.warning("主 Agent 总预算耗尽，转入 CLI 流式 fallback", extra=extra)
+                break
+
+            llm_messages = self._build_react_messages(
+                thread_id=thread_id,
+                user_text=user_text,
+                user_memory_text=user_memory_text,
+                scratchpad=scratchpad,
+                step_index=step_index,
+                system_prompt=system_prompt,
+                stream_final=True,
+            )
+            try:
+                raw = await self._chat_with_budget(llm_messages, deadline=deadline)
+            except asyncio.TimeoutError:
+                scratchpad.append(AgentStep(kind="observation", content="模型思考超时，请直接给出最终回答。"))
+                logger.warning("主模型思考超时，转入 CLI 流式 fallback", extra=extra)
+                break
+
+            action = self._safe_parse_action(raw)
+
+            if action["type"] == "ok_to_answer":
+                invalid_action_count = 0
+                answer_parts: list[str] = []
+                messages = self._build_direct_answer_messages(
+                    thread_id=thread_id,
+                    user_text=user_text,
+                    user_memory_text=user_memory_text,
+                    scratchpad=scratchpad,
+                    system_prompt=system_prompt,
+                )
+                try:
+                    async for chunk in self._chat_stream_with_budget(messages, deadline=deadline):
+                        answer_parts.append(chunk)
+                        yield chunk
+                except asyncio.TimeoutError:
+                    logger.warning("CLI 最终回答流式生成超时", extra=extra)
+                answer = "".join(answer_parts).strip()
+                break
+
+            if action["type"] == "final":
+                invalid_action_count = 0
+                answer = action["answer"].strip()
+                yield answer
+                break
+
+            if action["type"] != "act":
+                invalid_action_count += 1
+                logger.warning(
+                    "主模型输出了无效动作，第 %s/%s 次：%s",
+                    invalid_action_count,
+                    max_invalid_actions,
+                    raw.strip(),
+                    extra=extra,
+                )
+                if invalid_action_count >= max_invalid_actions:
+                    logger.warning("主模型连续输出无效动作达到上限，转入 CLI 流式 fallback", extra=extra)
+                    break
+                continue
+
+            invalid_action_count = 0
+            skill_name = action.get("skill", "")
+            payload = action.get("payload", {})
+            summary = action.get("summary", "")
+            skill = self.skills.get(skill_name)
+
+            if not skill:
+                logger.warning(f"主模型调用了不存在的 Skill：{skill_name}", extra=extra)
+                scratchpad.append(
+                    AgentStep(
+                        kind="observation",
+                        skill_name=skill_name,
+                        payload=payload,
+                        content=f"技能 {skill_name} 不存在。请从可用技能中重新选择，或直接回答。"
+                    )
+                )
+                continue
+
+            await self._send_action_track(
+                message,
+                step_index=step_index,
+                skill_name=skill_name,
+                payload=payload,
+                summary=summary,
+            )
+
+            scratchpad.append(
+                AgentStep(
+                    kind="action",
+                    skill_name=skill_name,
+                    payload=payload,
+                    content=f"调用技能 {skill_name}，参数：{self._json_dumps(payload)}"
+                )
+            )
+            logger.info("调用技能 %s", skill_name, extra=extra)
+
+            try:
+                skill_result = await self._run_skill_with_budget(
+                    skill,
+                    SkillRequest(
+                        message=message,
+                        context=message.context,
+                        payload=payload,
+                    ),
+                    deadline=deadline,
+                )
+                observation_text = self._normalize_skill_result(skill_result)
+            except asyncio.TimeoutError:
+                observation_text = f"技能 {skill_name} 执行超时"
+                logger.warning("技能 %s 执行超时", skill_name, extra=extra)
+            except Exception as e:
+                observation_text = f"技能 {skill_name} 执行失败：{type(e).__name__}: {e}"
+                logger.exception("技能 %s 执行失败", skill_name, extra=extra)
+
+            scratchpad.append(
+                AgentStep(
+                    kind="observation",
+                    skill_name=skill_name,
+                    payload=payload,
+                    content=observation_text,
+                )
+            )
+
+        if not answer:
+            try:
+                answer = await self._fallback_answer(
+                    thread_id=thread_id,
+                    user_text=user_text,
+                    user_memory_text=user_memory_text,
+                    scratchpad=scratchpad,
+                    system_prompt=system_prompt,
+                    deadline=deadline,
+                )
+            except asyncio.TimeoutError:
+                answer = "我这边刚刚处理超时了，能再发一次或者换个更具体的说法吗？"
+            yield answer
+
+        self.memory.append(thread_id, "user", user_text)
+        self.memory.append(thread_id, "assistant", answer)
+        logger.info("主 Agent 完成 CLI 流式处理，耗时 %.2fs", time.monotonic() - start_at, extra=extra)
