@@ -62,7 +62,7 @@ class CliTui:
         print()
 
     def file(self, path: str) -> None:
-        self._event("file", path, self._CYAN)
+        self._event("file", path, self._CYAN, wrap=False)
 
     def error(self, text: str) -> None:
         self._block("error", text, self._RED)
@@ -86,13 +86,16 @@ class CliTui:
         for line in lines:
             print(f"  {line}")
 
-    def _event(self, title: str, text: str, color: str) -> None:
+    def _event(self, title: str, text: str, color: str, *, wrap: bool = True) -> None:
         label = self._color(f"{title:<5}", color, self._BOLD)
         content = self._safe_text(str(text))
         content_width = max(20, self.width - 10)
         lines: list[str] = []
         for raw_line in content.splitlines() or [""]:
-            wrapped = textwrap.wrap(raw_line, width=content_width) or [""]
+            if wrap:
+                wrapped = textwrap.wrap(raw_line, width=content_width) or [""]
+            else:
+                wrapped = [raw_line]
             lines.extend(wrapped)
 
         if not lines:

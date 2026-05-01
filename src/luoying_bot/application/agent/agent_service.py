@@ -347,6 +347,8 @@ class AgentService:
         scratchpad: list[AgentStep]=[]
         answer=None
 
+        invalid_action_count = 0
+        max_invalid_actions = 3
 
         for step_index in range(1,self.max_steps+1):
             if deadline is not None and time.monotonic() >= deadline:
@@ -372,19 +374,25 @@ class AgentService:
             action=self._safe_parse_action(raw)
 
             if action["type"]=="final":
+                invalid_action_count = 0
                 answer=action["answer"].strip()
                 break
 
             if action["type"]!="act":
-                logger.warning(f"主模型输出了无效动作：{raw.strip()}", extra=extra)
-                scratchpad.append(
-                    AgentStep(
-                        kind="observation",
-                        content=f"模型输出了无效动作：{raw.strip()}。你必须只输出合法 JSON。"
-                    )
+                invalid_action_count += 1
+                logger.warning(
+                    "主模型输出了无效动作，第 %s/%s 次：%s",
+                    invalid_action_count,
+                    max_invalid_actions,
+                    raw.strip(),
+                    extra=extra,
                 )
+                if invalid_action_count >= max_invalid_actions:
+                    logger.warning("主模型连续输出无效动作达到上限，转入 fallback", extra=extra)
+                    break
                 continue
-
+            
+            invalid_action_count = 0
             skill_name=action.get("skill","")
             payload=action.get("payload",{})
             summary=action.get("summary","")
