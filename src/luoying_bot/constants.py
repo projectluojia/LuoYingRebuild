@@ -521,4 +521,17 @@ risk_control=[
       "content":"pornhub",
       "level":"danger"     
    },
+	  {
+      "content":"席",
+      "level":"danger"
+   },
 ]
+
+
+
+
+
+
+
+
+
