@@ -62,9 +62,14 @@ async def build_cli_container() -> AppContainer:
 async def build_web_container() -> AppContainer:
     transport = WebTransport()
     runtime = GroupRuntime(enabled_groups={})
-    return await _build_container(transport, runtime)
+    return await _build_container(transport, runtime, enable_commands=False)
 
-async def _build_container(transport: ChatTransport, runtime: GroupRuntime) -> AppContainer:
+async def _build_container(
+    transport: ChatTransport,
+    runtime: GroupRuntime,
+    *,
+    enable_commands: bool = True,
+) -> AppContainer:
     user_service = UserService(JsonUserRepo(settings.user_db_file))
     scheduler = AsyncScheduler()
     reminder_service = ReminderService(
@@ -118,7 +123,8 @@ async def _build_container(transport: ChatTransport, runtime: GroupRuntime) -> A
 
     #指令
     commands = CommandDispatcher(services) 
-    commands.auto_register()
+    if enable_commands:
+        commands.auto_register()
 
     #skill
     skills = SkillRegistry(services)
@@ -143,7 +149,8 @@ async def _build_container(transport: ChatTransport, runtime: GroupRuntime) -> A
         trigger_prefix=settings.trigger_prefix, 
         bot_qq=settings.bot_qq, 
         bot_name=settings.bot_name,
-        risk_control_service=risk_control_service
+        risk_control_service=risk_control_service,
+        commands_enabled=enable_commands,
     )
     message_processor = MessageProcessor(
         event_handler=event_handler,

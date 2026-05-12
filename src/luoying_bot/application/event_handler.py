@@ -31,7 +31,8 @@ class EventHandler:
             risk_control_service: RiskControlService,
             trigger_prefix: list[str], 
             bot_qq: str, 
-            bot_name: str
+            bot_name: str,
+            commands_enabled: bool = True,
         ):
         self.transport = transport
         self.runtime = runtime
@@ -42,6 +43,7 @@ class EventHandler:
         self.trigger_prefix = trigger_prefix
         self.bot_qq = str(bot_qq)
         self.bot_name = bot_name
+        self.commands_enabled = commands_enabled
     async def handle(self, message: UniMessage) -> Reply:
         context = message.context
         extra = context_log_extra(context)
@@ -103,7 +105,7 @@ class EventHandler:
 
 
         #进入指令执行器
-        if query.startswith('/'):
+        if self.commands_enabled and query.startswith('/'):
             logger.info("命中指令执行器",extra=extra)
             reply = await self.commands.dispatch(query, context) or Reply(text='未知命令')
             
