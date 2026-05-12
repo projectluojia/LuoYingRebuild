@@ -422,3 +422,15 @@ class QQWsTransport(ChatTransport):
                 }
             }
         )
+
+    async def send_script_result(self, context: ChatContext, result: Dict[str, Any]) -> None:
+        timeout = result.get("timeout")
+        exit_code = "timeout" if timeout and timeout is not False else result.get("returncode")
+        text = (
+            f"脚本运行结果：{result.get('file_path') or '(unknown)'}\n"
+            f"args: {result.get('args') or '(none)'}\n"
+            f"exit_code: {exit_code}\n\n"
+            f"[stdout]\n{result.get('stdout') or '(empty)'}\n\n"
+            f"[stderr]\n{result.get('stderr') or '(empty)'}"
+        )
+        await self.send_text(context, text)

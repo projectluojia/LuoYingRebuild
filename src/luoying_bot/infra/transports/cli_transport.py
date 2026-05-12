@@ -83,6 +83,15 @@ class CliTransport(ChatTransport):
             }
         )
 
+    async def send_script_result(self, context: ChatContext, result: Dict[str, Any]) -> None:
+        await self.events.put(
+            {
+                "type": "script_result",
+                "result": result,
+                "context": context,
+            }
+        )
+
     async def get_group_members(self, context: ChatContext) -> List[Dict[str, Any]]:
         raise TransportCapabilityError("CLI transport 不支持获取群成员")
 

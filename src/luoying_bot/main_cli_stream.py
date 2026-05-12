@@ -47,6 +47,25 @@ async def _render_transport_events(
             tui.assistant_stream_end()
         elif event_type == "file":
             tui.file(str(event.get("file") or ""))
+        elif event_type == "script_result":
+            result = event.get("result") or {}
+            timeout = result.get("timeout")
+            exit_code = "timeout" if timeout and timeout is not False else result.get("returncode")
+            tui.info(
+                "\n".join(
+                    [
+                        f"脚本运行结果：{result.get('file_path') or '(unknown)'}",
+                        f"args: {result.get('args') or '(none)'}",
+                        f"exit_code: {exit_code}",
+                        "",
+                        "[stdout]",
+                        str(result.get("stdout") or "(empty)"),
+                        "",
+                        "[stderr]",
+                        str(result.get("stderr") or "(empty)"),
+                    ]
+                )
+            )
         else:
             tui.info(str(event))
 

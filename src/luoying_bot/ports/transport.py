@@ -76,3 +76,5 @@ class ChatTransport(ABC):
         raise TransportCapabilityError('当前 transport 不支持下载文件')
     async def upload_file(self,context: ChatContext, file: str):
         raise TransportCapabilityError('当前 transport 不支持上传文件')
+    async def send_script_result(self, context: ChatContext, result: Dict[str, Any]) -> None:
+        raise TransportCapabilityError('当前 transport 不支持发送脚本运行结果')

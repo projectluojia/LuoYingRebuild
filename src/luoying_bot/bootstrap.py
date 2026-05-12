@@ -88,8 +88,6 @@ async def _build_container(
     script_workspace_service = ScriptWorkspaceService(
         root_dir=settings.script_workspace_dir,
         python_timeout_sec=settings.python_script_timeout_sec,
-        send_chunk_size=settings.script_send_chunk_size,
-        max_output_chars=settings.script_max_output_chars,
     )
     user_memory_service = UserMemoryService(
         TextUserMemoryRepo(settings.user_memory_dir)

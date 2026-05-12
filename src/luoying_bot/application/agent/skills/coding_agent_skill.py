@@ -41,7 +41,7 @@ class CodingAgentSkill(BaseSkill):
             "create_script": 0,
             "overwrite_script": 0,
             "run_python_script": 0,
-            "auto_send_output": 0,
+            "send_script_result": 0,
             "send_script": 0,
         }
 
@@ -133,7 +133,7 @@ class CodingAgentSkill(BaseSkill):
             一个可选参数
             canshu:str 代表命令行参数
             只能运行 .py 文件
-            返回运行情况；并自动把 _script_out.txt 发送到当前会话
+            返回运行情况；并自动把 stdout/stderr 发送到当前会话
             """
             debug_counts["run_python_script"] += 1
             await debug_track(
@@ -141,25 +141,15 @@ class CodingAgentSkill(BaseSkill):
             )
             logger.debug("编程子 Agent 调用 run_python_script，file_path=%s", file_path)
             result = await script_service.run_python_script(user_id, file_path, args=canshu)
-            if result.data.get("output_written"):
+            if result.data.get("type") == "script_result":
                 try:
-                    debug_counts["auto_send_output"] += 1
-                    output_file = result.data.get("output_file", "_script_out.txt")
+                    debug_counts["send_script_result"] += 1
                     await debug_track(
-                        f"自动发送运行输出 #{debug_counts['auto_send_output']}：路径={output_file}"
+                        f"自动发送运行输出 #{debug_counts['send_script_result']}：路径={file_path}"
                     )
-                    send_result = await script_service.send_script_to_transport(
-                        user_id=user_id,
-                        file_path=output_file,
-                        context=req.context,
-                        transport=transport,
-                    )
+                    await transport.send_script_result(req.context, result.data)
                 except Exception as e:
-                    return f"{result.text}\n\n运行输出文件发送异常：{type(e).__name__}: {e}"
-
-                if send_result.ok:
-                    return f"{result.text}\n\n已自动发送运行输出文件：{result.data.get('output_file', '_script_out.txt')}"
-                return f"{result.text}\n\n运行输出文件发送失败：{send_result.text}"
+                    return f"{result.text}\n\n运行输出发送异常：{type(e).__name__}: {e}"
 
             return result.text
 

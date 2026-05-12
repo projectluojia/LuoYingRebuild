@@ -10,8 +10,6 @@ from typing import List
 from luoying_bot.domain.context import ChatContext
 from luoying_bot.ports.transport import ChatTransport
 
-SCRIPT_OUT_FILE = "_script_out.txt"
-
 @dataclass(slots=True)
 class ScriptOpResult:
     ok: bool
@@ -23,14 +21,10 @@ class ScriptWorkspaceService:
         self,
         root_dir:Path,
         python_timeout_sec:int=15,
-        send_chunk_size:int=1200,
-        max_output_chars:int =12000,
     ):
         self.root_dir=Path(root_dir)
         self.root_dir.mkdir(parents=True,exist_ok=True)
         self.python_timeout_sec=python_timeout_sec
-        self.send_chunk_size=send_chunk_size
-        self.max_output_chars=max_output_chars
     
     def _user_dir(self,user_id:str)->Path:
         path=self.root_dir/str(user_id)
@@ -57,27 +51,13 @@ class ScriptWorkspaceService:
         if base != target and base not in target.parents:
             raise ValueError("文件路径越界")
         return target
-    
-    def _script_out_file(self, user_id: str) -> Path:
-        return self._user_dir(user_id) / SCRIPT_OUT_FILE
 
-    def _write_script_out(self, user_id: str, content: str) -> Path:
-        target = self._script_out_file(user_id)
-        target.write_text(content, encoding="utf-8")
-        return target
-
-    def _truncate(self,text:str)->str:
-        if len(text)<=self.max_output_chars:
-            return text
-        return text[: self.max_output_chars]+"\n...(输出过长，已截断)"
-    
     def list_scripts(self,user_id:str)->ScriptOpResult:
         base = self._user_dir(user_id=user_id)
         files = [p for p in base.rglob("*") if p.is_file()]
         rels = [
             str(p.relative_to(base)).replace("\\", "/")
             for p in files
-            if p.name != SCRIPT_OUT_FILE
         ]
         rels.sort()
 
@@ -151,24 +131,27 @@ class ScriptWorkspaceService:
         except asyncio.TimeoutError:
             proc.kill()
             await proc.communicate()
-            full_combined = (
+            out = ""
+            err = f"脚本运行超时：{self.python_timeout_sec}s"
+            combined = (
                 f"script: {file_path}\n"
                 f"args: {args or '(none)'}\n"
                 f"exit_code: timeout\n\n"
                 f"[stdout]\n(timeout before capture completed)\n\n"
-                f"[stderr]\n脚本运行超时：{self.python_timeout_sec}s"
+                f"[stderr]\n{err}"
             )
-            out_file = self._write_script_out(user_id, full_combined)
 
             return ScriptOpResult(
                 False,
-                self._truncate(full_combined),
+                combined,
                 {
+                    "type": "script_result",
                     "file_path": file_path,
+                    "args": args or "",
+                    "returncode": None,
                     "timeout": self.python_timeout_sec,
-                    "output_written": True,
-                    "output_file": SCRIPT_OUT_FILE,
-                    "output_path": str(out_file),
+                    "stdout": out,
+                    "stderr": err,
                 },
             )
 
@@ -181,19 +164,17 @@ class ScriptWorkspaceService:
             f"[stdout]\n{out or '(empty)'}\n\n"
             f"[stderr]\n{err or '(empty)'}"
         )
-        out_file = self._write_script_out(user_id, full_combined)
-        combined = self._truncate(full_combined)
         return ScriptOpResult(
             proc.returncode == 0,
-            combined,
+            full_combined,
             {
+                "type": "script_result",
                 "file_path": file_path,
+                "args": args or "",
                 "returncode": proc.returncode,
-                "stdout": self._truncate(out),
-                "stderr": self._truncate(err),
-                "output_written": True,
-                "output_file": SCRIPT_OUT_FILE,
-                "output_path": str(out_file),
+                "stdout": out,
+                "stderr": err,
+                "timeout": False,
             },
         )
         
@@ -215,31 +196,3 @@ class ScriptWorkspaceService:
             f"已发送脚本到当前会话：{file_path}",
             {"file_path": file_path},
         )
-
-        """
-        content = target.read_text(encoding="utf-8")
-        ext = target.suffix.lower().lstrip(".") or "txt"
-        header = f"脚本文件：{file_path}\n"
-
-        chunks = self._split_text(header + f"```{ext}\n{content}\n```", self.send_chunk_size)
-        for chunk in chunks:
-            await transport.send_text(context, chunk)
-
-        return ScriptOpResult(
-            True,
-            f"已发送脚本到当前会话：{file_path}",
-            {"file_path": file_path, "chunks": len(chunks)},
-        )
-        """
-
-    def _split_text(self, text: str, max_len: int) -> list[str]:
-        if len(text) <= max_len:
-            return [text]
-
-        chunks: list[str] = []
-        start = 0
-        while start < len(text):
-            end = min(start + max_len, len(text))
-            chunks.append(text[start:end])
-            start = end
-        return chunks

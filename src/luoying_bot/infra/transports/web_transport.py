@@ -85,6 +85,9 @@ class WebTransport(ChatTransport):
     async def upload_file(self, context: ChatContext, file: str):
         await self._emit(context, {"type": "file", "file": file})
 
+    async def send_script_result(self, context: ChatContext, result: Dict[str, Any]) -> None:
+        await self._emit(context, {"type": "script_result", "result": result})
+
     async def get_group_members(self, context: ChatContext) -> List[Dict[str, Any]]:
         raise TransportCapabilityError("Web transport 不支持获取群成员")
 

@@ -50,8 +50,6 @@ class Settings:
 
     script_workspace_dir: Path = Path(os.getenv('SCRIPT_WORKSPACE_DIR', './data/scripts'))
     python_script_timeout_sec: int = int(os.getenv('PYTHON_SCRIPT_TIMEOUT_SEC', '15'))
-    script_send_chunk_size: int = int(os.getenv('SCRIPT_SEND_CHUNK_SIZE', '1200'))
-    script_max_output_chars: int = int(os.getenv('SCRIPT_MAX_OUTPUT_CHARS', '12000'))
 
 
     memory_max_messages_per_thread: int = int(os.getenv('MEMORY_MAX_MESSAGES_PER_THREAD', '80'))
