@@ -27,7 +27,7 @@ class EventHandler:
             runtime: GroupRuntime, 
             commands: CommandDispatcher, 
             agent: AgentService, 
-            quick_reply_service: QuickReplyService,
+            quick_reply_service: QuickReplyService|None,
             risk_control_service: RiskControlService,
             trigger_prefix: list[str], 
             bot_qq: str, 
@@ -84,7 +84,7 @@ class EventHandler:
         mentioned = message.has_at(self.bot_qq)
 
 
-        if context.target.channel_type.value == 'group':
+        if self.quick_reply_service is not None and context.target.channel_type.value == 'group':
             quick_reply=self.quick_reply_service.match(text=query, context=context)
             if quick_reply :
                 await self.transport.send_text(context=message.context,text=quick_reply)

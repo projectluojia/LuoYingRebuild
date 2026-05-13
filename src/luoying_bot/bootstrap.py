@@ -40,7 +40,7 @@ class AppContainer:
     script_workspace_service: ScriptWorkspaceService
     risk_control_service: RiskControlService
     memo_service: MemoService
-    quick_reply_service: QuickReplyService
+    quick_reply_service: QuickReplyService | None
     commands: CommandDispatcher
     skills: SkillRegistry
     agent: AgentService
@@ -62,13 +62,14 @@ async def build_cli_container() -> AppContainer:
 async def build_web_container() -> AppContainer:
     transport = WebTransport()
     runtime = GroupRuntime(enabled_groups={})
-    return await _build_container(transport, runtime, enable_commands=False)
+    return await _build_container(transport, runtime, enable_commands=False,enable_quick_reply=False)
 
 async def _build_container(
     transport: ChatTransport,
     runtime: GroupRuntime,
     *,
     enable_commands: bool = True,
+    enable_quick_reply: bool = True,
 ) -> AppContainer:
     user_service = UserService(JsonUserRepo(settings.user_db_file))
     scheduler = AsyncScheduler()
@@ -84,7 +85,7 @@ async def _build_container(
         runtime=runtime,
     )
     memo_service = MemoService(JsonMemoRepo(settings.memo_dir))
-    quick_reply_service = QuickReplyService(settings.quick_reply_file)
+    quick_reply_service =( QuickReplyService(settings.quick_reply_file) if enable_quick_reply else None)
     script_workspace_service = ScriptWorkspaceService(
         root_dir=settings.script_workspace_dir,
         python_timeout_sec=settings.python_script_timeout_sec,
