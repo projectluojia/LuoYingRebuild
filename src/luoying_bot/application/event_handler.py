@@ -85,7 +85,7 @@ class EventHandler:
 
 
         if context.target.channel_type.value == 'group':
-            quick_reply=self.quick_reply_service.match(text=query)
+            quick_reply=self.quick_reply_service.match(text=query, context=context)
             if quick_reply :
                 await self.transport.send_text(context=message.context,text=quick_reply)
                 logger.info("命中快速回复", extra=extra)
