@@ -365,8 +365,6 @@ async function sendMessage(text) {
       signal: controller.signal,
       body: JSON.stringify({
         session_id: sessionId,
-        user_id: "web-user",
-        user_name: "网页用户",
         text,
       }),
     });

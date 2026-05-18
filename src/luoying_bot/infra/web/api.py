@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -24,8 +24,6 @@ STATIC_DIR = WEB_DIR / "static"
 
 class ChatRequest(BaseModel):
     session_id: str = Field(default="web-session")
-    user_id: str = Field(default="web-user")
-    user_name: str = Field(default="网页用户")
     text: str
 
 
@@ -33,15 +31,31 @@ class ChatResponse(BaseModel):
     reply: str
 
 
+class WebCurrentUser(BaseModel):
+    user_id: str
+    user_name: str
+    email: str | None = None
+    authenticated: bool = False
+
+
+async def get_current_web_user() -> WebCurrentUser:
+    return WebCurrentUser(
+        user_id="web-user",
+        user_name="网页用户",
+        email=None,
+        authenticated=False,
+    )
+
+
 def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def _build_message(req: ChatRequest) -> UniMessage:
+def _build_message(req: ChatRequest, user: WebCurrentUser) -> UniMessage:
     message = UniMessage.from_web_text(
         session_id=req.session_id,
-        user_id=req.user_id,
-        user_name=req.user_name,
+        user_id=user.user_id,
+        user_name=user.user_name,
         text=req.text,
     )
     if message.context is not None:
@@ -96,15 +110,31 @@ class WebApiFactory:
         async def index() -> str:
             return INDEX_HTML_FILE.read_text(encoding="utf-8")
 
+        @app.get("/auth/me", response_model=WebCurrentUser)
+        async def auth_me(
+            user: WebCurrentUser = Depends(get_current_web_user),
+        ) -> WebCurrentUser:
+            return user
+
+        @app.post("/auth/logout")
+        async def auth_logout() -> dict[str, bool]:
+            return {"ok": True}
+
         @app.post("/chat", response_model=ChatResponse)
-        async def chat(req: ChatRequest) -> ChatResponse:
-            message = _build_message(req)
+        async def chat(
+            req: ChatRequest,
+            user: WebCurrentUser = Depends(get_current_web_user),
+        ) -> ChatResponse:
+            message = _build_message(req, user)
             reply = await container().message_processor.process(message)
             return ChatResponse(reply=reply.text)
 
         @app.post("/chat/stream")
-        async def chat_stream(req: ChatRequest) -> StreamingResponse:
-            message = _build_message(req)
+        async def chat_stream(
+            req: ChatRequest,
+            user: WebCurrentUser = Depends(get_current_web_user),
+        ) -> StreamingResponse:
+            message = _build_message(req, user)
             ctx = message.context
             if ctx is None or not ctx.request_uid:
                 raise HTTPException(status_code=400, detail="消息上下文无效")
