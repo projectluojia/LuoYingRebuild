@@ -532,6 +532,20 @@ risk_control=[
    { "content": "习近平", "level": "danger" },
    { "content": "Xi Jinping", "level": "danger" },
    { "content": "XJP", "level": "danger" },
+
+   { "content": "小熊维尼", "level": "danger" },
+   { "content": "维尼", "level": "danger" },
+   { "content": "pooh", "level": "danger" },
+   { "content": "Pooh", "level": "danger" },
+   { "content": "POOH", "level": "danger" },
+   { "content": "维尼熊", "level": "danger" },
+   { "content": "庆丰", "level": "danger" },
+   { "content": "庆丰包子", "level": "danger" },
+   { "content": "刁", "level": "danger" },
+   { "content": "迈乎", "level": "danger" },
+   { "content": "包子", "level": "danger" },
+
+
   { "content": "习主席", "level": "danger" },
   { "content": "总书记", "level": "danger" },
   { "content": "国家主席", "level": "danger" },

@@ -2,28 +2,44 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import io
 import json
+import mimetypes
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field
 
 from luoying_bot.bootstrap import AppContainer, build_web_container
+from luoying_bot.config import settings
 from luoying_bot.domain.message import UniMessage
 from luoying_bot.infra.transports.web_transport import WebTransport
 
 WEB_DIR = Path(__file__).resolve().parent
 INDEX_HTML_FILE = WEB_DIR / "index.html"
 STATIC_DIR = WEB_DIR / "static"
+UPLOAD_DIR = settings.web_upload_dir
+IMAGE_UPLOAD_DIR = UPLOAD_DIR / "images"
+MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024
+ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+IMAGE_CONTENT_TYPE_EXTENSIONS = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+    "image/bmp": ".bmp",
+}
 
 
 class ChatRequest(BaseModel):
     session_id: str = Field(default="web-session")
+    image_ids: list[str] = Field(default_factory=list, max_length=8)
     text: str
 
 
@@ -36,6 +52,14 @@ class WebCurrentUser(BaseModel):
     user_name: str
     email: str | None = None
     authenticated: bool = False
+
+
+class ImageUploadResponse(BaseModel):
+    image_id: str
+    file_name: str
+    content_type: str
+    size: int
+    url: str
 
 
 async def get_current_web_user() -> WebCurrentUser:
@@ -51,6 +75,40 @@ def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def _safe_image_id(image_id: str) -> str:
+    name = Path(str(image_id or "").strip()).name
+    if not name or name != image_id:
+        raise HTTPException(status_code=400, detail="图片引用无效")
+    if Path(name).suffix.lower() not in ALLOWED_IMAGE_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="图片类型不支持")
+    return name
+
+
+def _resolve_uploaded_image(image_id: str) -> Path:
+    safe_id = _safe_image_id(image_id)
+    base = IMAGE_UPLOAD_DIR.resolve()
+    target = (base / safe_id).resolve()
+    if base != target.parent or not target.exists() or not target.is_file():
+        raise HTTPException(status_code=400, detail="图片不存在或已失效")
+    return target
+
+
+def _upload_extension(file: UploadFile) -> str:
+    original_suffix = Path(file.filename or "").suffix.lower()
+    if original_suffix in ALLOWED_IMAGE_EXTENSIONS:
+        return original_suffix
+
+    content_type = (file.content_type or "").lower()
+    if content_type in IMAGE_CONTENT_TYPE_EXTENSIONS:
+        return IMAGE_CONTENT_TYPE_EXTENSIONS[content_type]
+
+    guessed = mimetypes.guess_extension(content_type) if content_type else None
+    if guessed and guessed.lower() in ALLOWED_IMAGE_EXTENSIONS:
+        return guessed.lower()
+
+    raise HTTPException(status_code=400, detail="图片类型不支持")
+
+
 def _build_message(req: ChatRequest, user: WebCurrentUser) -> UniMessage:
     message = UniMessage.from_web_text(
         session_id=req.session_id,
@@ -58,6 +116,9 @@ def _build_message(req: ChatRequest, user: WebCurrentUser) -> UniMessage:
         user_name=user.user_name,
         text=req.text,
     )
+    for image_id in req.image_ids:
+        _resolve_uploaded_image(image_id)
+        message.add_segment("image", file=image_id)
     if message.context is not None:
         message.context.request_uid = str(uuid.uuid4())
     return message
@@ -94,6 +155,7 @@ class WebApiFactory:
                 await container.transport.close()
 
         app = FastAPI(title="Luoying Web Agent", lifespan=lifespan)
+        IMAGE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
         def container() -> AppContainer:
@@ -119,6 +181,42 @@ class WebApiFactory:
         @app.post("/auth/logout")
         async def auth_logout() -> dict[str, bool]:
             return {"ok": True}
+
+        @app.get("/uploads/images/{image_id}")
+        async def get_uploaded_image(image_id: str) -> FileResponse:
+            target = _resolve_uploaded_image(image_id)
+            return FileResponse(target)
+
+        @app.post("/uploads/images", response_model=ImageUploadResponse)
+        async def upload_image(
+            file: UploadFile = File(...),
+            _: WebCurrentUser = Depends(get_current_web_user),
+        ) -> ImageUploadResponse:
+            content_type = (file.content_type or "").lower()
+            if not content_type.startswith("image/"):
+                raise HTTPException(status_code=400, detail="仅支持图片上传")
+
+            extension = _upload_extension(file)
+            content = await file.read(MAX_IMAGE_UPLOAD_BYTES + 1)
+            if len(content) > MAX_IMAGE_UPLOAD_BYTES:
+                raise HTTPException(status_code=413, detail="图片不能超过 10MB")
+            try:
+                with Image.open(io.BytesIO(content)) as image:
+                    image.verify()
+            except (UnidentifiedImageError, OSError):
+                raise HTTPException(status_code=400, detail="图片内容无效")
+
+            image_id = f"{uuid.uuid4().hex}{extension}"
+            target = IMAGE_UPLOAD_DIR / image_id
+            target.write_bytes(content)
+
+            return ImageUploadResponse(
+                image_id=image_id,
+                file_name=Path(file.filename or image_id).name,
+                content_type=content_type,
+                size=len(content),
+                url=f"/uploads/images/{image_id}",
+            )
 
         @app.post("/chat", response_model=ChatResponse)
         async def chat(

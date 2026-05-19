@@ -39,7 +39,12 @@
       </header>
       <div class="messages" id="messages"></div>
       <form class="composer" id="chatForm">
-        <input id="chatInput" name="message" type="text" autocomplete="off" placeholder="问问珞樱..." />
+        <div class="composer-main">
+          <div class="image-preview" id="imagePreview" aria-live="polite"></div>
+          <input id="chatInput" name="message" type="text" autocomplete="off" placeholder="问问珞樱..." />
+        </div>
+        <input id="imageInput" name="image" type="file" accept="image/*" multiple hidden />
+        <button class="image-button" id="imageButton" type="button">图片</button>
         <button id="sendButton" type="submit">发送</button>
       </form>
     </section>

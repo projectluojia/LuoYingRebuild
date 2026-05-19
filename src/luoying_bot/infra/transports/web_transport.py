@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from luoying_bot.config import settings
 from luoying_bot.domain.context import ChatContext, Platform
 from luoying_bot.domain.message import UniMessage
 from luoying_bot.ports.transport import ChatTransport, TransportCapabilityError
@@ -95,4 +98,16 @@ class WebTransport(ChatTransport):
         raise TransportCapabilityError("Web transport 不支持获取消息详情")
 
     async def download_image(self, file_name: str) -> Optional[str]:
+        if os.path.isabs(file_name) and os.path.isfile(file_name):
+            return file_name
+
+        safe_name = Path(str(file_name or "").strip()).name
+        if not safe_name or safe_name != file_name:
+            return None
+
+        base = (settings.web_upload_dir / "images").resolve()
+        target = (base / safe_name).resolve()
+        if base == target.parent and target.is_file():
+            return str(target)
+
         return file_name

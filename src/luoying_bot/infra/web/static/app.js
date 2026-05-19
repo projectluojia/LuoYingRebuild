@@ -2,15 +2,20 @@ const shell = document.querySelector(".shell");
 const tryButton = document.querySelector("#tryButton");
 const form = document.querySelector("#chatForm");
 const input = document.querySelector("#chatInput");
+const imageInput = document.querySelector("#imageInput");
+const imageButton = document.querySelector("#imageButton");
+const imagePreview = document.querySelector("#imagePreview");
 const sendButton = document.querySelector("#sendButton");
 const messages = document.querySelector("#messages");
 const chatPanel = document.querySelector(".chat-panel");
 const chatStatus = document.querySelector("#chatStatus");
 
 const STREAM_IDLE_TIMEOUT_MS = 45000;
+const MAX_PENDING_IMAGES = 8;
 
 const sessionId = localStorage.getItem("luoying_session_id") || crypto.randomUUID();
 localStorage.setItem("luoying_session_id", sessionId);
+let pendingImages = [];
 
 function escapeHtml(value) {
   return String(value)
@@ -269,6 +274,26 @@ function createBubble(role, text = "") {
   return bubble;
 }
 
+function createUserMessage(text = "", images = []) {
+  const bubble = createBubble("user", text);
+  if (!images.length) return bubble;
+
+  bubble.classList.add("has-images");
+  const gallery = document.createElement("div");
+  gallery.className = "bubble-images";
+  for (const image of images) {
+    const img = document.createElement("img");
+    img.src = image.url;
+    img.alt = image.file_name || "上传图片";
+    img.loading = "lazy";
+    img.decoding = "async";
+    gallery.appendChild(img);
+  }
+  bubble.appendChild(gallery);
+  scrollToBottom();
+  return bubble;
+}
+
 function renderAssistantBubble(bubble, markdown) {
   bubble.classList.add("markdown-body");
   bubble.innerHTML = renderMarkdown(markdown);
@@ -325,8 +350,76 @@ function parseSse(raw) {
   };
 }
 
-async function sendMessage(text) {
-  createBubble("user", text);
+function renderPendingImages() {
+  imagePreview.innerHTML = "";
+  imagePreview.classList.toggle("is-empty", pendingImages.length === 0);
+  for (const image of pendingImages) {
+    const item = document.createElement("button");
+    item.className = "image-preview-item";
+    item.type = "button";
+    item.title = `移除 ${image.file_name || "图片"}`;
+    item.dataset.imageId = image.image_id;
+
+    const img = document.createElement("img");
+    img.src = image.url;
+    img.alt = image.file_name || "待发送图片";
+    item.appendChild(img);
+
+    const remove = document.createElement("span");
+    remove.textContent = "×";
+    item.appendChild(remove);
+    imagePreview.appendChild(item);
+  }
+}
+
+async function uploadImage(file) {
+  if (!file.type.startsWith("image/")) {
+    throw new Error(`${file.name || "文件"} 不是图片`);
+  }
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const resp = await fetch("/uploads/images", {
+    method: "POST",
+    body: formData,
+  });
+  if (!resp.ok) {
+    let detail = `图片上传失败：${resp.status}`;
+    try {
+      const data = await resp.json();
+      detail = data.detail || detail;
+    } catch {
+      // keep fallback message
+    }
+    throw new Error(detail);
+  }
+  return resp.json();
+}
+
+async function addImages(files) {
+  const slots = MAX_PENDING_IMAGES - pendingImages.length;
+  const selected = Array.from(files).slice(0, Math.max(0, slots));
+  if (!selected.length) return;
+
+  const wasSendDisabled = sendButton.disabled;
+  imageButton.disabled = true;
+  sendButton.disabled = true;
+  chatStatus.textContent = "正在上传图片";
+  try {
+    for (const file of selected) {
+      const image = await uploadImage(file);
+      pendingImages.push(image);
+      renderPendingImages();
+    }
+  } finally {
+    imageButton.disabled = false;
+    sendButton.disabled = wasSendDisabled;
+    chatStatus.textContent = "随时待命";
+  }
+}
+
+async function sendMessage(text, images = []) {
+  createUserMessage(text, images);
   let assistantBubble = null;
   let assistantMarkdown = "";
   let markdownRenderer = null;
@@ -365,6 +458,7 @@ async function sendMessage(text) {
       signal: controller.signal,
       body: JSON.stringify({
         session_id: sessionId,
+        image_ids: images.map((image) => image.image_id),
         text,
       }),
     });
@@ -441,22 +535,51 @@ async function sendMessage(text) {
 
 tryButton.addEventListener("click", enterChat);
 
+imageButton.addEventListener("click", () => {
+  imageInput.click();
+});
+
+imageInput.addEventListener("change", async () => {
+  try {
+    await addImages(imageInput.files || []);
+  } catch (error) {
+    createTrack(error.message || "图片上传失败");
+  } finally {
+    imageInput.value = "";
+    input.focus();
+  }
+});
+
+imagePreview.addEventListener("click", (event) => {
+  const item = event.target.closest(".image-preview-item");
+  if (!item) return;
+  pendingImages = pendingImages.filter((image) => image.image_id !== item.dataset.imageId);
+  renderPendingImages();
+});
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const text = input.value.trim();
-  if (!text) return;
+  const images = pendingImages.slice();
+  if (!text && !images.length) return;
 
   input.value = "";
+  pendingImages = [];
+  renderPendingImages();
   input.disabled = true;
+  imageButton.disabled = true;
   sendButton.disabled = true;
   try {
-    await sendMessage(text);
+    await sendMessage(text, images);
   } finally {
     input.disabled = false;
+    imageButton.disabled = false;
     sendButton.disabled = false;
     input.focus();
   }
 });
+
+renderPendingImages();
 
 messages.addEventListener("click", async (event) => {
   const button = event.target.closest(".copy-code");
