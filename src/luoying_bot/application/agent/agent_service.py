@@ -5,6 +5,7 @@ import logging
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import json
@@ -89,6 +90,18 @@ class AgentService:
 
         return WEB_SYSTEM_PROMPT
 
+    def _runtime_context_message(self) -> dict[str, str]:
+        now = datetime.now(timezone(timedelta(hours=8)))
+        weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+        return {
+            "role": "system",
+            "content": (
+                "【运行时上下文】\n"
+                f"当前时间：{now:%Y-%m-%d %H:%M:%S}（{weekdays[now.weekday()]}，UTC+08:00）\n"
+                "当用户提到今天、明天、昨天、本周、当前时间、截止日期等相对时间时，必须以这里的当前时间为准。"
+            ),
+        }
+
     def _build_react_messages(
         self,
         thread_id:str,
@@ -121,6 +134,7 @@ class AgentService:
 
         messages = [
             {"role": "system", "content": system_prompt},
+            self._runtime_context_message(),
             {"role": "system", "content": CLI_STREAM_REACT_INSTRUCTION if stream_final else REACT_INSTRUCTION},
         ]
 
@@ -137,14 +151,6 @@ class AgentService:
         messages.extend(history)
         messages.append({"role": "user", "content": user_prompt})
         return messages
-
-        """
-        return [
-            {"role":"system","content":system_prompt},
-            {"role":"system","content":REACT_INSTRUCTION},
-            *history,
-            {"role":"user","content":user_prompt},
-        ]"""
     
     def _render_scratchpad(self,scratchpad:list[AgentStep])->str:
         if not scratchpad:
@@ -189,6 +195,7 @@ class AgentService:
 
         messages = [
             {"role": "system", "content": system_prompt},
+            self._runtime_context_message(),
         ]
 
         if user_memory_text.strip():
@@ -388,6 +395,7 @@ class AgentService:
 
         messages = [
             {"role": "system", "content": system_prompt},
+            self._runtime_context_message(),
         ]
 
         if user_memory_text.strip():

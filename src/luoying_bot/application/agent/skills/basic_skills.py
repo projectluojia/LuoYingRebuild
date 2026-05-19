@@ -19,8 +19,7 @@ class ReminderSkill(BaseSkill):
     platform = [Platform.QQ, Platform.WEB, Platform.CLI]
     description = (
         '创建、查看、删除提醒事项。'
-        '你不能假装知道时间！你不知道目前的时间！'
-        '在使用之前，必须先调用TimeSkill来查看当前时间！'
+        '系统提示词中已经提供当前时间；如需再次确认精确时间，可以调用TimeSkill。'
         'payload 里可带 action=create/list/delete run_time=YYYY-MM-DD HH:MM （这是格式：年-月-日 时:分，请填入数字，禁止任何额外内容） content=（提醒的内容） repeat=True/False （是否每日重复）indexes=[（一个列表，是要删除的编号，编号不是从0而是从1开始！）]'
     )
 
