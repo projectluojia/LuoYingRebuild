@@ -340,6 +340,48 @@ function createTrack(text) {
   return card;
 }
 
+function formatFileSize(size) {
+  const value = Number(size || 0);
+  if (!Number.isFinite(value) || value <= 0) return "";
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function createFileCard(file) {
+  const href = safeHref(file.url || "");
+  if (!href) {
+    return createTrack(`文件已生成：${file.file_name || file.path || "未命名文件"}`);
+  }
+
+  const card = document.createElement("div");
+  card.className = "file-card";
+
+  const info = document.createElement("div");
+  info.className = "file-info";
+
+  const name = document.createElement("strong");
+  name.textContent = file.file_name || file.path || "下载文件";
+  info.appendChild(name);
+
+  const meta = document.createElement("span");
+  const sizeText = formatFileSize(file.size);
+  meta.textContent = [file.path, sizeText].filter(Boolean).join(" · ");
+  info.appendChild(meta);
+
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = file.file_name || "";
+  link.textContent = "下载";
+  link.rel = "noopener noreferrer";
+
+  card.appendChild(info);
+  card.appendChild(link);
+  messages.appendChild(card);
+  scrollToBottom();
+  return card;
+}
+
 function parseSse(raw) {
   const eventLine = raw.split("\n").find((line) => line.startsWith("event: "));
   const dataLine = raw.split("\n").find((line) => line.startsWith("data: "));
@@ -487,7 +529,15 @@ async function sendMessage(text, images = []) {
 
         if (event === "track") {
           clearPending();
-          createTrack(data.text || "");
+          if (data.kind === "file" && data.metadata?.url) {
+            createFileCard(data.metadata);
+          } else {
+            createTrack(data.text || "");
+          }
+        }
+        if (event === "file") {
+          clearPending();
+          createFileCard(data);
         }
         if (event === "text_delta") {
           clearPending();

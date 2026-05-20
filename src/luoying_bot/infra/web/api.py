@@ -93,6 +93,37 @@ def _resolve_uploaded_image(image_id: str) -> Path:
     return target
 
 
+def _safe_download_user_id(user_id: str) -> str:
+    value = str(user_id or "").strip()
+    if not value or Path(value).name != value or value in {".", ".."}:
+        raise HTTPException(status_code=400, detail="用户标识无效")
+    return value
+
+
+def _safe_workspace_path(file_path: str) -> Path:
+    raw = str(file_path or "").strip().replace("\\", "/")
+    if not raw or raw.startswith("/"):
+        raise HTTPException(status_code=400, detail="文件路径无效")
+    parts = [part for part in raw.split("/") if part not in {"", "."}]
+    if not parts or any(part == ".." for part in parts):
+        raise HTTPException(status_code=400, detail="文件路径无效")
+    return Path(*parts)
+
+
+def _resolve_script_download(user_id: str, file_path: str, user: WebCurrentUser) -> Path:
+    safe_user_id = _safe_download_user_id(user_id)
+    if safe_user_id != user.user_id:
+        raise HTTPException(status_code=403, detail="无权下载该用户文件")
+
+    base = (settings.script_workspace_dir / safe_user_id).resolve()
+    target = (base / _safe_workspace_path(file_path)).resolve()
+    if base != target and base not in target.parents:
+        raise HTTPException(status_code=400, detail="文件路径越界")
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="文件不存在")
+    return target
+
+
 def _upload_extension(file: UploadFile) -> str:
     original_suffix = Path(file.filename or "").suffix.lower()
     if original_suffix in ALLOWED_IMAGE_EXTENSIONS:
@@ -186,6 +217,16 @@ class WebApiFactory:
         async def get_uploaded_image(image_id: str) -> FileResponse:
             target = _resolve_uploaded_image(image_id)
             return FileResponse(target)
+
+        @app.get("/download/{user_id}/{file_path:path}")
+        async def download_script_file(
+            user_id: str,
+            file_path: str,
+            user: WebCurrentUser = Depends(get_current_web_user),
+        ) -> FileResponse:
+            target = _resolve_script_download(user_id, file_path, user)
+            media_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+            return FileResponse(target, media_type=media_type, filename=target.name)
 
         @app.post("/uploads/images", response_model=ImageUploadResponse)
         async def upload_image(

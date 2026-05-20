@@ -279,6 +279,7 @@ class ImageAgentSkill(BaseSkill):
             api_key=settings.openai_api_key,
             base_url=settings.openai_base_url,
             temperature=0.6,
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         )
 
         agent = create_agent(

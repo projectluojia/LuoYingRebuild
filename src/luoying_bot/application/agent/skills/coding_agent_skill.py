@@ -186,6 +186,7 @@ class CodingAgentSkill(BaseSkill):
             api_key=settings.coding_api_key,
             base_url=settings.coding_base_url,
             temperature=0.2,
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         )
 
         agent = create_agent(

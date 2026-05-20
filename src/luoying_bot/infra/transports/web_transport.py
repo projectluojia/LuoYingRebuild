@@ -5,6 +5,7 @@ import os
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 
 from luoying_bot.config import settings
 from luoying_bot.domain.context import ChatContext, Platform
@@ -86,7 +87,39 @@ class WebTransport(ChatTransport):
         )
 
     async def upload_file(self, context: ChatContext, file: str):
-        await self._emit(context, {"type": "file", "file": file})
+        target = Path(file).resolve()
+        user_id = str(context.user.user_id)
+        user_base = (settings.script_workspace_dir / user_id).resolve()
+        event: dict[str, Any] = {
+            "type": "file",
+            "file": str(target),
+            "file_name": target.name,
+        }
+        if user_base == target or user_base in target.parents:
+            rel_path = target.relative_to(user_base).as_posix()
+            event.update(
+                {
+                    "user_id": user_id,
+                    "path": rel_path,
+                    "size": target.stat().st_size if target.is_file() else 0,
+                    "url": f"/download/{quote(user_id, safe='')}/{quote(rel_path, safe='/')}",
+                }
+            )
+            await self._emit(
+                context,
+                {
+                    "type": "track",
+                    "kind": "file",
+                    "text": f"文件已生成：{rel_path}",
+                    "metadata": {
+                        "file_name": target.name,
+                        "path": rel_path,
+                        "url": event["url"],
+                        "size": event["size"],
+                    },
+                },
+            )
+        await self._emit(context, event)
 
     async def send_script_result(self, context: ChatContext, result: Dict[str, Any]) -> None:
         await self._emit(context, {"type": "script_result", "result": result})
