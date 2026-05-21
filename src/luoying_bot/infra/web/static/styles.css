@@ -549,7 +549,7 @@ h1 {
 
 .composer {
   display: grid;
-  grid-template-columns: 1fr 72px 112px;
+  grid-template-columns: 1fr 72px 72px 112px;
   gap: 12px;
   align-items: end;
 }
@@ -638,7 +638,38 @@ h1 {
   line-height: 1;
 }
 
+.file-preview-item {
+  max-width: 220px;
+  min-height: 58px;
+  padding: 8px 10px;
+  display: grid;
+  gap: 3px;
+  text-align: left;
+  border: 1px solid rgba(115, 124, 139, 0.22);
+  border-radius: 12px;
+  color: var(--ink);
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(38, 45, 58, 0.08);
+}
+
+.file-preview-item strong,
+.file-preview-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-preview-item span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .bubble.has-images {
+  display: grid;
+  gap: 10px;
+}
+
+.bubble.has-files {
   display: grid;
   gap: 10px;
 }
@@ -648,6 +679,23 @@ h1 {
   grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
   gap: 8px;
   max-width: min(420px, 100%);
+}
+
+.bubble-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bubble-files span {
+  max-width: 240px;
+  padding: 5px 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  color: #1c315f;
+  background: rgba(239, 245, 255, 0.98);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bubble-images img {
@@ -740,7 +788,7 @@ h1 {
   }
 
   .composer {
-    grid-template-columns: 1fr 58px 84px;
+    grid-template-columns: 1fr 58px 58px 84px;
     gap: 8px;
   }
 

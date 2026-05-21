@@ -134,13 +134,16 @@ class WebTransport(ChatTransport):
         if os.path.isabs(file_name) and os.path.isfile(file_name):
             return file_name
 
-        safe_name = Path(str(file_name or "").strip()).name
-        if not safe_name or safe_name != file_name:
+        raw = str(file_name or "").strip().replace("\\", "/")
+        if not raw or raw.startswith("/"):
+            return None
+        parts = [part for part in raw.split("/") if part not in {"", "."}]
+        if not parts or any(part == ".." for part in parts):
             return None
 
-        base = (settings.web_upload_dir / "images").resolve()
-        target = (base / safe_name).resolve()
-        if base == target.parent and target.is_file():
+        base = settings.script_workspace_dir.resolve()
+        target = (base / Path(*parts)).resolve()
+        if (base == target or base in target.parents) and target.is_file():
             return str(target)
 
         return file_name

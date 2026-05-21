@@ -5,6 +5,7 @@ import contextlib
 import io
 import json
 import mimetypes
+import re
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -24,9 +25,8 @@ from luoying_bot.infra.transports.web_transport import WebTransport
 WEB_DIR = Path(__file__).resolve().parent
 INDEX_HTML_FILE = WEB_DIR / "index.html"
 STATIC_DIR = WEB_DIR / "static"
-UPLOAD_DIR = settings.web_upload_dir
-IMAGE_UPLOAD_DIR = UPLOAD_DIR / "images"
 MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_FILE_UPLOAD_BYTES = 25 * 1024 * 1024
 ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 IMAGE_CONTENT_TYPE_EXTENSIONS = {
     "image/png": ".png",
@@ -40,6 +40,7 @@ IMAGE_CONTENT_TYPE_EXTENSIONS = {
 class ChatRequest(BaseModel):
     session_id: str = Field(default="web-session")
     image_ids: list[str] = Field(default_factory=list, max_length=8)
+    file_ids: list[str] = Field(default_factory=list, max_length=8)
     text: str
 
 
@@ -62,6 +63,14 @@ class ImageUploadResponse(BaseModel):
     url: str
 
 
+class FileUploadResponse(BaseModel):
+    file_id: str
+    file_name: str
+    content_type: str
+    size: int
+    url: str
+
+
 async def get_current_web_user() -> WebCurrentUser:
     return WebCurrentUser(
         user_id="web-user",
@@ -75,21 +84,34 @@ def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def _safe_image_id(image_id: str) -> str:
-    name = Path(str(image_id or "").strip()).name
-    if not name or name != image_id:
+def _safe_upload_path(upload_path: str) -> Path:
+    path = _safe_workspace_path(upload_path)
+    parts = path.parts
+    if len(parts) < 2 or parts[0] != "upload":
+        raise HTTPException(status_code=400, detail="上传文件引用无效")
+    return path
+
+
+def _resolve_uploaded_file(file_id: str, user: WebCurrentUser) -> Path:
+    safe_path = _safe_upload_path(file_id)
+    base = (settings.script_workspace_dir / user.user_id).resolve()
+    target = (base / safe_path).resolve()
+    if base not in target.parents or not target.exists() or not target.is_file():
+        raise HTTPException(status_code=400, detail="文件不存在或已失效")
+    return target
+
+
+def _safe_image_path(image_id: str) -> Path:
+    path = _safe_upload_path(image_id)
+    if path.suffix.lower() not in ALLOWED_IMAGE_EXTENSIONS:
         raise HTTPException(status_code=400, detail="图片引用无效")
-    if Path(name).suffix.lower() not in ALLOWED_IMAGE_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="图片类型不支持")
-    return name
+    return path
 
 
-def _resolve_uploaded_image(image_id: str) -> Path:
-    safe_id = _safe_image_id(image_id)
-    base = IMAGE_UPLOAD_DIR.resolve()
-    target = (base / safe_id).resolve()
-    if base != target.parent or not target.exists() or not target.is_file():
-        raise HTTPException(status_code=400, detail="图片不存在或已失效")
+def _resolve_uploaded_image(image_id: str, user: WebCurrentUser) -> Path:
+    target = _resolve_uploaded_file(image_id, user)
+    if Path(image_id).suffix.lower() not in ALLOWED_IMAGE_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="图片引用无效")
     return target
 
 
@@ -140,6 +162,55 @@ def _upload_extension(file: UploadFile) -> str:
     raise HTTPException(status_code=400, detail="图片类型不支持")
 
 
+def _uploaded_file_extension(file: UploadFile) -> str:
+    suffix = Path(file.filename or "").suffix.lower()
+    if not suffix:
+        guessed = mimetypes.guess_extension((file.content_type or "").lower())
+        suffix = guessed.lower() if guessed else ""
+    if len(suffix) > 16 or any(ch in suffix for ch in ("/", "\\")):
+        return ""
+    return suffix
+
+
+def _safe_original_file_name(file_name: str, extension: str) -> str:
+    original = Path(file_name or "").name
+    stem = Path(original).stem if original else "upload"
+    suffix = Path(original).suffix.lower() or extension
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("._-")
+    if not stem:
+        stem = "upload"
+    if len(stem) > 80:
+        stem = stem[:80]
+    if len(suffix) > 16 or any(ch in suffix for ch in ("/", "\\")):
+        suffix = extension
+    return f"{stem}{suffix}"
+
+
+def _save_workspace_upload(
+    *,
+    user: WebCurrentUser,
+    content: bytes,
+    extension: str,
+    original_name: str,
+) -> tuple[str, Path]:
+    upload_dir = settings.script_workspace_dir / user.user_id / "upload"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = _safe_original_file_name(original_name, extension)
+    target = upload_dir / safe_name
+    if target.exists():
+        stem = target.stem
+        suffix = target.suffix
+        for index in range(1, 1000):
+            candidate = upload_dir / f"{stem}_{index}{suffix}"
+            if not candidate.exists():
+                target = candidate
+                break
+        else:
+            target = upload_dir / f"{uuid.uuid4().hex}{extension}"
+    target.write_bytes(content)
+    return (Path("upload") / target.name).as_posix(), target
+
+
 def _build_message(req: ChatRequest, user: WebCurrentUser) -> UniMessage:
     message = UniMessage.from_web_text(
         session_id=req.session_id,
@@ -148,8 +219,16 @@ def _build_message(req: ChatRequest, user: WebCurrentUser) -> UniMessage:
         text=req.text,
     )
     for image_id in req.image_ids:
-        _resolve_uploaded_image(image_id)
-        message.add_segment("image", file=image_id)
+        target = _resolve_uploaded_image(image_id, user)
+        message.add_segment("image", file=str(target))
+    for file_id in req.file_ids:
+        target = _resolve_uploaded_file(file_id, user)
+        message.add_segment(
+            "file",
+            file=file_id,
+            name=Path(file_id).name,
+            size=target.stat().st_size,
+        )
     if message.context is not None:
         message.context.request_uid = str(uuid.uuid4())
     return message
@@ -186,7 +265,6 @@ class WebApiFactory:
                 await container.transport.close()
 
         app = FastAPI(title="Luoying Web Agent", lifespan=lifespan)
-        IMAGE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
         def container() -> AppContainer:
@@ -213,9 +291,12 @@ class WebApiFactory:
         async def auth_logout() -> dict[str, bool]:
             return {"ok": True}
 
-        @app.get("/uploads/images/{image_id}")
-        async def get_uploaded_image(image_id: str) -> FileResponse:
-            target = _resolve_uploaded_image(image_id)
+        @app.get("/uploads/images/{image_id:path}")
+        async def get_uploaded_image(
+            image_id: str,
+            user: WebCurrentUser = Depends(get_current_web_user),
+        ) -> FileResponse:
+            target = _resolve_uploaded_image(image_id, user)
             return FileResponse(target)
 
         @app.get("/download/{user_id}/{file_path:path}")
@@ -231,7 +312,7 @@ class WebApiFactory:
         @app.post("/uploads/images", response_model=ImageUploadResponse)
         async def upload_image(
             file: UploadFile = File(...),
-            _: WebCurrentUser = Depends(get_current_web_user),
+            user: WebCurrentUser = Depends(get_current_web_user),
         ) -> ImageUploadResponse:
             content_type = (file.content_type or "").lower()
             if not content_type.startswith("image/"):
@@ -247,9 +328,12 @@ class WebApiFactory:
             except (UnidentifiedImageError, OSError):
                 raise HTTPException(status_code=400, detail="图片内容无效")
 
-            image_id = f"{uuid.uuid4().hex}{extension}"
-            target = IMAGE_UPLOAD_DIR / image_id
-            target.write_bytes(content)
+            image_id, _ = _save_workspace_upload(
+                user=user,
+                content=content,
+                extension=extension,
+                original_name=file.filename or "",
+            )
 
             return ImageUploadResponse(
                 image_id=image_id,
@@ -257,6 +341,30 @@ class WebApiFactory:
                 content_type=content_type,
                 size=len(content),
                 url=f"/uploads/images/{image_id}",
+            )
+
+        @app.post("/uploads/files", response_model=FileUploadResponse)
+        async def upload_file(
+            file: UploadFile = File(...),
+            user: WebCurrentUser = Depends(get_current_web_user),
+        ) -> FileUploadResponse:
+            content = await file.read(MAX_FILE_UPLOAD_BYTES + 1)
+            if len(content) > MAX_FILE_UPLOAD_BYTES:
+                raise HTTPException(status_code=413, detail="文件不能超过 25MB")
+
+            file_id, _ = _save_workspace_upload(
+                user=user,
+                content=content,
+                extension=_uploaded_file_extension(file),
+                original_name=file.filename or "",
+            )
+            content_type = file.content_type or "application/octet-stream"
+            return FileUploadResponse(
+                file_id=file_id,
+                file_name=Path(file.filename or file_id).name,
+                content_type=content_type,
+                size=len(content),
+                url=f"/download/{user.user_id}/{file_id}",
             )
 
         @app.post("/chat", response_model=ChatResponse)

@@ -46,9 +46,6 @@ class Settings:
     user_db_file: Path = Path(os.getenv('USER_DB_FILE', './src/data/userdatabase.json'))
     reminder_db_file: Path = Path(os.getenv('REMINDER_DB_FILE', './src/data/reminders.json'))
     user_memory_dir: Path = Path(os.getenv('USER_MEMORY_DIR', './src/data/user_memory'))
-    web_upload_dir: Path = Path(os.getenv('WEB_UPLOAD_DIR', './src/data/web_uploads'))
-
-
     script_workspace_dir: Path = Path(os.getenv('SCRIPT_WORKSPACE_DIR', './src/data/scripts'))
     python_script_timeout_sec: int = int(os.getenv('PYTHON_SCRIPT_TIMEOUT_SEC', '15'))
 

@@ -4,6 +4,8 @@ const form = document.querySelector("#chatForm");
 const input = document.querySelector("#chatInput");
 const imageInput = document.querySelector("#imageInput");
 const imageButton = document.querySelector("#imageButton");
+const fileInput = document.querySelector("#fileInput");
+const fileButton = document.querySelector("#fileButton");
 const imagePreview = document.querySelector("#imagePreview");
 const sendButton = document.querySelector("#sendButton");
 const messages = document.querySelector("#messages");
@@ -12,10 +14,12 @@ const chatStatus = document.querySelector("#chatStatus");
 
 const STREAM_IDLE_TIMEOUT_MS = 45000;
 const MAX_PENDING_IMAGES = 8;
+const MAX_PENDING_FILES = 8;
 
 const sessionId = localStorage.getItem("luoying_session_id") || crypto.randomUUID();
 localStorage.setItem("luoying_session_id", sessionId);
 let pendingImages = [];
+let pendingFiles = [];
 
 function escapeHtml(value) {
   return String(value)
@@ -274,22 +278,35 @@ function createBubble(role, text = "") {
   return bubble;
 }
 
-function createUserMessage(text = "", images = []) {
+function createUserMessage(text = "", images = [], files = []) {
   const bubble = createBubble("user", text);
-  if (!images.length) return bubble;
+  if (!images.length && !files.length) return bubble;
 
-  bubble.classList.add("has-images");
-  const gallery = document.createElement("div");
-  gallery.className = "bubble-images";
-  for (const image of images) {
-    const img = document.createElement("img");
-    img.src = image.url;
-    img.alt = image.file_name || "上传图片";
-    img.loading = "lazy";
-    img.decoding = "async";
-    gallery.appendChild(img);
+  if (images.length) {
+    bubble.classList.add("has-images");
+    const gallery = document.createElement("div");
+    gallery.className = "bubble-images";
+    for (const image of images) {
+      const img = document.createElement("img");
+      img.src = image.url;
+      img.alt = image.file_name || "上传图片";
+      img.loading = "lazy";
+      img.decoding = "async";
+      gallery.appendChild(img);
+    }
+    bubble.appendChild(gallery);
   }
-  bubble.appendChild(gallery);
+  if (files.length) {
+    bubble.classList.add("has-files");
+    const list = document.createElement("div");
+    list.className = "bubble-files";
+    for (const file of files) {
+      const item = document.createElement("span");
+      item.textContent = file.file_name || file.path || "上传文件";
+      list.appendChild(item);
+    }
+    bubble.appendChild(list);
+  }
   scrollToBottom();
   return bubble;
 }
@@ -394,7 +411,7 @@ function parseSse(raw) {
 
 function renderPendingImages() {
   imagePreview.innerHTML = "";
-  imagePreview.classList.toggle("is-empty", pendingImages.length === 0);
+  imagePreview.classList.toggle("is-empty", pendingImages.length === 0 && pendingFiles.length === 0);
   for (const image of pendingImages) {
     const item = document.createElement("button");
     item.className = "image-preview-item";
@@ -410,6 +427,22 @@ function renderPendingImages() {
     const remove = document.createElement("span");
     remove.textContent = "×";
     item.appendChild(remove);
+    imagePreview.appendChild(item);
+  }
+  for (const file of pendingFiles) {
+    const item = document.createElement("button");
+    item.className = "file-preview-item";
+    item.type = "button";
+    item.title = `移除 ${file.file_name || "文件"}`;
+    item.dataset.fileId = file.file_id;
+
+    const name = document.createElement("strong");
+    name.textContent = file.file_name || "文件";
+    item.appendChild(name);
+
+    const meta = document.createElement("span");
+    meta.textContent = formatFileSize(file.size) || "已上传";
+    item.appendChild(meta);
     imagePreview.appendChild(item);
   }
 }
@@ -445,6 +478,7 @@ async function addImages(files) {
 
   const wasSendDisabled = sendButton.disabled;
   imageButton.disabled = true;
+  fileButton.disabled = true;
   sendButton.disabled = true;
   chatStatus.textContent = "正在上传图片";
   try {
@@ -455,13 +489,59 @@ async function addImages(files) {
     }
   } finally {
     imageButton.disabled = false;
+    fileButton.disabled = false;
     sendButton.disabled = wasSendDisabled;
     chatStatus.textContent = "随时待命";
   }
 }
 
-async function sendMessage(text, images = []) {
-  createUserMessage(text, images);
+async function uploadFile(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const resp = await fetch("/uploads/files", {
+    method: "POST",
+    body: formData,
+  });
+  if (!resp.ok) {
+    let detail = `文件上传失败：${resp.status}`;
+    try {
+      const data = await resp.json();
+      detail = data.detail || detail;
+    } catch {
+      // keep fallback message
+    }
+    throw new Error(detail);
+  }
+  return resp.json();
+}
+
+async function addFiles(files) {
+  const slots = MAX_PENDING_FILES - pendingFiles.length;
+  const selected = Array.from(files).slice(0, Math.max(0, slots));
+  if (!selected.length) return;
+
+  const wasSendDisabled = sendButton.disabled;
+  imageButton.disabled = true;
+  fileButton.disabled = true;
+  sendButton.disabled = true;
+  chatStatus.textContent = "正在上传文件";
+  try {
+    for (const file of selected) {
+      const uploaded = await uploadFile(file);
+      pendingFiles.push(uploaded);
+      renderPendingImages();
+    }
+  } finally {
+    imageButton.disabled = false;
+    fileButton.disabled = false;
+    sendButton.disabled = wasSendDisabled;
+    chatStatus.textContent = "随时待命";
+  }
+}
+
+async function sendMessage(text, images = [], files = []) {
+  createUserMessage(text, images, files);
   let assistantBubble = null;
   let assistantMarkdown = "";
   let markdownRenderer = null;
@@ -501,6 +581,7 @@ async function sendMessage(text, images = []) {
       body: JSON.stringify({
         session_id: sessionId,
         image_ids: images.map((image) => image.image_id),
+        file_ids: files.map((file) => file.file_id),
         text,
       }),
     });
@@ -589,6 +670,10 @@ imageButton.addEventListener("click", () => {
   imageInput.click();
 });
 
+fileButton.addEventListener("click", () => {
+  fileInput.click();
+});
+
 imageInput.addEventListener("change", async () => {
   try {
     await addImages(imageInput.files || []);
@@ -600,10 +685,27 @@ imageInput.addEventListener("change", async () => {
   }
 });
 
+fileInput.addEventListener("change", async () => {
+  try {
+    await addFiles(fileInput.files || []);
+  } catch (error) {
+    createTrack(error.message || "文件上传失败");
+  } finally {
+    fileInput.value = "";
+    input.focus();
+  }
+});
+
 imagePreview.addEventListener("click", (event) => {
   const item = event.target.closest(".image-preview-item");
-  if (!item) return;
-  pendingImages = pendingImages.filter((image) => image.image_id !== item.dataset.imageId);
+  if (item) {
+    pendingImages = pendingImages.filter((image) => image.image_id !== item.dataset.imageId);
+    renderPendingImages();
+    return;
+  }
+  const fileItem = event.target.closest(".file-preview-item");
+  if (!fileItem) return;
+  pendingFiles = pendingFiles.filter((file) => file.file_id !== fileItem.dataset.fileId);
   renderPendingImages();
 });
 
@@ -611,19 +713,23 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const text = input.value.trim();
   const images = pendingImages.slice();
-  if (!text && !images.length) return;
+  const files = pendingFiles.slice();
+  if (!text && !images.length && !files.length) return;
 
   input.value = "";
   pendingImages = [];
+  pendingFiles = [];
   renderPendingImages();
   input.disabled = true;
   imageButton.disabled = true;
+  fileButton.disabled = true;
   sendButton.disabled = true;
   try {
-    await sendMessage(text, images);
+    await sendMessage(text, images, files);
   } finally {
     input.disabled = false;
     imageButton.disabled = false;
+    fileButton.disabled = false;
     sendButton.disabled = false;
     input.focus();
   }

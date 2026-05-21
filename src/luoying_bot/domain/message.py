@@ -57,8 +57,13 @@ class UniMessage:
                 parts.append(f"[图片:{seg.data.get('file')}]")
             elif seg.type == 'file':
                 name = seg.data.get('name') or seg.data.get('file') or seg.data.get('file_id') or 'unknown'
+                path = seg.data.get('file') or seg.data.get('path') or seg.data.get('file_id')
                 size = seg.data.get('size') or seg.data.get('file_size')
-                if size:
+                if path and path != name and size:
+                    parts.append(f"[文件:{name}, 路径={path}, 大小={size}]")
+                elif path and path != name:
+                    parts.append(f"[文件:{name}, 路径={path}]")
+                elif size:
                     parts.append(f"[文件:{name}, 大小={size}]")
                 else:
                     parts.append(f"[文件:{name}]")
