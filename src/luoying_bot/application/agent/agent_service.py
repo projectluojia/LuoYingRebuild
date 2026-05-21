@@ -582,7 +582,7 @@ class AgentService:
         user_id = str(message.context.user.user_id)
         user_memory_text = self.skills.services.user_memory_service.build_prompt_block(user_id)
 
-        logger.info("主 Agent 开始处理 CLI 流式消息", extra=extra)
+        logger.info("主 Agent 开始处理流式消息", extra=extra)
         scratchpad: list[AgentStep] = []
         answer: str | None = None
         invalid_action_count = 0
@@ -591,7 +591,7 @@ class AgentService:
         for step_index in range(1, self.max_steps + 1):
             if deadline is not None and time.monotonic() >= deadline:
                 scratchpad.append(AgentStep(kind="observation", content="总执行预算已耗尽，请直接给出最终回答。"))
-                logger.warning("主 Agent 总预算耗尽，转入 CLI 流式 fallback", extra=extra)
+                logger.warning("主 Agent 总预算耗尽，转入流式 fallback", extra=extra)
                 break
 
             llm_messages = self._build_react_messages(
@@ -607,7 +607,7 @@ class AgentService:
                 raw = await self._chat_with_budget(llm_messages, deadline=deadline)
             except asyncio.TimeoutError:
                 scratchpad.append(AgentStep(kind="observation", content="模型思考超时，请直接给出最终回答。"))
-                logger.warning("主模型思考超时，转入 CLI 流式 fallback", extra=extra)
+                logger.warning("主模型思考超时，转入流式 fallback", extra=extra)
                 break
 
             action = self._safe_parse_action(raw)
@@ -627,7 +627,7 @@ class AgentService:
                         answer_parts.append(chunk)
                         yield chunk
                 except asyncio.TimeoutError:
-                    logger.warning("CLI 最终回答流式生成超时", extra=extra)
+                    logger.warning("最终回答流式生成超时", extra=extra)
                 answer = "".join(answer_parts).strip()
                 break
 
@@ -647,7 +647,7 @@ class AgentService:
                     extra=extra,
                 )
                 if invalid_action_count >= max_invalid_actions:
-                    logger.warning("主模型连续输出无效动作达到上限，转入 CLI 流式 fallback", extra=extra)
+                    logger.warning("主模型连续输出无效动作达到上限，转入流式 fallback", extra=extra)
                     break
                 continue
 
@@ -730,4 +730,4 @@ class AgentService:
 
         self.memory.append(thread_id, "user", user_text)
         self.memory.append(thread_id, "assistant", answer)
-        logger.info("主 Agent 完成 CLI 流式处理，耗时 %.2fs", time.monotonic() - start_at, extra=extra)
+        logger.info("主 Agent 完成流式处理，耗时 %.2fs", time.monotonic() - start_at, extra=extra)

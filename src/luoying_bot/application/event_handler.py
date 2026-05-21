@@ -145,7 +145,7 @@ class EventHandler:
                     sent_parts.append(safe_chunk)
                     yield safe_chunk
 
-            logger.info("主 Agent 进入 CLI 真流式输出", extra=extra)
+            logger.info("主 Agent 进入流式输出", extra=extra)
             await self.transport.send_text_iter(context, output_chunks())
             return Reply(text=''.join(sent_parts))
 

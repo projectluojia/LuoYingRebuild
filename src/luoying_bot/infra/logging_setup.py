@@ -15,15 +15,15 @@ class _ContextDefaultsFilter(logging.Filter):
 def configure_logging(level: int = logging.INFO)->None:
     if getattr(configure_logging, "_configured", False):
         return
-    logging.basicConfig(
-        level=level,
-        format=(
-            "%(asctime)s | %(levelname)s | %(name)s | "
-            "req=%(request_uid)s thread=%(thread_id)s msg=%(message_id)s "
-            "user=%(user_id)s conv=%(conversation_id)s | %(message)s"
-        ),
+    log_format = (
+        "%(asctime)s | %(levelname)s | %(name)s | "
+        "req=%(request_uid)s thread=%(thread_id)s msg=%(message_id)s "
+        "user=%(user_id)s conv=%(conversation_id)s | %(message)s"
     )
     root = logging.getLogger()
+    root.setLevel(level)
+    if not root.handlers:
+        logging.basicConfig(level=level, format=log_format)
     for handler in root.handlers:
         handler.addFilter(_ContextDefaultsFilter())
 

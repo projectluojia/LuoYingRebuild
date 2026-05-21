@@ -40,7 +40,10 @@ class CodingAgentSkill(BaseSkill):
         debug_counts = {
             "create_script": 0,
             "overwrite_script": 0,
+            "delete_script": 0,
+            "read_script": 0,
             "run_python_script": 0,
+            "list_script": 0,
             "send_script_result": 0,
             "send_script": 0,
         }
@@ -60,22 +63,30 @@ class CodingAgentSkill(BaseSkill):
 
 
         @tool
-        def list_scripts() -> str:
+        async def list_scripts() -> str:
             """列出当前用户工作区中的所有脚本文件。
             无需参数
             返回该用户所有脚本
             """
+            debug_counts["list_script"] += 1
+            await debug_track(
+                f"列出脚本 #{debug_counts['list_script']}"
+            )
             logger.debug("编程子 Agent 调用 list_scripts")
             result = script_service.list_scripts(user_id)
             return result.text
 
         @tool
-        def read_script(file_path: str) -> str:
+        async def read_script(file_path: str) -> str:
             """读取指定脚本文件的完整内容。
             需要一个参数
             file_path:str 是当前工作区下要读取的脚本的相对路径， 例如 hello.py 或 src/main.rs。
             返回读取的脚本的内容
             """
+            debug_counts["read_script"] += 1
+            await debug_track(
+                f"读取脚本 #{debug_counts['read_script']}：路径={file_path}"
+            )
             logger.debug("编程子 Agent 调用 read_script，file_path=%s", file_path)
             result = script_service.read_script(user_id, file_path)
             return result.text
@@ -113,13 +124,16 @@ class CodingAgentSkill(BaseSkill):
             return result.text
 
         @tool
-        def delete_script(file_path: str) -> str:
+        async def delete_script(file_path: str) -> str:
             """删除指定脚本文件。
             需要一个参数
             file_path:str 是当前工作区下要删除的脚本的相对路径
             返回删除的情况
             """
-            
+            debug_counts["delete_script"] += 1
+            await debug_track(
+                f"删除脚本 #{debug_counts['delete_script']}：路径={file_path}"
+            )
             logger.debug("编程子 Agent 调用 delete_script，file_path=%s", file_path)
             result = script_service.delete_script(user_id, file_path)
             return result.text
