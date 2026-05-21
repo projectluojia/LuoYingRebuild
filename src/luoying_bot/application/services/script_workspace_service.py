@@ -52,6 +52,15 @@ class ScriptWorkspaceService:
             raise ValueError("文件路径越界")
         return target
 
+    def _read_text_smart(self, target: Path) -> tuple[str, str]:
+        raw = target.read_bytes()
+        for encoding in ("utf-8-sig", "utf-8", "gb18030", "gbk", "big5"):
+            try:
+                return raw.decode(encoding), encoding
+            except UnicodeDecodeError:
+                continue
+        return raw.decode("latin1"), "latin1"
+
     def list_scripts(self,user_id:str)->ScriptOpResult:
         base = self._user_dir(user_id=user_id)
         files = [p for p in base.rglob("*") if p.is_file()]
@@ -71,11 +80,11 @@ class ScriptWorkspaceService:
         target = self._resolve_user_file(user_id=user_id,file_path=file_path)
         if not target.exists() or not target.is_file():
             return ScriptOpResult(False, f"文件不存在：{file_path}", {"file_path": file_path})
-        content = target.read_text(encoding="utf-8")
+        content, encoding = self._read_text_smart(target)
         return ScriptOpResult(
             True,
-            f"文件内容如下：\n{content}",
-            {"file_path": str(target), "content": content},
+            f"文件内容如下（自动识别编码：{encoding}）：\n{content}",
+            {"file_path": str(target), "content": content, "encoding": encoding},
         )
 
     def write_script(self, user_id: str, file_path: str, content: str, overwrite: bool = False) -> ScriptOpResult:

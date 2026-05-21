@@ -6,6 +6,8 @@ from typing import List
 from dotenv import load_dotenv
 load_dotenv()
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 def _split_csv(value: str) -> List[str]:
     if not value:
         return []
@@ -16,6 +18,13 @@ def _env_bool(name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+def _env_path(name: str, default: str) -> Path:
+    raw = os.getenv(name, default)
+    path = Path(raw).expanduser()
+    if path.is_absolute():
+        return path
+    return PROJECT_ROOT / path
 
 # 集中读取配置
 # 将配置整理封装成一个setting
@@ -47,13 +56,13 @@ class Settings:
     weather_base_url: str = os.getenv('WEATHER_BASE_URL', 'https://pn6yvyt6je.re.qweatherapi.com/v7/weather/now')
     tavily_api_key: str = os.getenv('TAVILY_API_KEY', '')
 
-    data_dir: Path = Path(os.getenv('DATA_DIR', './src/data'))
-    memo_dir: Path = Path(os.getenv('MEMO_DIR', './src/data/memo'))
-    quick_reply_file: Path = Path(os.getenv('QUICK_REPLY_FILE', './src/data/quick_replies.json'))
-    user_db_file: Path = Path(os.getenv('USER_DB_FILE', './src/data/userdatabase.json'))
-    reminder_db_file: Path = Path(os.getenv('REMINDER_DB_FILE', './src/data/reminders.json'))
-    user_memory_dir: Path = Path(os.getenv('USER_MEMORY_DIR', './src/data/user_memory'))
-    script_workspace_dir: Path = Path(os.getenv('SCRIPT_WORKSPACE_DIR', './src/data/scripts'))
+    data_dir: Path = _env_path('DATA_DIR', './data')
+    memo_dir: Path = _env_path('MEMO_DIR', './data/memo')
+    quick_reply_file: Path = _env_path('QUICK_REPLY_FILE', './data/quick_replies.json')
+    user_db_file: Path = _env_path('USER_DB_FILE', './data/userdatabase.json')
+    reminder_db_file: Path = _env_path('REMINDER_DB_FILE', './data/reminders.json')
+    user_memory_dir: Path = _env_path('USER_MEMORY_DIR', './data/user_memory')
+    script_workspace_dir: Path = _env_path('SCRIPT_WORKSPACE_DIR', './data/scripts')
     python_script_timeout_sec: int = int(os.getenv('PYTHON_SCRIPT_TIMEOUT_SEC', '15'))
 
 

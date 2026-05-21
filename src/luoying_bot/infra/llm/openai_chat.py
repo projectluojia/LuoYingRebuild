@@ -80,4 +80,14 @@ class OpenAICompatibleChatModel(ChatModel):
                 yield content
 
     def _extra_body(self) -> dict[str, object]:
+        if self._is_deepseek_api():
+            return {
+                "thinking": {
+                    "type": "enabled" if self.enable_thinking else "disabled",
+                }
+            }
         return {"chat_template_kwargs": {"enable_thinking": self.enable_thinking}}
+
+    def _is_deepseek_api(self) -> bool:
+        marker = f"{self.base_url} {self.model}".lower()
+        return "deepseek" in marker

@@ -115,6 +115,10 @@ def _resolve_uploaded_image(image_id: str, user: WebCurrentUser) -> Path:
     return target
 
 
+def _is_image_workspace_path(file_id: str) -> bool:
+    return Path(file_id).suffix.lower() in ALLOWED_IMAGE_EXTENSIONS
+
+
 def _safe_download_user_id(user_id: str) -> str:
     value = str(user_id or "").strip()
     if not value or Path(value).name != value or value in {".", ".."}:
@@ -223,6 +227,8 @@ def _build_message(req: ChatRequest, user: WebCurrentUser) -> UniMessage:
         message.add_segment("image", file=str(target))
     for file_id in req.file_ids:
         target = _resolve_uploaded_file(file_id, user)
+        if _is_image_workspace_path(file_id):
+            message.add_segment("image", file=str(target))
         message.add_segment(
             "file",
             file=file_id,

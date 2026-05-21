@@ -518,7 +518,15 @@ async function uploadFile(file) {
 
 async function addFiles(files) {
   const slots = MAX_PENDING_FILES - pendingFiles.length;
-  const selected = Array.from(files).slice(0, Math.max(0, slots));
+  const allFiles = Array.from(files);
+  const imageFiles = allFiles.filter((file) => file.type.startsWith("image/"));
+  const normalFiles = allFiles.filter((file) => !file.type.startsWith("image/"));
+
+  if (imageFiles.length) {
+    await addImages(imageFiles);
+  }
+
+  const selected = normalFiles.slice(0, Math.max(0, slots));
   if (!selected.length) return;
 
   const wasSendDisabled = sendButton.disabled;
