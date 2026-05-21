@@ -102,7 +102,8 @@ async def _build_container(
         settings.openai_base_url, 
         settings.openai_api_key, 
         settings.openai_model, 
-        settings.llm_temperature
+        settings.llm_temperature,
+        settings.openai_enable_thinking,
     )
     #把以上东西打个包
     services = ServiceHub(

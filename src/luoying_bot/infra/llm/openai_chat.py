@@ -13,12 +13,14 @@ class OpenAICompatibleChatModel(ChatModel):
             api_key: str, 
             model: str, 
             default_temperature: float = 1.3,
+            enable_thinking: bool = False,
             client: AsyncOpenAI | None = None,
         ):
         self.base_url = base_url.rstrip('/')
         self.api_key = api_key
         self.model = model
         self.default_temperature = default_temperature
+        self.enable_thinking = enable_thinking
 
         self.client = client or AsyncOpenAI(
             api_key=api_key,
@@ -48,6 +50,7 @@ class OpenAICompatibleChatModel(ChatModel):
             model=self.model,
             messages=messages,
             temperature=self.default_temperature if temperature is None else temperature,
+            extra_body=self._extra_body(),
         )
         return response.choices[0].message.content or ""
 
@@ -67,6 +70,7 @@ class OpenAICompatibleChatModel(ChatModel):
             messages=messages,
             temperature=self.default_temperature if temperature is None else temperature,
             stream=True,
+            extra_body=self._extra_body(),
         )
         async for chunk in stream:
             if not chunk.choices:
@@ -74,3 +78,6 @@ class OpenAICompatibleChatModel(ChatModel):
             content = chunk.choices[0].delta.content
             if content:
                 yield content
+
+    def _extra_body(self) -> dict[str, object]:
+        return {"chat_template_kwargs": {"enable_thinking": self.enable_thinking}}

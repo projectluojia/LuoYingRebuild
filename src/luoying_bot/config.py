@@ -11,6 +11,12 @@ def _split_csv(value: str) -> List[str]:
         return []
     return [item.strip() for item in value.split(',') if item.strip()]
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
 # 集中读取配置
 # 将配置整理封装成一个setting
 @dataclass(slots=True)
@@ -26,6 +32,7 @@ class Settings:
     openai_api_key: str = os.getenv('OPENAI_API_KEY', '')
     openai_model: str = os.getenv('OPENAI_MODEL', 'deepseek-chat')
     llm_temperature: float = float(os.getenv('LLM_TEMPERATURE', '1.0'))
+    openai_enable_thinking: bool = _env_bool('OPENAI_ENABLE_THINKING', False)
 
     coding_base_url: str = os.getenv('CODER_BASE_URL', 'https://dashscope.aliyuncs.com/compatible-mode/v1')
     coding_api_key: str = os.getenv('CODER_API_KEY', '')
