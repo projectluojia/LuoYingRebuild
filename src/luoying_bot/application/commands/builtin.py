@@ -1,5 +1,6 @@
 from __future__ import annotations
 import random
+import asyncio
 from luoying_bot.config import settings
 from luoying_bot.application.commands.base import BaseCommand
 from luoying_bot.domain.context import ChatContext
