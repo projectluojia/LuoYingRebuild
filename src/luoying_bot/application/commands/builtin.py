@@ -219,6 +219,7 @@ class EmojiCommand(BaseCommand):
 
 class EmojiRangeCommand(BaseCommand):
     name = '/emoji_range'
+    args_required = True
     required_args = {'--left': ['-l'], '--right': ['-r']}
     async def validate(self, args): 
         if not args['--left'].isdigit() or not args['--right'].isdigit(): 
