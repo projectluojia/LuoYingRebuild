@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -18,7 +18,8 @@ from luoying_bot.infra.logging_setup import context_log_extra
 from luoying_bot.ports.llm import ChatModel
 from luoying_bot.ports.memory import ConversationMemory
 from luoying_bot.ports.transport import TransportCapabilityError
-from luoying_bot.constants import CLI_SYSTEM_PROMPT,QQ_GROUP_SYSTEM_PROMPT,REACT_INSTRUCTION,WEB_SYSTEM_PROMPT
+from luoying_bot.constants import REACT_INSTRUCTION
+from luoying_bot.system_prompt_parts import build_system_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,8 @@ class AgentService:
         max_steps:int=20,
         skill_timeout_sec: float = 30.0,
         total_timeout_sec: float = 90.0,
+        system_prompt_basic_style: str = "默认",
+        system_prompt_extra_trait_levels: Mapping[str, str | None] | None = None,
     ):
         self.model=model
         self.memory=memory
@@ -71,12 +74,21 @@ class AgentService:
         self.max_steps=max_steps
         self.skill_timeout_sec=skill_timeout_sec
         self.total_timeout_sec=total_timeout_sec
+        self.system_prompt_basic_style = system_prompt_basic_style
+        self.system_prompt_extra_trait_levels = system_prompt_extra_trait_levels
+
+    def _build_system_prompt(self, client_type: str) -> str:
+        return build_system_prompt(
+            client_type=client_type,
+            basic_style=self.system_prompt_basic_style,
+            extra_trait_levels=self.system_prompt_extra_trait_levels,
+        )
 
     def _select_system_prompt(self,platform: Platform,channel_type: ChannelType)->str:
         if platform == Platform.QQ and channel_type == ChannelType.GROUP:
-            return QQ_GROUP_SYSTEM_PROMPT
+            return self._build_system_prompt("qq_group")
         elif platform == Platform.QQ and channel_type == ChannelType.PRIVATE:
-            pass
+            return self._build_system_prompt("qq_private")
         elif platform == Platform.WHATSAPP :
             pass
         elif platform == Platform.FEISHU:
@@ -84,11 +96,11 @@ class AgentService:
         elif platform == Platform.DINGDING:
             pass
         elif platform == Platform.WEB:
-            return WEB_SYSTEM_PROMPT
+            return self._build_system_prompt("web")
         elif platform == Platform.CLI:
-            return CLI_SYSTEM_PROMPT
+            return self._build_system_prompt("cli")
 
-        return WEB_SYSTEM_PROMPT
+        return self._build_system_prompt("web")
 
     def _runtime_context_message(self) -> dict[str, str]:
         now = datetime.now(timezone(timedelta(hours=8)))
