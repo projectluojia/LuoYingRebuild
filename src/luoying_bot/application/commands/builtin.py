@@ -213,7 +213,7 @@ class EmojiCommand(BaseCommand):
             pass
 
         if int(args['--code']) not in OFFICIAL_EMOJIS:
-            return Reply(text='未知的表情代码，不保证可发出', silent=True)
+            return Reply(text='未知的表情代码，不保证可发出', silent=False)
 
         return Reply(text='', silent=True)
 
@@ -226,8 +226,8 @@ class EmojiRangeCommand(BaseCommand):
             raise ValueError('--left 和 --right 必须是数字')
         if int(args['--left']) > int(args['--right']): 
             raise ValueError('--left 必须小于或等于 --right')
-        if int(args['--left']) - int(args['--right']) +1 > 10 :
-            raise ValueError('一次查询范围不能超过 10')
+        if int(args['--right'])-int(args['--left'])+1 > 20 :
+            raise ValueError('一次查询范围不能超过 20')
         return args
 
     async def execute(self, context, args):
@@ -239,7 +239,7 @@ class EmojiRangeCommand(BaseCommand):
             except Exception:
                 pass
 
-        return Reply(text=f"成功发送的表情代码：{', '.join(str(code) for code in success_send.keys())}", silent=True)
+        return Reply(text=f"成功发送的表情代码：{', '.join(str(code) for code in success_send.keys())}", silent=False)
 
 
 
