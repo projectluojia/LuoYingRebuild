@@ -236,6 +236,7 @@ class EmojiRangeCommand(BaseCommand):
             try:
                 await self.services.transport.send_reaction(context, emoji_id=range_code)
                 success_send[range_code] = True
+                await asyncio.sleep(0.6)
             except Exception:
                 pass
 
