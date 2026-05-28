@@ -222,7 +222,7 @@ class EmojiListCommand(BaseCommand):
     name = '/emoji_list'
     async def validate(self, args): return args
     async def execute(self, context, args):
-        return Reply(text=f"表情列表：{https://bot.q.qq.com/wiki/develop/api-v2/openapi/emoji/model.html#EmojiType}")
+        return Reply(text=f"表情列表：https://bot.q.qq.com/wiki/develop/api-v2/openapi/emoji/model.html#EmojiType")
 
 
 #测试通过
