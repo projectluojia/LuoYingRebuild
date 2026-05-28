@@ -217,6 +217,31 @@ class EmojiCommand(BaseCommand):
 
         return Reply(text='', silent=True)
 
+class EmojiRangeCommand(BaseCommand):
+    name = '/emoji_range'
+    required_args = {'--left': ['-l'], '--right': ['-r']}
+    async def validate(self, args): 
+        if not args['--left'].isdigit() or not args['--right'].isdigit(): 
+            raise ValueError('--left 和 --right 必须是数字')
+        if int(args['--left']) > int(args['--right']): 
+            raise ValueError('--left 必须小于或等于 --right')
+        if int(args['--left']) - int(args['--right']) +1 > 10 :
+            raise ValueError('一次查询范围不能超过 10')
+        return args
+
+    async def execute(self, context, args):
+        success_send = {}
+        for range_code in range(int(args['--left']), int(args['--right']) + 1):
+            try:
+                await self.services.transport.send_reaction(context, emoji_id=range_code)
+                success_send[range_code] = True
+            except Exception:
+                pass
+
+        return Reply(text=f"成功发送的表情代码：{', '.join(str(code) for code in success_send.keys())}", silent=True)
+
+
+
 
 class EmojiListCommand(BaseCommand):
     name = '/emoji_list'
