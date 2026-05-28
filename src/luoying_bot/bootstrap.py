@@ -15,6 +15,7 @@ from luoying_bot.application.services.quick_reply_service import QuickReplyServi
 from luoying_bot.application.services.reminder_service import ReminderService
 from luoying_bot.application.services.risk_control_service import RiskControlService
 from luoying_bot.application.services.script_workspace_service import ScriptWorkspaceService
+from luoying_bot.application.services.user_prompt_settings_service import UserPromptSettingsService
 from luoying_bot.application.services.user_service import UserService
 from luoying_bot.application.services.user_memory_service import UserMemoryService
 from luoying_bot.config import settings
@@ -23,6 +24,7 @@ from luoying_bot.infra.llm.openai_chat import OpenAICompatibleChatModel
 from luoying_bot.infra.memory.in_memory import InMemoryConversationMemory
 from luoying_bot.infra.repos.json_memo_repo import JsonMemoRepo
 from luoying_bot.infra.repos.json_reminder_repo import JsonReminderRepo
+from luoying_bot.infra.repos.json_user_prompt_settings_repo import JsonUserPromptSettingsRepo
 from luoying_bot.infra.repos.json_user_repo import JsonUserRepo
 from luoying_bot.infra.scheduler.async_scheduler import AsyncScheduler
 from luoying_bot.infra.transports.cli_transport import CliTransport
@@ -39,6 +41,7 @@ class AppContainer:
     builtin_schedule_service: BuiltinScheduleService
     script_workspace_service: ScriptWorkspaceService
     risk_control_service: RiskControlService
+    user_prompt_settings_service: UserPromptSettingsService
     memo_service: MemoService
     quick_reply_service: QuickReplyService | None
     commands: CommandDispatcher
@@ -72,6 +75,9 @@ async def _build_container(
     enable_quick_reply: bool = True,
 ) -> AppContainer:
     user_service = UserService(JsonUserRepo(settings.user_db_file))
+    user_prompt_settings_service = UserPromptSettingsService(
+        JsonUserPromptSettingsRepo(settings.user_prompt_settings_file)
+    )
     scheduler = AsyncScheduler()
     reminder_service = ReminderService(
         JsonReminderRepo(settings.reminder_db_file),
@@ -119,6 +125,7 @@ async def _build_container(
         memory=memory,
         risk_control_service=risk_control_service,
         user_memory_service=user_memory_service,
+        user_prompt_settings_service=user_prompt_settings_service,
     )
 
     #指令
@@ -166,6 +173,7 @@ async def _build_container(
         memo_service=memo_service,
         quick_reply_service=quick_reply_service,
         risk_control_service=risk_control_service,
+        user_prompt_settings_service=user_prompt_settings_service,
         script_workspace_service=script_workspace_service,
         commands=commands,
         skills=skills,

@@ -60,6 +60,7 @@ class Settings:
     memo_dir: Path = _env_path('MEMO_DIR', './data/memo')
     quick_reply_file: Path = _env_path('QUICK_REPLY_FILE', './data/quick_replies.json')
     user_db_file: Path = _env_path('USER_DB_FILE', './data/userdatabase.json')
+    user_prompt_settings_file: Path = _env_path('USER_PROMPT_SETTINGS_FILE', './data/user_prompt_settings.json')
     reminder_db_file: Path = _env_path('REMINDER_DB_FILE', './data/reminders.json')
     user_memory_dir: Path = _env_path('USER_MEMORY_DIR', './data/user_memory')
     script_workspace_dir: Path = _env_path('SCRIPT_WORKSPACE_DIR', './data/scripts')

@@ -15,6 +15,13 @@ class UserProfile:
     name: str | None = None
 
 
+@dataclass(slots=True)
+class UserPromptSettings:
+    user_id: str
+    basic_style: str = "默认"
+    extra_trait_levels: dict[str, str] = field(default_factory=dict)
+
+
 #提醒记录
 @dataclass(slots=True)
 class ReminderRecord:
@@ -37,6 +44,18 @@ class UserRepo(ABC):
     def update_fields(self, user_id: str, **fields: str | None) -> None: ...
     @abstractmethod
     def delete(self, user_id: str) -> bool: ...
+
+
+class UserPromptSettingsRepo(ABC):
+    @abstractmethod
+    def get(self, user_id: str) -> UserPromptSettings | None: ...
+
+    @abstractmethod
+    def save(self, settings: UserPromptSettings) -> None: ...
+
+    @abstractmethod
+    def delete(self, user_id: str) -> bool: ...
+
 
 #提醒基类
 class ReminderRepo(ABC):

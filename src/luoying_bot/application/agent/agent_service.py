@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -65,8 +65,6 @@ class AgentService:
         max_steps:int=20,
         skill_timeout_sec: float = 30.0,
         total_timeout_sec: float = 90.0,
-        system_prompt_basic_style: str = "默认",
-        system_prompt_extra_trait_levels: Mapping[str, str | None] | None = None,
     ):
         self.model=model
         self.memory=memory
@@ -74,21 +72,20 @@ class AgentService:
         self.max_steps=max_steps
         self.skill_timeout_sec=skill_timeout_sec
         self.total_timeout_sec=total_timeout_sec
-        self.system_prompt_basic_style = system_prompt_basic_style
-        self.system_prompt_extra_trait_levels = system_prompt_extra_trait_levels
 
-    def _build_system_prompt(self, client_type: str) -> str:
+    def _build_system_prompt(self, client_type: str, user_id: str) -> str:
+        prompt_settings = self.skills.services.user_prompt_settings_service.get(user_id)
         return build_system_prompt(
             client_type=client_type,
-            basic_style=self.system_prompt_basic_style,
-            extra_trait_levels=self.system_prompt_extra_trait_levels,
+            basic_style=prompt_settings.basic_style,
+            extra_trait_levels=prompt_settings.extra_trait_levels,
         )
 
-    def _select_system_prompt(self,platform: Platform,channel_type: ChannelType)->str:
+    def _select_system_prompt(self,platform: Platform,channel_type: ChannelType,user_id: str)->str:
         if platform == Platform.QQ and channel_type == ChannelType.GROUP:
-            return self._build_system_prompt("qq_group")
+            return self._build_system_prompt("qq_group", user_id)
         elif platform == Platform.QQ and channel_type == ChannelType.PRIVATE:
-            return self._build_system_prompt("qq_private")
+            return self._build_system_prompt("qq_private", user_id)
         elif platform == Platform.WHATSAPP :
             pass
         elif platform == Platform.FEISHU:
@@ -96,11 +93,11 @@ class AgentService:
         elif platform == Platform.DINGDING:
             pass
         elif platform == Platform.WEB:
-            return self._build_system_prompt("web")
+            return self._build_system_prompt("web", user_id)
         elif platform == Platform.CLI:
-            return self._build_system_prompt("cli")
+            return self._build_system_prompt("cli", user_id)
 
-        return self._build_system_prompt("web")
+        return self._build_system_prompt("web", user_id)
 
     def _runtime_context_message(self) -> dict[str, str]:
         now = datetime.now(timezone(timedelta(hours=8)))
@@ -444,8 +441,8 @@ class AgentService:
         user_text=self._render_user_message_for_agent(message)
         pltf=message.platform
         cntp=message.context.target.channel_type
-        system_prompt=self._select_system_prompt(pltf,cntp)
         user_id=str(message.context.user.user_id)
+        system_prompt=self._select_system_prompt(pltf,cntp,user_id)
         user_memory_text=self.skills.services.user_memory_service.build_prompt_block(user_id)
 
 
@@ -590,8 +587,8 @@ class AgentService:
         user_text = self._render_user_message_for_agent(message)
         pltf = message.platform
         cntp = message.context.target.channel_type
-        system_prompt = self._select_system_prompt(pltf, cntp)
         user_id = str(message.context.user.user_id)
+        system_prompt = self._select_system_prompt(pltf, cntp, user_id)
         user_memory_text = self.skills.services.user_memory_service.build_prompt_block(user_id)
 
         logger.info("主 Agent 开始处理流式消息", extra=extra)
