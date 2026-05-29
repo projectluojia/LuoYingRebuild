@@ -21,7 +21,7 @@ class CodingAgentSkill(BaseSkill):
     name = "coding_agent"
     platform = [Platform.QQ, Platform.WEB, Platform.CLI]
     description = (
-        "编程子agent。适合创建、查看、列出、删除、覆盖、发送脚本文件，"
+        "编程子agent。适合创建、查看、列出、删除、覆盖脚本文件，"
         "支持写 Python/Rust/C++/C/Java/JS 等任意语言源码；"
         "支持运行 Python 脚本。"
         "payload 可传 instruction，若为空则默认使用用户原消息。"
@@ -45,7 +45,7 @@ class CodingAgentSkill(BaseSkill):
             "run_python_script": 0,
             "list_script": 0,
             "send_script_result": 0,
-            "send_script": 0,
+            "upload_written_script": 0,
         }
 
         async def debug_track(text: str) -> None:
@@ -53,6 +53,24 @@ class CodingAgentSkill(BaseSkill):
                 await transport.send_track(req.context, f"[编程调试] {text}", kind="coding_debug")
             except Exception:
                 logger.debug("发送 coding debug track 失败", exc_info=True)
+
+        async def upload_written_script(file_path: str, result_text: str) -> str:
+            debug_counts["upload_written_script"] += 1
+            await debug_track(
+                f"自动发送写入文件 #{debug_counts['upload_written_script']}：路径={file_path}"
+            )
+            try:
+                send_result = await script_service.send_script_to_transport(
+                    user_id=user_id,
+                    file_path=file_path,
+                    context=req.context,
+                    transport=transport,
+                )
+            except Exception as e:
+                return f"{result_text}\n\n文件自动发送异常：{type(e).__name__}: {e}"
+            if not send_result.ok:
+                return f"{result_text}\n\n文件自动发送失败：{send_result.text}"
+            return f"{result_text}\n{send_result.text}"
 
         checkpointer=InMemorySaver()
         config:RunnableConfig = {
@@ -105,7 +123,9 @@ class CodingAgentSkill(BaseSkill):
             )
             logger.debug("编程子 Agent 调用 create_script，file_path=%s", file_path)
             result = script_service.write_script(user_id, file_path, content, overwrite=False)
-            return result.text
+            if not result.ok:
+                return result.text
+            return await upload_written_script(file_path, result.text)
 
         @tool
         async def overwrite_script(file_path: str, content: str) -> str:
@@ -121,7 +141,9 @@ class CodingAgentSkill(BaseSkill):
             )
             logger.debug("编程子 Agent 调用 overwrite_script，file_path=%s", file_path)
             result = script_service.write_script(user_id, file_path, content, overwrite=True)
-            return result.text
+            if not result.ok:
+                return result.text
+            return await upload_written_script(file_path, result.text)
 
         @tool
         async def delete_script(file_path: str) -> str:
@@ -167,24 +189,6 @@ class CodingAgentSkill(BaseSkill):
 
             return result.text
 
-        @tool
-        async def send_script(file_path: str) -> str:
-            """把指定脚本文件发送到当前聊天会话。
-            需要一个参数           
-            file_path:str 是当前工作区下要发送的脚本的相对路径
-            返回发送情况
-            """
-            debug_counts["send_script"] += 1
-            await debug_track(f"发送脚本 #{debug_counts['send_script']}：路径={file_path}")
-            logger.debug("编程子 Agent 调用 send_script，file_path=%s", file_path)
-            result = await script_service.send_script_to_transport(
-                user_id=user_id,
-                file_path=file_path,
-                context=req.context,
-                transport=transport,
-            )
-            return result.text
-
         tools = [
             list_scripts,
             read_script,
@@ -192,7 +196,6 @@ class CodingAgentSkill(BaseSkill):
             overwrite_script,
             delete_script,
             run_python_script,
-            send_script,
         ]
 
         model = ChatOpenAI(

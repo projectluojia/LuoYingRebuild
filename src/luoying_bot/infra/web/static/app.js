@@ -11,6 +11,10 @@ const sendButton = document.querySelector("#sendButton");
 const messages = document.querySelector("#messages");
 const chatPanel = document.querySelector(".chat-panel");
 const chatStatus = document.querySelector("#chatStatus");
+const sentFilesPanel = document.querySelector(".sent-files-panel");
+const sentFilesList = document.querySelector("#sentFilesList");
+const sentFilesEmpty = document.querySelector("#sentFilesEmpty");
+const sentFilesCount = document.querySelector("#sentFilesCount");
 
 const STREAM_IDLE_TIMEOUT_MS = 45000;
 const MAX_PENDING_IMAGES = 8;
@@ -20,6 +24,7 @@ const sessionId = localStorage.getItem("luoying_session_id") || crypto.randomUUI
 localStorage.setItem("luoying_session_id", sessionId);
 let pendingImages = [];
 let pendingFiles = [];
+const sentFiles = new Map();
 
 function escapeHtml(value) {
   return String(value)
@@ -365,38 +370,61 @@ function formatFileSize(size) {
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function createFileCard(file) {
-  const href = safeHref(file.url || "");
-  if (!href) {
-    return createTrack(`文件已生成：${file.file_name || file.path || "未命名文件"}`);
+function fileDedupKey(file) {
+  return String(file.url || file.path || file.file || file.file_name || "").trim();
+}
+
+function normalizeSentFile(file) {
+  const fileName = file.file_name || file.name || file.path || "下载文件";
+  return {
+    file_name: fileName,
+    path: file.path || "",
+    size: file.size || 0,
+    url: file.url || "",
+    file: file.file || "",
+  };
+}
+
+function renderSentFiles() {
+  if (!sentFilesList || !sentFilesEmpty || !sentFilesCount) return;
+  const files = Array.from(sentFiles.values());
+  sentFilesCount.textContent = String(files.length);
+  sentFilesEmpty.hidden = files.length > 0;
+  sentFilesList.innerHTML = "";
+
+  for (const file of files) {
+    const item = document.createElement("a");
+    const href = safeHref(file.url || "");
+    item.className = "sent-file-item";
+    if (href) {
+      item.href = href;
+      item.download = file.file_name || "";
+      item.rel = "noopener noreferrer";
+    } else {
+      item.href = "#";
+      item.setAttribute("aria-disabled", "true");
+    }
+
+    const name = document.createElement("strong");
+    name.textContent = file.file_name || file.path || "下载文件";
+    item.appendChild(name);
+
+    const meta = document.createElement("span");
+    const sizeText = formatFileSize(file.size);
+    meta.textContent = [file.path, sizeText].filter(Boolean).join(" · ") || "已生成";
+    item.appendChild(meta);
+
+    sentFilesList.appendChild(item);
   }
+}
 
-  const card = document.createElement("div");
-  card.className = "file-card";
-
-  const info = document.createElement("div");
-  info.className = "file-info";
-
-  const name = document.createElement("strong");
-  name.textContent = file.file_name || file.path || "下载文件";
-  info.appendChild(name);
-
-  const meta = document.createElement("span");
-  const sizeText = formatFileSize(file.size);
-  meta.textContent = [file.path, sizeText].filter(Boolean).join(" · ");
-  info.appendChild(meta);
-
-  const link = document.createElement("a");
-  link.href = href;
-  link.download = file.file_name || "";
-  link.textContent = "下载";
-  link.rel = "noopener noreferrer";
-
-  card.appendChild(info);
-  card.appendChild(link);
-  messages.appendChild(card);
-  scrollToBottom();
-  return card;
+function addSentFile(file) {
+  const normalized = normalizeSentFile(file || {});
+  const key = fileDedupKey(normalized);
+  if (!key) return;
+  sentFiles.set(key, normalized);
+  if (sentFilesPanel) sentFilesPanel.classList.add("has-files");
+  renderSentFiles();
 }
 
 function parseSse(raw) {
@@ -619,14 +647,14 @@ async function sendMessage(text, images = [], files = []) {
         if (event === "track") {
           clearPending();
           if (data.kind === "file" && data.metadata?.url) {
-            createFileCard(data.metadata);
+            addSentFile(data.metadata);
           } else {
             createTrack(data.text || "");
           }
         }
         if (event === "file") {
           clearPending();
-          createFileCard(data);
+          addSentFile(data);
         }
         if (event === "text_delta") {
           clearPending();
@@ -744,6 +772,7 @@ form.addEventListener("submit", async (event) => {
 });
 
 renderPendingImages();
+renderSentFiles();
 
 messages.addEventListener("click", async (event) => {
   const button = event.target.closest(".copy-code");

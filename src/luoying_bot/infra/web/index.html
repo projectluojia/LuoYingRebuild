@@ -50,7 +50,16 @@
         <button id="sendButton" type="submit">发送</button>
       </form>
     </section>
+
+    <aside class="sent-files-panel" aria-label="已生成文件">
+      <header>
+        <strong>文件</strong>
+        <span id="sentFilesCount">0</span>
+      </header>
+      <div class="sent-files-empty" id="sentFilesEmpty">暂无文件</div>
+      <div class="sent-files-list" id="sentFilesList"></div>
+    </aside>
   </main>
-  <script src="/static/app.js?v=20260521-file-upload"></script>
+  <script src="/static/app.js?v=20260529-sent-files"></script>
 </body>
 </html>

@@ -186,7 +186,7 @@ class ScriptWorkspaceService:
                 "timeout": False,
             },
         )
-        
+
     async def send_script_to_transport(
         self,
         user_id: str,
@@ -197,9 +197,9 @@ class ScriptWorkspaceService:
         target = self._resolve_user_file(user_id, file_path)
         if not target.exists() or not target.is_file():
             return ScriptOpResult(False, f"文件不存在：{file_path}", {"file_path": file_path})
-        
-        await transport.upload_file(context=context,file=str(target))
-        
+
+        await transport.upload_file(context=context, file=str(target))
+
         return ScriptOpResult(
             True,
             f"已发送脚本到当前会话：{file_path}",
