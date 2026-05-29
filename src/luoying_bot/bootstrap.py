@@ -47,6 +47,7 @@ class AppContainer:
     commands: CommandDispatcher
     skills: SkillRegistry
     agent: AgentService
+    tts_service: object
     event_handler: EventHandler
     message_processor: MessageProcessor
     scheduler: AsyncScheduler
@@ -99,6 +100,11 @@ async def _build_container(
     user_memory_service = UserMemoryService(
         TextUserMemoryRepo(settings.user_memory_dir)
     )
+    try:
+        from luoying_bot.application.services.tts_service import create_tts_service
+        tts_service = create_tts_service()
+    except ImportError:
+        tts_service = None
 
 
     memory = InMemoryConversationMemory(
@@ -158,6 +164,7 @@ async def _build_container(
         bot_name=settings.bot_name,
         risk_control_service=risk_control_service,
         commands_enabled=enable_commands,
+        tts_service=tts_service,
     )
     message_processor = MessageProcessor(
         event_handler=event_handler,
@@ -178,6 +185,7 @@ async def _build_container(
         commands=commands,
         skills=skills,
         agent=agent,
+        tts_service=tts_service,
         event_handler=event_handler,
         message_processor=message_processor,
         scheduler=scheduler,

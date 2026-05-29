@@ -64,6 +64,26 @@ class Settings:
     reminder_db_file: Path = _env_path('REMINDER_DB_FILE', './data/reminders.json')
     user_memory_dir: Path = _env_path('USER_MEMORY_DIR', './data/user_memory')
     script_workspace_dir: Path = _env_path('SCRIPT_WORKSPACE_DIR', './data/scripts')
+
+    # TTS
+    tts_provider: str = os.getenv('TTS_PROVIDER', 'volcano')
+    tts_app_id: str = os.getenv('TTS_APP_ID', '')
+    tts_access_token: str = os.getenv('TTS_ACCESS_TOKEN', '')
+    tts_voice_type: str = os.getenv('TTS_VOICE_TYPE', 'zh_female_qingxin')
+    tts_default_emotion: str = os.getenv('TTS_DEFAULT_EMOTION', 'gentle')
+    gpt_sovits_api_url: str = os.getenv('GPT_SOVITS_API_URL', 'http://127.0.0.1:9880')
+    gpt_sovits_ref_audio_path: str = os.getenv(
+        'GPT_SOVITS_REF_AUDIO_PATH',
+        './data/voice/luoying/gentle.wav',
+    )
+    gpt_sovits_prompt_text: str = os.getenv(
+        'GPT_SOVITS_PROMPT_TEXT',
+        '你好，我是珞樱，来自武汉大学人工智能学院。很高兴在这里陪你一起探索人工智能的世界。',
+    )
+    gpt_sovits_prompt_lang: str = os.getenv('GPT_SOVITS_PROMPT_LANG', 'zh')
+    gpt_sovits_text_lang: str = os.getenv('GPT_SOVITS_TEXT_LANG', 'auto')
+    gpt_sovits_speed_factor: float = float(os.getenv('GPT_SOVITS_SPEED_FACTOR', '1.0'))
+    gpt_sovits_streaming_mode: int = int(os.getenv('GPT_SOVITS_STREAMING_MODE', '0'))
     python_script_timeout_sec: int = int(os.getenv('PYTHON_SCRIPT_TIMEOUT_SEC', '15'))
 
 

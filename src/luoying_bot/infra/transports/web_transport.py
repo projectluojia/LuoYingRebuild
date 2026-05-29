@@ -86,6 +86,48 @@ class WebTransport(ChatTransport):
             },
         )
 
+    async def send_audio(
+        self,
+        context: ChatContext,
+        audio_base64: str,
+        volumes: list[float],
+        emotion: str = "neutral",
+        display_text: str = "",
+        chunk_ms: int = 20,
+        sample_rate: int = 24000,
+        duration_ms: float = 0.0,
+    ) -> None:
+        """Send TTS audio + lip-sync volume data for frontend playback."""
+        await self._emit(
+            context,
+            {
+                "type": "audio",
+                "audio": audio_base64,
+                "volumes": volumes,
+                "emotion": emotion,
+                "text": display_text,
+                "chunk_ms": chunk_ms,
+                "sample_rate": sample_rate,
+                "duration_ms": duration_ms,
+            },
+        )
+
+    async def send_expression(
+        self,
+        context: ChatContext,
+        emotion: str,
+        text: str = "",
+    ) -> None:
+        """Send Live2D expression change (without audio)."""
+        await self._emit(
+            context,
+            {
+                "type": "expression",
+                "emotion": emotion,
+                "text": text,
+            },
+        )
+
     async def upload_file(self, context: ChatContext, file: str):
         target = Path(file).resolve()
         user_id = str(context.user.user_id)

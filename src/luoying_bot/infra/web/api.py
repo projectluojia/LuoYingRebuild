@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import io
 import json
+import logging
 import mimetypes
 import re
 import uuid
@@ -21,6 +22,8 @@ from luoying_bot.bootstrap import AppContainer, build_web_container
 from luoying_bot.config import settings
 from luoying_bot.domain.message import UniMessage
 from luoying_bot.infra.transports.web_transport import WebTransport
+
+logger = logging.getLogger(__name__)
 
 WEB_DIR = Path(__file__).resolve().parent
 INDEX_HTML_FILE = WEB_DIR / "index.html"
@@ -268,6 +271,9 @@ class WebApiFactory:
                 close = getattr(model, "close", None)
                 if close is not None:
                     await close()
+                tts_close = getattr(getattr(container, "tts_service", None), "close", None)
+                if tts_close is not None:
+                    await tts_close()
                 await container.transport.close()
 
         app = FastAPI(title="Luoying Web Agent", lifespan=lifespan)
@@ -429,8 +435,9 @@ class WebApiFactory:
                     task.cancel()
                     raise
                 except Exception as exc:
+                    logger.exception("Web stream failed")
                     task.cancel()
-                    yield _sse("error", {"error": f"{type(exc).__name__}: {exc}"})
+                    yield _sse("error", {"error": repr(exc)})
                 finally:
                     transport.unregister_request(ctx.request_uid)
                     with contextlib.suppress(BaseException):
