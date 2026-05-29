@@ -18,7 +18,7 @@ class RiskControlService:
 
     def _match_sen(self,text:str)->str:
         for sen in self.sensitive:
-            text=text.replace(sen.get('content'),"*filtered*")
+            text=text.replace(sen.get('content'),"")
         return text
     
     def _match_input_danger(self,text:str)->str:
