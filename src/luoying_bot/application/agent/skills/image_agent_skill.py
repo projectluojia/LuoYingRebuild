@@ -23,6 +23,7 @@ class ImageAgentSkill(BaseSkill):
     description = (
         "图片识别子agent。用于处理用户消息中的一张或多张图片。"
         "支持：图片描述、OCR文字提取、截图界面识别、多图比较、找差异、按序号分析指定图片、综合回答。"
+        "只处理图片视觉任务；不要用它处理 PDF、Word、Excel、PPT、CSV、Markdown、代码或普通上传文件，这些应优先调用 file_workspace_agent。"
         "\n"
         "适用场景："
         "当用户消息包含图片，或用户在问“这图是什么”“图里写了什么”“帮我看这几张图”"

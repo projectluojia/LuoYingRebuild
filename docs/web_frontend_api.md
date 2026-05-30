@@ -316,7 +316,7 @@ data: JSON字符串
 | kind | 说明 |
 | --- | --- |
 | `agent_action` | 主 Agent 中间步骤 |
-| `coding_debug` | 编程子 Agent 调试步骤 |
+| `workspace_debug` | 文件工作区 Agent 调试步骤 |
 | `file` | 文件生成提示 |
 
 当 `kind` 为 `file` 时，`metadata` 可能包含可下载文件信息：
@@ -390,7 +390,7 @@ data: JSON字符串
 
 #### `script_result`
 
-脚本运行结果事件。当前主要由编程子 Agent 运行 Python 脚本时触发。
+脚本运行结果事件。当前主要由文件工作区 Agent 运行 Python 脚本时触发。
 
 ```json
 {

@@ -28,7 +28,12 @@ class SkillRegistry:
                     self.register(cls(self.services))
 
     def summary(self) -> str:
-        return '\n'.join(f'- {skill.name}: {skill.description}' for skill in self.skills.values())
+        priority = {"file_workspace_agent": 0}
+        skills = sorted(
+            self.skills.values(),
+            key=lambda skill: (priority.get(skill.name, 100), skill.name),
+        )
+        return '\n'.join(f'- {skill.name}: {skill.description}' for skill in skills)
 
     def get(self, name: str) -> BaseSkill | None:
         return self.skills.get(name)

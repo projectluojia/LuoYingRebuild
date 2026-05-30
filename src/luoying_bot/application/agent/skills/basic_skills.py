@@ -138,7 +138,11 @@ class WeatherSkill(BaseSkill):
 class WebSearchSkill(BaseSkill):
     name = 'web_search'
     platform = [Platform.QQ, Platform.WEB, Platform.CLI]
-    description = '联网搜索信息。payload 需要 query 查询内容，k 返回条数，最多 5 '
+    description = (
+        '联网搜索外部信息。只在用户明确需要互联网、新闻、实时资料、网页资料、外部事实核验时调用。'
+        '不要用它读取、总结或分析用户上传文件、upload/ 文件、工作区文件、PDF、Word、Excel、PPT、代码或本地文本；这些任务应优先调用 file_workspace_agent。'
+        'payload 需要 query 查询内容，k 返回条数，最多 5。'
+    )
 
     def _tavily_search_sync(self, query: str, k: int = 5) -> Optional[str]:
         try:
