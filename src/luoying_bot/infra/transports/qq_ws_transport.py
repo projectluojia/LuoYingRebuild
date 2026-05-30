@@ -1,7 +1,9 @@
 from __future__ import annotations
 import asyncio, json, os, re, tempfile, uuid
+import mimetypes
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import parse_qs, unquote, urlparse
 import httpx
 import websockets
 import logging
@@ -137,12 +139,29 @@ class QQWsTransport(ChatTransport):
         return None
 
     #将消息解析成unimessage消息段数组
+    def _parse_cq_attrs(self, body: str) -> dict[str, str]:
+        attrs: dict[str, str] = {}
+        for item in body.split(","):
+            if "=" not in item:
+                continue
+            key, value = item.split("=", 1)
+            attrs[key.strip()] = value.strip()
+        return attrs
+
+    def _extract_raw_file_segments(self, raw_message: str) -> list[dict[str, str]]:
+        files: list[dict[str, str]] = []
+        for body in re.findall(r"\[CQ:file,([^\]]+)\]", raw_message or ""):
+            files.append(self._parse_cq_attrs(body))
+        return files
+
     def _parse_segments(self, message_field: Any, raw_message: str) -> list[tuple[str, dict]]:
         segments: list[tuple[str, dict]] = []
         
         #如果选择了array模式
         if isinstance(message_field, list):
             #直接用现成的OneBot message段
+            raw_file_segments = self._extract_raw_file_segments(raw_message)
+            raw_file_index = 0
             for seg in message_field:
                 seg_type = seg.get('type'); seg_data = seg.get('data', {})
                 if seg_type == 'text':
@@ -155,6 +174,14 @@ class QQWsTransport(ChatTransport):
                     segments.append(('face', {'face_id': str(seg_data.get('id', ''))}))
                 elif seg_type == 'image': 
                     segments.append(('image', {'file': seg_data.get('file', '')}))
+                elif seg_type == 'file':
+                    data = dict(seg_data) if isinstance(seg_data, dict) else {}
+                    if raw_file_index < len(raw_file_segments):
+                        for key, value in raw_file_segments[raw_file_index].items():
+                            if not str(data.get(key) or "").strip():
+                                data[key] = value
+                    raw_file_index += 1
+                    segments.append(('file', data))
                 else: 
                     segments.append((seg_type or 'unknown', seg_data))
             return segments
@@ -168,6 +195,8 @@ class QQWsTransport(ChatTransport):
             segments.append(('at', {'user_id': qq}))
         for file_name in re.findall(r'\[CQ:image,[^\]]*file=([^,\]]+)', raw_message):
             segments.append(('image', {'file': file_name}))
+        for file_data in self._extract_raw_file_segments(raw_message):
+            segments.append(('file', file_data))
         text = re.sub(r'\[CQ:[^\]]+\]', '', raw_message).strip()
         if text: segments.append(('text', {'text': text}))
         return segments
@@ -459,12 +488,32 @@ class QQWsTransport(ChatTransport):
                 target = upload_dir / f"{uuid.uuid4().hex}{suffix}"
         return (Path("upload") / target.name).as_posix(), target
 
-    async def _download_url_to_file(self, url: str, target: Path) -> int:
+    def _file_name_from_url(self, url: str) -> str:
+        parsed = urlparse(url)
+        query = parse_qs(parsed.query)
+        for key in ("filename", "file_name", "name", "file"):
+            values = query.get(key) or []
+            for value in values:
+                name = Path(unquote(value)).name
+                if name and name not in {".", ".."}:
+                    return name
+        name = Path(unquote(parsed.path)).name
+        return "" if name in {".", ".."} else name
+
+    def _content_type_extension(self, content_type: str) -> str:
+        clean = content_type.split(";", 1)[0].strip().lower()
+        if clean == "application/pdf":
+            return ".pdf"
+        return mimetypes.guess_extension(clean) or ""
+
+    async def _download_url_to_file(self, url: str, target: Path) -> tuple[int, str]:
         total = 0
+        content_type = ""
         try:
             async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
                 async with client.stream("GET", url) as response:
                     response.raise_for_status()
+                    content_type = response.headers.get("content-type", "")
                     with target.open("wb") as f:
                         async for chunk in response.aiter_bytes():
                             if not chunk:
@@ -476,7 +525,7 @@ class QQWsTransport(ChatTransport):
         except Exception:
             target.unlink(missing_ok=True)
             raise
-        return total
+        return total, content_type
 
     async def _download_private_file_segments(
         self,
@@ -531,12 +580,24 @@ class QQWsTransport(ChatTransport):
         meta = metadata or {}
         file_name = (
             str(meta.get("name") or "").strip()
+            or str(meta.get("file_name") or "").strip()
+            or str(meta.get("filename") or "").strip()
             or str(meta.get("file") or "").strip()
+            or self._file_name_from_url(url)
             or Path(file_id).name
             or "upload"
         )
         rel_path, target = self._private_workspace_upload_target(context.user.user_id, file_name)
-        size = await self._download_url_to_file(url, target)
+        size, content_type = await self._download_url_to_file(url, target)
+        if not target.suffix:
+            extension = self._content_type_extension(content_type)
+            if extension:
+                rel_path, new_target = self._private_workspace_upload_target(
+                    context.user.user_id,
+                    f"{target.name}{extension}",
+                )
+                target.rename(new_target)
+                target = new_target
         logger.info("已下载 QQ 私聊文件到工作区：%s，大小 %s bytes", rel_path, size)
         return rel_path
 

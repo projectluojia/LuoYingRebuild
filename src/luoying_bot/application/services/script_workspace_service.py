@@ -272,21 +272,6 @@ class ScriptWorkspaceService:
                 return libreoffice_text, "LibreOffice 文本提取"
         return None
 
-    def list_scripts(self,user_id:str)->ScriptOpResult:
-        base = self._user_dir(user_id=user_id)
-        files = [p for p in base.rglob("*") if p.is_file()]
-        rels = [
-            str(p.relative_to(base)).replace("\\", "/")
-            for p in files
-        ]
-        rels.sort()
-
-        if not rels:
-            return ScriptOpResult(True,"当前没有脚本文件",{"files":[]})
-        lines = ["当前脚本文件："]
-        lines.extend(f"{i}. {name}" for i, name in enumerate(rels, start=1))
-        return ScriptOpResult(True,"\n".join(lines), {"files": rels})
-
     def tree(self, user_id: str) -> ScriptOpResult:
         base = self._user_dir(user_id=user_id)
 

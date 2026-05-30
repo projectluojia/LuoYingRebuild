@@ -43,7 +43,7 @@ class CodingAgentSkill(BaseSkill):
             "delete_script": 0,
             "read_script": 0,
             "run_python_script": 0,
-            "list_script": 0,
+            "tree": 0,
             "send_script_result": 0,
             "upload_written_script": 0,
         }
@@ -81,25 +81,26 @@ class CodingAgentSkill(BaseSkill):
 
 
         @tool
-        async def list_scripts() -> str:
-            """列出当前用户工作区中的所有脚本文件。
+        async def tree() -> str:
+            """以树形结构展示当前用户工作区中的全部文件和文件夹。
             无需参数
-            返回该用户所有脚本
+            返回类似 Windows tree 的工作区目录结构。需要查看有哪些文件时优先使用这个工具。
             """
-            debug_counts["list_script"] += 1
+            debug_counts["tree"] += 1
             await debug_track(
-                f"列出脚本 #{debug_counts['list_script']}"
+                f"查看工作区树 #{debug_counts['tree']}"
             )
-            logger.debug("编程子 Agent 调用 list_scripts")
-            result = script_service.list_scripts(user_id)
+            logger.debug("编程子 Agent 调用 tree")
+            result = script_service.tree(user_id)
             return result.text
 
         @tool
         async def read_script(file_path: str) -> str:
-            """读取指定脚本文件的完整内容。
-            需要一个参数
-            file_path:str 是当前工作区下要读取的脚本的相对路径， 例如 hello.py 或 src/main.rs。
-            返回读取的脚本的内容
+            """读取指定文件的文本内容。
+            支持普通文本、代码、PDF、Word、Excel、PPT 等常见文件；对二进制或复杂文档会尽量提取可读文本，读取失败会返回失败原因。
+            需要一个参数：
+            file_path: str，当前工作区下要读取的相对路径，例如 hello.py 或 upload/work.pdf。
+            返回文件中提取到的文本内容。
             """
             debug_counts["read_script"] += 1
             await debug_track(
@@ -190,7 +191,7 @@ class CodingAgentSkill(BaseSkill):
             return result.text
 
         tools = [
-            list_scripts,
+            tree,
             read_script,
             create_script,
             overwrite_script,
