@@ -11,6 +11,7 @@ from luoying_bot.domain.context import (
     Platform,
     UserIdentity,
 )
+from luoying_bot.domain.schedule import ScheduleRule
 
 from luoying_bot.ports.repos import ReminderRecord, ReminderRepo
 
@@ -47,7 +48,8 @@ class JsonReminderRepo(ReminderRepo):
             run_time=datetime.strptime(row['run_time'], '%Y-%m-%d %H:%M'), 
             content=row['content'], 
             context=context,
-            repeat=row.get('repeat', False)
+            repeat=row.get('repeat', False),
+            schedule_rule=ScheduleRule.from_dict(row.get('schedule_rule')),
         )
     
     #依照群组和个人查询事件
@@ -74,6 +76,7 @@ class JsonReminderRepo(ReminderRepo):
                     'run_time': record.run_time.strftime('%Y-%m-%d %H:%M'), 
                     'content': record.content, 
                     'repeat': record.repeat,
+                    'schedule_rule': record.schedule_rule.to_dict() if record.schedule_rule else None,
                     'context': record.context.to_dict(),
                 }
             )

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
+from luoying_bot.domain.schedule import ScheduleRule
 from luoying_bot.application.jobs.builtin_jobs import BUILTIN_JOBS, BuiltinJobSpec
 from luoying_bot.application.services.group_runtime import GroupRuntime
 from luoying_bot.domain.context import (
@@ -40,10 +41,20 @@ class BuiltinScheduleService:
                 job = self._build_job(group_id, spec)
                 self.scheduler.add_job(job)
 
+    def _build_rule(self, spec: BuiltinJobSpec) -> ScheduleRule:
+        return ScheduleRule(
+            hour=spec.hour,
+            minute=spec.minute,
+            weekly_days=spec.weekly_days,
+            month_days=spec.month_days,
+            union_weekly_monthly=spec.union_weekly_monthly,
+        )
+
     # 构造真正可交给 scheduler 的 job
     def _build_job(self, group_id: str, spec: BuiltinJobSpec) -> ScheduledJob:
         job_id = f'builtin:{spec.job_key}:group:{group_id}'
-        run_time = self._get_next_run_time(spec.hour, spec.minute)
+        rule = self._build_rule(spec)
+        run_time = rule.next_run_after(datetime.now())
 
         async def callback(job: ScheduledJob) -> None:
             await spec.handler(self, group_id, job)
@@ -52,20 +63,13 @@ class BuiltinScheduleService:
             job_id=job_id,
             run_time=run_time,
             callback=callback,
-            repeat_daily=True,
+            schedule_rule=rule,
             payload={
                 'group_id': group_id,
                 'job_key': spec.job_key,
+                "schedule_rule": rule.to_dict(),
             },
         )
-
-    # 计算下次执行时间
-    def _get_next_run_time(self, hour: int, minute: int) -> datetime:
-        now = datetime.now()
-        target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        if target <= now:
-            target += timedelta(days=1)
-        return target
 
     # 为内置任务构造群消息上下文
     def build_group_context(self, group_id: str) -> ChatContext:

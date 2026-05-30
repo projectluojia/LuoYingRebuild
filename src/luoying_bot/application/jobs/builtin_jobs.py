@@ -36,6 +36,9 @@ class BuiltinJobSpec:
     minute: int
     handler: BuiltinJobHandler
     enabled: bool = True
+    weekly_days: tuple[int, ...] = ()
+    month_days: tuple[int, ...] = ()
+    union_weekly_monthly: bool = False
 
 
 # ========== 通用 handler 示例：发送固定文本 ==========
@@ -52,6 +55,13 @@ async def send_class_remind(
     job: ScheduledJob
 ) -> None:
     await service.send_group_text(group_id, '要上课了，需要点到的同学记得打卡哦！')
+
+async def send_class_remind_new(
+    service: 'BuiltinScheduleService',
+    group_id: str,
+    job: ScheduledJob
+) -> None:
+    await service.send_group_text(group_id, '要上课了，需要点到的同学记得打卡哦！（本条消息用于测试CRON）')
 
 async def whWeather() -> str:
     if not settings.qweather_api_key: 
@@ -116,5 +126,12 @@ BUILTIN_JOBS: list[BuiltinJobSpec] = [
         hour=9,
         minute=40,
         handler=send_class_remind,
+    ),
+    BuiltinJobSpec(
+        job_key='class_remind_new',
+        hour=9,
+        minute=40,
+        handler=send_class_remind_new,
+        weekly_days=(0,1,2,3,4),
     ),
 ]

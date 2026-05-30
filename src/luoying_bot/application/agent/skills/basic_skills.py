@@ -10,6 +10,7 @@ from luoying_bot.application.agent.skill_base import BaseSkill, SkillRequest, Sk
 from luoying_bot.config import settings
 from luoying_bot.constants import FORTUNE_DO,FORTUNE_LEVELS
 from luoying_bot.domain.context import Platform
+from luoying_bot.domain.schedule import ScheduleRule
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,12 @@ class ReminderSkill(BaseSkill):
     description = (
         '创建、查看、删除提醒事项。'
         '系统提示词中已经提供当前时间；如需再次确认精确时间，可以调用TimeSkill。'
-        'payload 里可带 action=create/list/delete run_time=YYYY-MM-DD HH:MM （这是格式：年-月-日 时:分，请填入数字，禁止任何额外内容） content=（提醒的内容） repeat=True/False （是否每日重复）indexes=[（一个列表，是要删除的编号，编号不是从0而是从1开始！）]'
+        'payload 里可带 action=create/list/delete content=（提醒内容） indexes=[要删除的编号，编号从1开始]。'
+        '一次性提醒使用 run_time=YYYY-MM-DD HH:MM。'
+        '每日重复可继续使用 repeat=True/False。'
+        '周期提醒使用 hour=0..23 minute=0..59 weekly_days=[0..6] month_days=[1..31] union_weekly_monthly=True/False。'
+        'weekly_days 中周一=0，周日=6。'
+        '如果 weekly_days 和 month_days 同时存在，union_weekly_monthly=True 表示并集；False 表示周规则优先，忽略月规则。'
     )
 
     def _parse_run_time(self,value: str) -> datetime:
@@ -39,13 +45,40 @@ class ReminderSkill(BaseSkill):
         raise ValueError(
             f"无法识别的时间格式：{value}。请使用 YYYY-MM-DD HH:MM 或 YYYY-MM-DD HH:MM:SS"
         )
-    
+
     def _to_bool(self,value) -> bool:
         if isinstance(value, bool):
             return value
         if isinstance(value, str):
             return value.strip().lower() in {'true', '1', 'yes', 'y'}
         return bool(value)
+
+    def _to_int_tuple(self, value) -> tuple[int, ...]:
+        if value is None:
+            return ()
+        if isinstance(value, str):
+            parts = [part.strip() for part in value.split(",") if part.strip()]
+            return tuple(int(part) for part in parts)
+        if isinstance(value, (list, tuple, set)):
+            return tuple(int(item) for item in value)
+        return (int(value),)
+
+    def _parse_schedule_rule(self, payload: dict) -> ScheduleRule | None:
+        has_rule = any(
+            key in payload
+            for key in ("hour", "minute", "weekly_days", "month_days", "union_weekly_monthly")
+        )
+        if not has_rule:
+            return None
+        if "hour" not in payload or "minute" not in payload:
+            raise ValueError("周期提醒必须提供 hour 和 minute")
+        return ScheduleRule(
+            hour=int(payload["hour"]),
+            minute=int(payload["minute"]),
+            weekly_days=self._to_int_tuple(payload.get("weekly_days")),
+            month_days=self._to_int_tuple(payload.get("month_days")),
+            union_weekly_monthly=self._to_bool(payload.get("union_weekly_monthly", False)),
+        )
 
     async def run(self, req: SkillRequest) -> SkillResult:
         action = req.payload.get('action', 'list') 
@@ -55,6 +88,16 @@ class ReminderSkill(BaseSkill):
         if action == 'delete': 
             return SkillResult(text=svc.delete_by_indexes(req.context, req.payload.get('indexes', [])))
         if action == 'create':
+            schedule_rule = self._parse_schedule_rule(req.payload)
+            if schedule_rule is not None:
+                return SkillResult(
+                    text=await svc.create(
+                        req.context,
+                        None,
+                        req.payload['content'],
+                        schedule_rule=schedule_rule,
+                    )
+                )
             run_time=self._parse_run_time(req.payload['run_time'])
             repeat = self._to_bool(req.payload.get('repeat', False))
             return SkillResult(

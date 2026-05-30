@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Awaitable, Callable, Dict
 
+from luoying_bot.domain.schedule import ScheduleRule
+
 logger=logging.getLogger(__name__)
 
 @dataclass(slots=True)
@@ -14,6 +16,7 @@ class ScheduledJob:
     run_time: datetime
     callback: Callable[['ScheduledJob'], Awaitable[None]]
     repeat_daily: bool = False
+    schedule_rule: ScheduleRule | None = None
     payload: dict | None = None
 
 class AsyncScheduler:
@@ -48,8 +51,12 @@ class AsyncScheduler:
         if current is not job:
             logger.warning("计划任务不存在，job_id=%s", job.job_id)
             return
+        if job.schedule_rule is not None:
+            job.run_time = job.schedule_rule.next_run_after(datetime.now())
+            heapq.heappush(self._heap, (job.run_time.timestamp(), job.job_id))
+            self._wake_event.set()
 
-        if job.repeat_daily:
+        elif job.repeat_daily:
             job.run_time = job.run_time + timedelta(days=1)
             heapq.heappush(self._heap, (job.run_time.timestamp(), job.job_id))
             self._wake_event.set()

@@ -4,6 +4,7 @@ from dataclasses import dataclass,field
 from datetime import datetime
 from typing import Optional
 from luoying_bot.domain.context import ChatContext
+from luoying_bot.domain.schedule import ScheduleRule
 
 #用户资料
 @dataclass(slots=True)
@@ -32,6 +33,7 @@ class ReminderRecord:
     content: str
     context: ChatContext
     repeat: bool = False
+    schedule_rule: ScheduleRule | None = None
 
 
 #用户仓库基类
