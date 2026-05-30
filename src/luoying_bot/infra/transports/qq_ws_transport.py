@@ -1,6 +1,8 @@
 from __future__ import annotations
 import asyncio, json, os, re, tempfile, uuid
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+import httpx
 import websockets
 import logging
 from PIL import Image
@@ -10,6 +12,7 @@ from luoying_bot.domain.message import UniMessage
 from luoying_bot.ports.transport import ChatTransport
 
 logger = logging.getLogger(__name__)
+MAX_QQ_FILE_DOWNLOAD_BYTES = 25 * 1024 * 1024
 
 # QQ平台适配器
 
@@ -202,6 +205,9 @@ class QQWsTransport(ChatTransport):
 
         reply_to_message_id=self._find_reply_message_id(parsed_segments)
         context.reply_to_message_id=reply_to_message_id
+
+        if context.target.channel_type == ChannelType.PRIVATE:
+            await self._download_private_file_segments(context, parsed_segments)
 
         for seg_type, seg_data in parsed_segments:
             if seg_type == 'reply' and not keep_reply_segment:
@@ -422,6 +428,117 @@ class QQWsTransport(ChatTransport):
         except OSError:
             return original_path
         return await asyncio.get_running_loop().run_in_executor(None, self._compress_image_sync, original_path)
+
+    def _safe_workspace_upload_name(self, file_name: str) -> str:
+        original = Path(file_name or "").name
+        stem = Path(original).stem if original else "upload"
+        suffix = Path(original).suffix
+        stem = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("._-")
+        if not stem:
+            stem = "upload"
+        if len(stem) > 80:
+            stem = stem[:80]
+        if len(suffix) > 16 or any(ch in suffix for ch in ("/", "\\")):
+            suffix = ""
+        return f"{stem}{suffix}"
+
+    def _private_workspace_upload_target(self, user_id: str, file_name: str) -> tuple[str, Path]:
+        upload_dir = self.settings.script_workspace_dir / str(user_id) / "upload"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        safe_name = self._safe_workspace_upload_name(file_name)
+        target = upload_dir / safe_name
+        if target.exists():
+            stem = target.stem
+            suffix = target.suffix
+            for index in range(1, 1000):
+                candidate = upload_dir / f"{stem}_{index}{suffix}"
+                if not candidate.exists():
+                    target = candidate
+                    break
+            else:
+                target = upload_dir / f"{uuid.uuid4().hex}{suffix}"
+        return (Path("upload") / target.name).as_posix(), target
+
+    async def _download_url_to_file(self, url: str, target: Path) -> int:
+        total = 0
+        try:
+            async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+                async with client.stream("GET", url) as response:
+                    response.raise_for_status()
+                    with target.open("wb") as f:
+                        async for chunk in response.aiter_bytes():
+                            if not chunk:
+                                continue
+                            total += len(chunk)
+                            if total > MAX_QQ_FILE_DOWNLOAD_BYTES:
+                                raise ValueError("文件不能超过 25MB")
+                            f.write(chunk)
+        except Exception:
+            target.unlink(missing_ok=True)
+            raise
+        return total
+
+    async def _download_private_file_segments(
+        self,
+        context: ChatContext,
+        segments: list[tuple[str, dict]],
+    ) -> None:
+        for seg_type, seg_data in segments:
+            if seg_type != "file":
+                continue
+            file_id = str(seg_data.get("file_id") or "").strip()
+            if not file_id:
+                continue
+            try:
+                local_path = await self.download_file(
+                    file_id=file_id,
+                    context=context,
+                    metadata=seg_data,
+                )
+            except Exception:
+                logger.exception("下载 QQ 私聊文件失败：file_id=%s", file_id)
+                continue
+            if not local_path:
+                continue
+            target = self.settings.script_workspace_dir / str(context.user.user_id) / local_path
+            seg_data["file"] = local_path
+            seg_data["name"] = Path(local_path).name
+            seg_data["path"] = str(target)
+            try:
+                seg_data["size"] = target.stat().st_size
+            except OSError:
+                pass
+
+    async def download_file(
+        self,
+        file_id: str,
+        context: ChatContext | None = None,
+        metadata: Dict[str, Any] | None = None,
+    ) -> Optional[str]:
+        if context is None or context.target.channel_type != ChannelType.PRIVATE:
+            return None
+
+        file_id = str(file_id or "").strip()
+        if not file_id:
+            return None
+
+        response = await self._call("get_private_file_url", {"file_id": file_id})
+        url = ((response.get("data") or {}).get("url") or "").strip()
+        if not url:
+            logger.warning("获取 QQ 私聊文件下载链接失败：file_id=%s response=%s", file_id, response)
+            return None
+
+        meta = metadata or {}
+        file_name = (
+            str(meta.get("name") or "").strip()
+            or str(meta.get("file") or "").strip()
+            or Path(file_id).name
+            or "upload"
+        )
+        rel_path, target = self._private_workspace_upload_target(context.user.user_id, file_name)
+        size = await self._download_url_to_file(url, target)
+        logger.info("已下载 QQ 私聊文件到工作区：%s，大小 %s bytes", rel_path, size)
+        return rel_path
 
     async def upload_file(self,context,file):
         file_path = f"file://{os.path.abspath(file)}" if os.path.exists(file) else file
