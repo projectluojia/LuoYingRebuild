@@ -76,6 +76,34 @@ class ScriptWorkspaceService:
         lines.extend(f"{i}. {name}" for i, name in enumerate(rels, start=1))
         return ScriptOpResult(True,"\n".join(lines), {"files": rels})
 
+    def tree(self, user_id: str) -> ScriptOpResult:
+        base = self._user_dir(user_id=user_id)
+
+        def visible_children(path: Path) -> list[Path]:
+            return sorted(
+                (child for child in path.iterdir() if not child.name.startswith(".")),
+                key=lambda child: (not child.is_dir(), child.name.lower()),
+            )
+
+        def render(path: Path, prefix: str = "") -> list[str]:
+            lines: list[str] = []
+            children = visible_children(path)
+            for index, child in enumerate(children):
+                is_last = index == len(children) - 1
+                connector = "└── " if is_last else "├── "
+                name = f"{child.name}/" if child.is_dir() else child.name
+                lines.append(f"{prefix}{connector}{name}")
+                if child.is_dir():
+                    extension = "    " if is_last else "│   "
+                    lines.extend(render(child, prefix + extension))
+            return lines
+
+        lines = [f"{base.name}/"]
+        lines.extend(render(base))
+        if len(lines) == 1:
+            lines.append("(空)")
+        return ScriptOpResult(True, "\n".join(lines), {"root": str(base)})
+
     def read_script(self,user_id:str,file_path:str)->ScriptOpResult:
         target = self._resolve_user_file(user_id=user_id,file_path=file_path)
         if not target.exists() or not target.is_file():
