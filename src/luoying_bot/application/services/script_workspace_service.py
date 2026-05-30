@@ -113,8 +113,9 @@ class ScriptWorkspaceService:
         reader = PdfReader(str(target))
         pages: list[str] = []
         for index, page in enumerate(reader.pages, start=1):
-            text = page.extract_text() or ""
-            pages.append(f"[第 {index} 页]\n{text}".strip())
+            text = (page.extract_text() or "").strip()
+            if text:
+                pages.append(f"[第 {index} 页]\n{text}")
         return "\n\n".join(page for page in pages if page)
 
     def _read_xlsx_text(self, target: Path) -> str:
@@ -313,7 +314,21 @@ class ScriptWorkspaceService:
             structured_error = f"{type(exc).__name__}: {exc}"
         if structured is not None:
             content, reader = structured
-            content = self._trim_read_content(content or "(未提取到文本)")
+            content = self._trim_read_content(content or "")
+            if not content:
+                detail = "未提取到有效文本"
+                if target.suffix.lower() == ".pdf":
+                    detail = "未提取到有效文本；该 PDF 可能是扫描版或纯图片型 PDF"
+                return ScriptOpResult(
+                    False,
+                    f"无法读取该文件中的文本内容：{file_path}\n原因：{detail}",
+                    {
+                        "file_path": str(target),
+                        "reader": reader,
+                        "structured": True,
+                        "reason": detail,
+                    },
+                )
             return ScriptOpResult(
                 True,
                 f"文件内容如下（{reader}）：\n{content}",

@@ -103,7 +103,7 @@ class FileWorkspaceAgentSkill(BaseSkill):
             需要一个参数：
             file_path: str，当前工作区下要读取的相对路径，例如 hello.py 或 upload/work.pdf。
             返回文件中提取到的文本内容。
-            如果本工具返回读取失败，必须停止读取任务并如实告知用户失败原因；禁止再写代码、创建脚本、运行 Python 或用其他方式绕过本工具读取该文件。
+            如果本工具返回读取失败、未提取到有效文本，或提示文件可能是扫描版/图片型 PDF、加密、损坏或不可解析，必须停止读取任务并如实告知用户失败原因；禁止再写代码、创建脚本、运行 Python、OCR、PDF 转图片、解析二进制或用其他方式绕过本工具读取该文件。
             """
             debug_counts["read_script"] += 1
             await debug_track(
