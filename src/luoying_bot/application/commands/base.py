@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from luoying_bot.application.service_hub import ServiceHub
-from luoying_bot.domain.context import ChatContext
+from luoying_bot.domain.context import ChannelType, ChatContext
 from luoying_bot.domain.result import Reply
 
 #指令基类
@@ -13,6 +13,8 @@ class BaseCommand(ABC):
     name: str = ''
     aliases: list[str] = [] #这个是指令别名
     op_required: bool = False
+    group_only: bool = False
+    private_only: bool = False
     args_required: bool = False
     required_args: dict[str, list[str]] = {}
     optional_args: dict[str, list[str]] = {}
@@ -54,5 +56,9 @@ class BaseCommand(ABC):
     async def process(self, context: ChatContext, args: Optional[list[str]]) -> Reply:
         if self.op_required and context.user.user_id not in self.services.ops:
             return Reply(text='权限不足')
+        if self.group_only and context.target.channel_type != ChannelType.GROUP:
+            return Reply(text='该命令仅支持群聊')
+        if self.private_only and context.target.channel_type != ChannelType.PRIVATE:
+            return Reply(text='该命令仅支持私聊')
         parsed = await self.validate(self._parse_args(args))
         return await self.execute(context, parsed)

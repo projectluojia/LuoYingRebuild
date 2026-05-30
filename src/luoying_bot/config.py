@@ -74,6 +74,7 @@ class Settings:
 
     ops: List[str] = field(default_factory=lambda: _split_csv(os.getenv('OPS', '')))
     specific_group_ids: List[str] = field(default_factory=lambda: _split_csv(os.getenv('SPECIFIC_GROUP_IDS', '')))
+    qq_private_user_ids: List[str] = field(default_factory=lambda: _split_csv(os.getenv('QQ_PRIVATE_USER_IDS', '')))
     trigger_prefix: List[str] = field(default_factory=lambda: _split_csv(os.getenv('TRIGGER_PREFIX', '/,!')))
 
 settings = Settings()

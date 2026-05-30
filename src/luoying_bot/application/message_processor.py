@@ -43,7 +43,7 @@ class MessageProcessor:
         )
         self._tasks.add(task)
         task.add_done_callback(self._on_task_done)
-        logger.info("消息已提交到协程")
+        logger.info("消息已提交到协程：%s", key)
         return task
 
     def _on_task_done(self, task: asyncio.Task) -> None:

@@ -36,6 +36,9 @@ async def main() -> None:
             logger.info('QQ transport 已就绪')
             while True:
                 msg=await container.transport.recv_message()
+                if msg.context is None:
+                    logger.debug("忽略无上下文 QQ 事件：post_type=%s", msg.raw_event.get("post_type"))
+                    continue
                 container.message_processor.submit(msg)
 
         except asyncio.CancelledError:

@@ -145,6 +145,7 @@ class UnBanCommand(BaseCommand):
 #测试通过
 class RefreshListCommand(BaseCommand):
     name = '/refresh_list'
+    group_only = True
     async def validate(self, args): return args
     async def execute(self, context, args):
         self.services.runtime.member_cache[context.target.conversation_id] = await self.services.transport.get_group_members(context)
@@ -154,6 +155,7 @@ class RefreshListCommand(BaseCommand):
 #测试通过
 class RandomOneCommand(BaseCommand):
     name = '/random_one'
+    group_only = True
     async def validate(self, args): return args
     async def execute(self, context, args):
         members = await self.services.transport.get_group_members(context)
@@ -164,6 +166,7 @@ class RandomOneCommand(BaseCommand):
 #测试通过
 class TitleCommand(BaseCommand):
     name = '/title'
+    group_only = True
     args_required = True
     required_args = {'--title': ['-t']}
     async def validate(self, args): return args
@@ -174,6 +177,7 @@ class TitleCommand(BaseCommand):
 #测试通过
 class RmTitleCommand(BaseCommand):
     name = '/rmtitle'
+    group_only = True
     async def validate(self, args): return args
     async def execute(self, context, args):
         await self.services.transport.set_special_title(context, '')
@@ -183,6 +187,7 @@ class RmTitleCommand(BaseCommand):
 class WholeBanCommand(BaseCommand):
     name = '/whole_ban' 
     op_required = True
+    group_only = True
     async def validate(self, args): return args
     async def execute(self, context, args):
         await self.services.transport.set_group_whole_ban(context, True)
@@ -192,6 +197,7 @@ class WholeBanCommand(BaseCommand):
 class DisWholeBanCommand(BaseCommand):
     name = '/dis_whole_ban'
     op_required = True
+    group_only = True
     async def validate(self, args): return args
     async def execute(self, context, args):
         await self.services.transport.set_group_whole_ban(context, False)
@@ -200,6 +206,7 @@ class DisWholeBanCommand(BaseCommand):
 #测试通过
 class EmojiCommand(BaseCommand):
     name = '/emoji'
+    group_only = True
     args_required = True
     required_args = {'--code': ['-c']}
     async def validate(self, args):
@@ -220,6 +227,7 @@ class EmojiCommand(BaseCommand):
 
 class EmojiRangeCommand(BaseCommand):
     name = '/emoji_range'
+    group_only = True
     args_required = True
     required_args = {'--left': ['-l'], '--right': ['-r']}
     async def validate(self, args): 

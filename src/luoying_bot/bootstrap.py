@@ -154,6 +154,7 @@ async def _build_container(
         agent=agent,
         quick_reply_service=quick_reply_service, 
         trigger_prefix=settings.trigger_prefix, 
+        qq_private_user_ids=settings.qq_private_user_ids,
         bot_qq=settings.bot_qq, 
         bot_name=settings.bot_name,
         risk_control_service=risk_control_service,

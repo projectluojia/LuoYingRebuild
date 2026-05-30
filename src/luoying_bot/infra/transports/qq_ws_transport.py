@@ -65,6 +65,7 @@ class QQWsTransport(ChatTransport):
 
                 raw = await self.websocket.recv()
                 data = json.loads(raw)
+                print(json.dumps(data, ensure_ascii=False, indent=4))
 
                 echo_id = data.get("echo")
                 if echo_id:
@@ -232,21 +233,30 @@ class QQWsTransport(ChatTransport):
 #打印事件，调试时候可以de注释一下
         logger.debug("收到 QQ 事件：%s", json.dumps(data, ensure_ascii=False))
 
-        if data.get('post_type') not in {'message', 'notice'}:# meta事件和request事件忽略不处理
+        post_type = data.get('post_type')
+        if post_type == 'message':
+            return await self._build_unimessage_from_event(
+                data,
+                fetch_reply=True,
+                keep_reply_segment=True,
+            )
+
+        if post_type != 'notice':# meta事件和request事件忽略不处理
             return UniMessage(platform=Platform.QQ, raw_event=data)
         
-        if data.get('post_type') == 'notice' and data.get('notice_type') == 'notify':
+        if data.get('notice_type') == 'notify' and data.get('sub_type') == 'poke':
             #构造戳一戳上下文策略
+            is_group = bool(data.get('group_id'))
             context = ChatContext(
                 user=UserIdentity(
                     user_id=str(data.get('user_id') or ''),
                     user_name=self._extract_user_name(data)
                 ),
                 target=ConversationTarget(
-                    channel_type=ChannelType.GROUP,
+                    channel_type=ChannelType.GROUP if is_group else ChannelType.PRIVATE,
                     conversation_id=str(data.get('group_id') or data.get('user_id') or ''),
                     platform=Platform.QQ,
-                    group_name=data.get('group_name')
+                    group_name=data.get('group_name') if is_group else None
                 ),
                 message_id=str(data.get('message_id') or ''),
                 request_uid=str(uuid.uuid4())
@@ -256,12 +266,13 @@ class QQWsTransport(ChatTransport):
                 raw_event=data,
                 context=context
             )
-        
-        return await self._build_unimessage_from_event(
-            data,
-            fetch_reply=True,
-            keep_reply_segment=True,
+
+        logger.debug(
+            "忽略未支持的 QQ notice 事件：notice_type=%s sub_type=%s",
+            data.get("notice_type"),
+            data.get("sub_type"),
         )
+        return UniMessage(platform=Platform.QQ, raw_event=data)
     
     #发送纯文本
     async def send_text(self, context: ChatContext, text: str) -> None:
@@ -413,12 +424,26 @@ class QQWsTransport(ChatTransport):
         return await asyncio.get_running_loop().run_in_executor(None, self._compress_image_sync, original_path)
 
     async def upload_file(self,context,file):
+        file_path = f"file://{os.path.abspath(file)}" if os.path.exists(file) else file
+
+        if context.target.channel_type == ChannelType.PRIVATE:
+            await self._send_raw(
+                {
+                    'action': 'upload_private_file',
+                    'params': {
+                        'user_id': int(context.user.user_id),
+                        'file': file_path,
+                    }
+                }
+            )
+            return
+
         await self._send_raw(
             {
-                'action': 'upload_group_file', 
+                'action': 'upload_group_file',
                 'params': {
-                    'group_id': int(context.target.conversation_id), 
-                    'file': file
+                    'group_id': int(context.target.conversation_id),
+                    'file': file_path,
                 }
             }
         )

@@ -12,7 +12,7 @@ from luoying_bot.application.services.quick_reply_service import QuickReplyServi
 from luoying_bot.application.services.risk_control_service import RiskControlService
 from luoying_bot.domain.message import UniMessage
 from luoying_bot.domain.message import MessageSegment
-from luoying_bot.domain.context import Platform
+from luoying_bot.domain.context import Platform, ChannelType
 from luoying_bot.domain.result import Reply
 from luoying_bot.infra.logging_setup import context_log_extra
 from luoying_bot.ports.transport import ChatTransport
@@ -30,6 +30,7 @@ class EventHandler:
             quick_reply_service: QuickReplyService|None,
             risk_control_service: RiskControlService,
             trigger_prefix: list[str], 
+            qq_private_user_ids: list[str],
             bot_qq: str, 
             bot_name: str,
             commands_enabled: bool = True,
@@ -41,6 +42,7 @@ class EventHandler:
         self.quick_reply_service=quick_reply_service
         self.risk_control_service=risk_control_service
         self.trigger_prefix = trigger_prefix
+        self.qq_private_user_ids = {str(user_id) for user_id in qq_private_user_ids}
         self.bot_qq = str(bot_qq)
         self.bot_name = bot_name
         self.commands_enabled = commands_enabled
@@ -53,7 +55,7 @@ class EventHandler:
             return Reply(text='', silent=True)
 
         raw_event = message.raw_event or {}
-        
+
     #    print(json.dumps(obj=raw_event,ensure_ascii=False,indent=4))
 
         logger.info("收到消息，开始处理",extra=extra)
@@ -63,17 +65,41 @@ class EventHandler:
             logger.info("用户已被封禁，忽略消息",extra=extra)
             return Reply(text='', silent=True)
 
+        is_qq_group = context.target.platform == Platform.QQ and context.target.channel_type == ChannelType.GROUP
+        is_qq_private = context.target.platform == Platform.QQ and context.target.channel_type == ChannelType.PRIVATE
+        is_qq_poke_notice = (
+            raw_event.get('post_type') == 'notice'
+            and raw_event.get('notice_type') == 'notify'
+            and raw_event.get('sub_type') == 'poke'
+            and str(raw_event.get('target_id') or '') == self.bot_qq
+        )
+
+        if context.target.platform == Platform.QQ and raw_event.get('post_type') == 'notice' and not is_qq_poke_notice:
+            logger.info(
+                "忽略未支持的 QQ notice 事件：notice_type=%s sub_type=%s",
+                raw_event.get('notice_type'),
+                raw_event.get('sub_type'),
+                extra=extra,
+            )
+            return Reply(text='', silent=True)
+
         #如果群聊不允许则沉默
-        if context.target.platform.value == 'qq' and not self.runtime.is_group_enabled(context.target.conversation_id):
+        if is_qq_group and not self.runtime.is_group_enabled(context.target.conversation_id):
             logger.info("群未启用，忽略消息",extra=extra)
             return Reply(text='', silent=True)
 
+        #如果 QQ 私聊不在白名单则沉默；白名单为空时不回复任何私聊
+        if is_qq_private and str(context.user.user_id) not in self.qq_private_user_ids:
+            logger.info("QQ 私聊用户未启用，忽略消息", extra=extra)
+            return Reply(text='', silent=True)
+
         #特判戳一戳
-        if raw_event.get('post_type') == 'notice' and raw_event.get('notice_type') == 'notify' and str(raw_event.get('target_id') or '') == self.bot_qq:
+        if is_qq_poke_notice:
             #戳回去
             response=random.choice(NOTIFYS)
-            await self.transport.group_poke(context, context.user.user_id)
-            
+            if is_qq_group:
+                await self.transport.group_poke(context, context.user.user_id)
+
             reply = Reply(text=response)
             await self.transport.send_text(context, reply.text)
             logger.info("命中戳一戳",extra=extra)
@@ -91,7 +117,7 @@ class EventHandler:
                 logger.info("命中快速回复", extra=extra)
                 return Reply(text='', silent=True)
         
-        if not mentioned and context.target.platform.value =='qq':
+        if is_qq_group and not mentioned:
             logger.info("收到 QQ 消息，但 mentioned 为 False",extra=extra)
             return Reply(text='', silent=True)
         """

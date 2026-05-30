@@ -6,27 +6,19 @@ from datetime import datetime
 from typing import Any
 
 from luoying_bot.application.agent.skill_base import BaseSkill, SkillRequest, SkillResult
-from luoying_bot.domain.context import Platform
+from luoying_bot.domain.context import ChannelType, Platform
 
 logger = logging.getLogger(__name__)
 
 class GroupInfoSkill(BaseSkill):
-    name = "group_info"
+    name = "qq_context_info"
     platform = [Platform.QQ]
     description = (
-        "查询当前群聊结构、完整群成员信息、或指定成员信息。"
-        "仅适用于群聊。"
-        "payload 支持 mode=summary/full/user/self。 可提供 "
-        "mode=summary：返回群名、群号、群主、管理员、机器人、群人数。"
-        "mode=full：返回当前群完整成员信息；当群人数超过阈值时拒绝，并自动降级为 summary。"
-        "mode=user：查询指定成员信息，必须提供 target_qq。"
-        "mode=self：查询当前用户自己的绑定资料，如姓名、学部、学院、年级。"
-        "当用户问‘这个群谁是群主’‘管理员有哪些’‘机器人是谁’‘查一下某个QQ’"
-        "‘这个人什么学院’‘他什么时候入群’‘他是不是机器人’时优先调用本技能。"
-        "如果只是问整个群的大致结构，用 summary；"
-        "如果要查某个成员但已经知道 QQ号，用 user；"
-        "如果要全量成员清单才用 full；"
-        "如果要查询用户自己的信息，用self。"
+        "QQ 上下文资料查询技能。群聊中可查群资料、群成员与当前用户资料；私聊中只能查询当前用户自己的绑定资料。"
+        "payload 支持 mode=summary/full/user/self。"
+        "群聊可用 mode=summary/full/user/self：summary 返回群聊概况；full 返回完整成员清单；user 查询指定成员，必须提供 target_qq；self 查询当前用户的群成员资料和绑定资料。"
+        "私聊仅允许 mode=self，返回当前用户 QQ、昵称、学部、学院、年级、姓名等绑定资料。"
+        "当用户询问群主、管理员、群成员、某个 QQ、入群时间、成员身份、机器人名单、自己的绑定资料或个人信息时优先调用。"
     )
 
     DEFAULT_MAX_MEMBER_THRESHOLD = 100
@@ -36,10 +28,16 @@ class GroupInfoSkill(BaseSkill):
         target = getattr(context, "target", None)
         
 
-        if not target or str(getattr(target, "channel_type", "")) not in {"group", "ChannelType.GROUP", "ChannelType.group"}:
-            return SkillResult(text="该技能仅支持群聊场景")
-
         mode = str(req.payload.get("mode") or "summary").strip().lower()
+        channel_type = getattr(target, "channel_type", None)
+
+        if channel_type == ChannelType.PRIVATE:
+            if mode not in {"", "self", "summary"}:
+                return SkillResult(text="QQ 私聊场景下只能查询当前用户自己的资料，请使用 mode=self")
+            return self._query_self_profile(req)
+
+        if channel_type != ChannelType.GROUP:
+            return SkillResult(text="该技能仅支持 QQ 群聊或 QQ 私聊场景")
 
         logger.info("查询群聊信息 Skill，mode=%s", mode)
 
@@ -60,6 +58,44 @@ class GroupInfoSkill(BaseSkill):
             return await self._query_user(req, current_qq)
 
         return SkillResult(text="不支持的 mode，可用值：summary / full / user / self")
+
+    def _query_self_profile(self, req: SkillRequest) -> SkillResult:
+        current_qq = str(getattr(getattr(req.context, "user", None), "user_id", "") or "").strip()
+        user_name = str(getattr(getattr(req.context, "user", None), "user_name", None) or "未知")
+        if not current_qq:
+            return SkillResult(text="无法获取当前用户QQ")
+
+        user_service = self.services.user_service
+        user_repo = getattr(user_service, "repo", None)
+        profile = user_repo.get(current_qq) if user_repo else None
+
+        college = getattr(profile, "college", None) if profile else None
+        year = getattr(profile, "year", None) if profile else None
+        department = getattr(profile, "department", None) if profile else None
+        real_name = getattr(profile, "name", None) if profile else None
+
+        text = (
+            f"QQ号：{current_qq}\n"
+            f"昵称：{user_name}\n"
+            f"学部：{department or '未登记'}\n"
+            f"学院：{college or '未登记'}\n"
+            f"入学年份：{year or '未登记'}\n"
+            f"姓名：{real_name or '未登记'}"
+        )
+
+        return SkillResult(
+            text=text,
+            data={
+                "target_qq": current_qq,
+                "nickname": user_name,
+                "department": department,
+                "college": college,
+                "year": year,
+                "name": real_name,
+                "mode": "self",
+                "channel_type": "private",
+            },
+        )
 
     async def _get_members(self, req: SkillRequest) -> list[dict[str, Any]]:
         runtime = self.services.runtime
