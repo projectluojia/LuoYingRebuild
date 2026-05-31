@@ -187,6 +187,52 @@ GET /uploads/images/upload/example.png
 
 - `413`：文件超过 25MB。
 
+### GET `/workspace/tree`
+
+获取当前 Web 用户脚本工作区的结构化文件树。前端右侧文件栏应优先使用该接口展示工作区状态，并对文件节点使用 `url` 字段下载。
+
+响应：
+
+```json
+{
+  "user_id": "web-user",
+  "root": {
+    "name": "web-user",
+    "path": "",
+    "type": "directory",
+    "children": [
+      {
+        "name": "upload",
+        "path": "upload",
+        "type": "directory",
+        "children": [
+          {
+            "name": "data.csv",
+            "path": "upload/data.csv",
+            "type": "file",
+            "size": 12345,
+            "modified_at": 1780156800.0,
+            "url": "/download/web-user/upload/data.csv"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+节点字段说明：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `name` | string | 文件或目录名 |
+| `path` | string | 用户脚本工作区下的相对路径；根目录为空字符串 |
+| `type` | `"directory"` \| `"file"` | 节点类型 |
+| `children` | array | 目录子节点；仅目录节点包含 |
+| `size` | number | 文件大小，单位 byte；仅文件节点包含 |
+| `modified_at` | number \| null | 文件修改时间戳；仅文件节点包含 |
+| `url` | string | 文件下载 URL；仅文件节点包含 |
+
 ### GET `/download/{user_id}/{file_path}`
 
 下载当前用户脚本工作区中的文件。
@@ -317,9 +363,9 @@ data: JSON字符串
 | --- | --- |
 | `agent_action` | 主 Agent 中间步骤 |
 | `workspace_debug` | 文件工作区 Agent 调试步骤 |
-| `file` | 文件生成提示 |
+| `file` | 兼容旧文件发送链路的文件变更提示 |
 
-当 `kind` 为 `file` 时，`metadata` 可能包含可下载文件信息：
+当 `kind` 为 `file` 时，表示工作区文件可能发生变化。客户端应把它视为刷新 `/workspace/tree` 的信号；`metadata` 中仍可能携带兼容旧前端的可下载文件信息：
 
 ```json
 {
@@ -336,7 +382,7 @@ data: JSON字符串
 
 #### `file`
 
-文件生成或发送事件。客户端可以用该事件展示可下载文件。
+文件生成或发送事件。该事件保留为兼容旧 transport 行为；新前端应把它视为工作区文件变更信号，然后重新请求 `/workspace/tree`，而不是只追加一个下载卡片。
 
 ```json
 {
@@ -444,6 +490,6 @@ data: JSON字符串
 - 仍需要最简单集成时，可以使用 `/chat`。
 - 发送图片前先调用 `/uploads/images`，然后把返回的 `image_id` 放入 `image_ids`。
 - 发送普通文件前先调用 `/uploads/files`，然后把返回的 `file_id` 放入 `file_ids`。
-- 下载文件时只使用 `url` 字段，不依赖服务端本地绝对路径。
+- 展示工作区文件时优先使用 `/workspace/tree`，文件下载只使用文件节点的 `url` 字段，不依赖服务端本地绝对路径。
 - 对 `/chat/stream` 的未知事件应忽略，保留向前兼容空间。
-- 同一文件可能同时通过 `track(kind="file")` 和 `file` 事件出现；客户端应自行去重，推荐 key 顺序为 `url`、`path`、`file`、`file_name`。
+- 收到 `track(kind="file")` 或 `file` 事件时，客户端应刷新 `/workspace/tree`。这两个事件可能同时出现，客户端应对刷新做防抖。

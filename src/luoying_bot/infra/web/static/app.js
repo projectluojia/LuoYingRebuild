@@ -11,10 +11,11 @@ const sendButton = document.querySelector("#sendButton");
 const messages = document.querySelector("#messages");
 const chatPanel = document.querySelector(".chat-panel");
 const chatStatus = document.querySelector("#chatStatus");
-const sentFilesPanel = document.querySelector(".sent-files-panel");
-const sentFilesList = document.querySelector("#sentFilesList");
-const sentFilesEmpty = document.querySelector("#sentFilesEmpty");
-const sentFilesCount = document.querySelector("#sentFilesCount");
+const workspaceFilesPanel = document.querySelector(".workspace-files-panel");
+const workspaceFilesList = document.querySelector("#workspaceFilesList");
+const workspaceFilesEmpty = document.querySelector("#workspaceFilesEmpty");
+const workspaceFilesCount = document.querySelector("#workspaceFilesCount");
+const workspaceRefreshButton = document.querySelector("#workspaceRefreshButton");
 
 const STREAM_IDLE_TIMEOUT_MS = 45000;
 const MAX_PENDING_IMAGES = 8;
@@ -24,7 +25,10 @@ const sessionId = localStorage.getItem("luoying_session_id") || crypto.randomUUI
 localStorage.setItem("luoying_session_id", sessionId);
 let pendingImages = [];
 let pendingFiles = [];
-const sentFiles = new Map();
+let workspaceTree = null;
+let workspaceRefreshTimer = 0;
+let workspaceRefreshInFlight = false;
+let workspaceRefreshQueued = false;
 
 function escapeHtml(value) {
   return String(value)
@@ -36,7 +40,7 @@ function escapeHtml(value) {
 }
 
 function safeHref(value) {
-  const href = value.replaceAll("&amp;", "&").trim();
+  const href = String(value || "").replaceAll("&amp;", "&").trim();
   if (href.startsWith("#") || href.startsWith("/")) return escapeHtml(href);
   try {
     const url = new URL(href, window.location.origin);
@@ -253,6 +257,7 @@ function renderMarkdown(markdown) {
 
 function enterChat() {
   shell.dataset.state = "chat";
+  refreshWorkspaceTree({ silent: true });
   setTimeout(() => input.focus(), 760);
 }
 
@@ -370,61 +375,136 @@ function formatFileSize(size) {
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function fileDedupKey(file) {
-  return String(file.url || file.path || file.file || file.file_name || "").trim();
+function countWorkspaceFiles(node) {
+  if (!node) return 0;
+  if (node.type === "file") return 1;
+  return (node.children || []).reduce((total, child) => total + countWorkspaceFiles(child), 0);
 }
 
-function normalizeSentFile(file) {
-  const fileName = file.file_name || file.name || file.path || "下载文件";
-  return {
-    file_name: fileName,
-    path: file.path || "",
-    size: file.size || 0,
-    url: file.url || "",
-    file: file.file || "",
-  };
+function createWorkspaceFileNode(node, depth) {
+  const item = document.createElement("a");
+  const href = safeHref(node.url || "");
+  item.className = "workspace-tree-row workspace-file-item";
+  item.style.setProperty("--indent", `${depth * 14}px`);
+  item.title = node.path || node.name || "下载文件";
+  if (href) {
+    item.href = href;
+    item.download = node.name || "";
+    item.rel = "noopener noreferrer";
+  } else {
+    item.href = "#";
+    item.setAttribute("aria-disabled", "true");
+  }
+
+  const name = document.createElement("strong");
+  name.textContent = node.name || node.path || "下载文件";
+  item.appendChild(name);
+
+  const meta = document.createElement("span");
+  meta.textContent = formatFileSize(node.size) || node.path || "文件";
+  item.appendChild(meta);
+  return item;
 }
 
-function renderSentFiles() {
-  if (!sentFilesList || !sentFilesEmpty || !sentFilesCount) return;
-  const files = Array.from(sentFiles.values());
-  sentFilesCount.textContent = String(files.length);
-  sentFilesEmpty.hidden = files.length > 0;
-  sentFilesList.innerHTML = "";
+function createWorkspaceDirectoryNode(node, depth) {
+  const details = document.createElement("details");
+  details.className = "workspace-tree-directory";
+  details.open = true;
 
-  for (const file of files) {
-    const item = document.createElement("a");
-    const href = safeHref(file.url || "");
-    item.className = "sent-file-item";
-    if (href) {
-      item.href = href;
-      item.download = file.file_name || "";
-      item.rel = "noopener noreferrer";
-    } else {
-      item.href = "#";
-      item.setAttribute("aria-disabled", "true");
-    }
+  const summary = document.createElement("summary");
+  summary.className = "workspace-tree-row workspace-directory-item";
+  summary.style.setProperty("--indent", `${depth * 14}px`);
 
-    const name = document.createElement("strong");
-    name.textContent = file.file_name || file.path || "下载文件";
-    item.appendChild(name);
+  const name = document.createElement("strong");
+  name.textContent = node.name || "目录";
+  summary.appendChild(name);
 
-    const meta = document.createElement("span");
-    const sizeText = formatFileSize(file.size);
-    meta.textContent = [file.path, sizeText].filter(Boolean).join(" · ") || "已生成";
-    item.appendChild(meta);
+  const count = document.createElement("span");
+  const fileCount = countWorkspaceFiles(node);
+  count.textContent = fileCount ? `${fileCount} 个文件` : "空目录";
+  summary.appendChild(count);
+  details.appendChild(summary);
 
-    sentFilesList.appendChild(item);
+  const children = document.createElement("div");
+  children.className = "workspace-tree-children";
+  for (const child of node.children || []) {
+    children.appendChild(createWorkspaceTreeNode(child, depth + 1));
+  }
+  details.appendChild(children);
+  return details;
+}
+
+function createWorkspaceTreeNode(node, depth = 0) {
+  if (node?.type === "directory") return createWorkspaceDirectoryNode(node, depth);
+  return createWorkspaceFileNode(node || {}, depth);
+}
+
+function renderWorkspaceTree(root = workspaceTree) {
+  if (!workspaceFilesList || !workspaceFilesEmpty || !workspaceFilesCount) return;
+  const fileCount = countWorkspaceFiles(root);
+  const children = root?.children || [];
+  workspaceFilesCount.textContent = String(fileCount);
+  workspaceFilesEmpty.hidden = children.length > 0;
+  workspaceFilesList.innerHTML = "";
+
+  for (const child of children) {
+    workspaceFilesList.appendChild(createWorkspaceTreeNode(child, 0));
   }
 }
 
-function addSentFile(file) {
-  const normalized = normalizeSentFile(file || {});
-  const key = fileDedupKey(normalized);
-  if (!key) return;
-  sentFiles.set(key, normalized);
-  if (sentFilesPanel) sentFilesPanel.classList.add("has-files");
-  renderSentFiles();
+function renderWorkspaceTreeError(message) {
+  if (!workspaceFilesList || !workspaceFilesEmpty || !workspaceFilesCount) return;
+  workspaceFilesCount.textContent = "!";
+  workspaceFilesEmpty.hidden = true;
+  workspaceFilesList.innerHTML = "";
+  const item = document.createElement("div");
+  item.className = "workspace-tree-error";
+  item.textContent = message || "工作区文件树读取失败";
+  workspaceFilesList.appendChild(item);
+}
+
+async function refreshWorkspaceTree({ silent = true } = {}) {
+  if (!workspaceFilesList) return;
+  if (workspaceRefreshInFlight) {
+    workspaceRefreshQueued = true;
+    return;
+  }
+  workspaceRefreshInFlight = true;
+  workspaceRefreshQueued = false;
+  workspaceFilesPanel?.classList.add("is-loading");
+  if (!silent) chatStatus.textContent = "正在刷新工作区";
+
+  try {
+    const resp = await fetch("/workspace/tree", {
+      headers: { Accept: "application/json" },
+    });
+    if (!resp.ok) throw new Error(`工作区文件树读取失败：${resp.status}`);
+    const data = await resp.json();
+    workspaceTree = data.root || null;
+    renderWorkspaceTree(workspaceTree);
+  } catch (error) {
+    renderWorkspaceTreeError(error.message || "工作区文件树读取失败");
+  } finally {
+    workspaceRefreshInFlight = false;
+    workspaceFilesPanel?.classList.remove("is-loading", "is-dirty");
+    if (!silent) chatStatus.textContent = "随时待命";
+    if (workspaceRefreshQueued) {
+      workspaceRefreshQueued = false;
+      window.setTimeout(() => refreshWorkspaceTree({ silent: true }), 250);
+    }
+  }
+}
+
+function scheduleWorkspaceRefresh(delay = 250) {
+  window.clearTimeout(workspaceRefreshTimer);
+  workspaceRefreshTimer = window.setTimeout(() => {
+    refreshWorkspaceTree({ silent: true });
+  }, delay);
+}
+
+function signalWorkspaceChanged() {
+  workspaceFilesPanel?.classList.add("is-dirty");
+  scheduleWorkspaceRefresh();
 }
 
 function parseSse(raw) {
@@ -514,6 +594,7 @@ async function addImages(files) {
       const image = await uploadImage(file);
       pendingImages.push(image);
       renderPendingImages();
+      signalWorkspaceChanged();
     }
   } finally {
     imageButton.disabled = false;
@@ -567,6 +648,7 @@ async function addFiles(files) {
       const uploaded = await uploadFile(file);
       pendingFiles.push(uploaded);
       renderPendingImages();
+      signalWorkspaceChanged();
     }
   } finally {
     imageButton.disabled = false;
@@ -646,15 +728,15 @@ async function sendMessage(text, images = [], files = []) {
 
         if (event === "track") {
           clearPending();
-          if (data.kind === "file" && data.metadata?.url) {
-            addSentFile(data.metadata);
+          if (data.kind === "file") {
+            signalWorkspaceChanged();
           } else {
             createTrack(data.text || "");
           }
         }
         if (event === "file") {
           clearPending();
-          addSentFile(data);
+          signalWorkspaceChanged();
         }
         if (event === "text_delta") {
           clearPending();
@@ -708,6 +790,10 @@ imageButton.addEventListener("click", () => {
 
 fileButton.addEventListener("click", () => {
   fileInput.click();
+});
+
+workspaceRefreshButton?.addEventListener("click", () => {
+  refreshWorkspaceTree({ silent: false });
 });
 
 imageInput.addEventListener("change", async () => {
@@ -772,7 +858,7 @@ form.addEventListener("submit", async (event) => {
 });
 
 renderPendingImages();
-renderSentFiles();
+refreshWorkspaceTree({ silent: true });
 
 messages.addEventListener("click", async (event) => {
   const button = event.target.closest(".copy-code");

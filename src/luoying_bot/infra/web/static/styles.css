@@ -202,7 +202,7 @@ h1 {
   transition: opacity 0.58s ease 0.48s, transform 0.68s cubic-bezier(.18,.9,.2,1.02) 0.48s;
 }
 
-.sent-files-panel {
+.workspace-files-panel {
   position: absolute;
   right: max(16px, calc((100vw - 1180px) / 2));
   bottom: clamp(22px, 6vh, 60px);
@@ -223,7 +223,7 @@ h1 {
   transition: opacity 0.58s ease 0.58s, transform 0.68s cubic-bezier(.18,.9,.2,1.02) 0.58s;
 }
 
-.sent-files-panel header {
+.workspace-files-panel header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -232,11 +232,34 @@ h1 {
   border-bottom: 1px solid rgba(126, 135, 150, 0.14);
 }
 
-.sent-files-panel header strong {
+.workspace-files-panel header strong {
   font-size: 16px;
 }
 
-.sent-files-panel header span {
+.workspace-files-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workspace-files-actions button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(65, 104, 216, 0.22);
+  border-radius: 999px;
+  color: #3154b3;
+  background: rgba(239, 245, 255, 0.9);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.workspace-files-actions button:hover {
+  border-color: rgba(65, 104, 216, 0.42);
+  background: #fff;
+}
+
+.workspace-files-actions span {
   min-width: 28px;
   height: 24px;
   display: grid;
@@ -248,7 +271,7 @@ h1 {
   font-weight: 800;
 }
 
-.sent-files-empty {
+.workspace-files-empty {
   padding: 12px;
   border: 1px dashed rgba(126, 135, 150, 0.34);
   border-radius: 14px;
@@ -257,45 +280,112 @@ h1 {
   font-size: 14px;
 }
 
-.sent-files-empty[hidden] {
+.workspace-files-empty[hidden] {
   display: none;
 }
 
-.sent-files-list {
+.workspace-files-list {
   min-height: 0;
   display: grid;
   align-content: start;
-  gap: 10px;
+  gap: 6px;
   overflow: auto;
 }
 
-.sent-file-item {
+.workspace-tree-directory {
+  min-width: 0;
+}
+
+.workspace-tree-directory summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.workspace-tree-directory summary::-webkit-details-marker {
+  display: none;
+}
+
+.workspace-tree-children {
   display: grid;
-  gap: 3px;
-  padding: 11px 12px;
-  border: 1px solid rgba(75, 109, 214, 0.2);
-  border-radius: 14px;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.workspace-tree-row {
+  position: relative;
+  min-height: 38px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 9px 8px calc(28px + var(--indent, 0px));
+  border: 1px solid transparent;
+  border-radius: 10px;
   color: #1c315f;
-  background: linear-gradient(180deg, rgba(239, 245, 255, 0.98), rgba(255, 255, 255, 0.96));
   text-decoration: none;
+}
+
+.workspace-tree-row::before {
+  content: "";
+  position: absolute;
+  left: calc(11px + var(--indent, 0px));
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  opacity: 0.62;
+  transform: translateY(-58%) rotate(-45deg);
+}
+
+.workspace-tree-directory[open] > .workspace-directory-item::before {
+  transform: translateY(-66%) rotate(45deg);
+}
+
+.workspace-directory-item {
+  background: rgba(240, 123, 167, 0.08);
+}
+
+.workspace-file-item {
+  border: 1px solid rgba(75, 109, 214, 0.2);
+  background: linear-gradient(180deg, rgba(239, 245, 255, 0.98), rgba(255, 255, 255, 0.96));
   box-shadow: 0 10px 22px rgba(31, 60, 134, 0.08);
 }
 
-.sent-file-item:hover {
+.workspace-file-item:hover {
   border-color: rgba(65, 104, 216, 0.38);
   transform: translateY(-1px);
 }
 
-.sent-file-item strong,
-.sent-file-item span {
+.workspace-file-item[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.66;
+}
+
+.workspace-tree-row strong,
+.workspace-tree-row span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.sent-file-item span {
+.workspace-tree-row span {
   color: var(--muted);
   font-size: 0.84rem;
+}
+
+.workspace-tree-error {
+  padding: 12px;
+  border: 1px solid rgba(204, 63, 116, 0.22);
+  border-radius: 12px;
+  color: #8b2b50;
+  background: rgba(240, 123, 167, 0.08);
+  font-size: 13px;
+}
+
+.workspace-files-panel.is-loading .workspace-files-actions button,
+.workspace-files-panel.is-dirty .workspace-files-actions button {
+  opacity: 0.72;
 }
 
 .chat-header {
@@ -833,7 +923,7 @@ h1 {
   pointer-events: auto;
 }
 
-.shell[data-state="chat"] .sent-files-panel {
+.shell[data-state="chat"] .workspace-files-panel {
   opacity: 1;
   transform: translate(0, 0) scale(1);
   pointer-events: auto;
@@ -896,7 +986,7 @@ h1 {
     padding: 14px;
   }
 
-  .sent-files-panel {
+  .workspace-files-panel {
     right: 16px;
     bottom: calc(68vh + 28px);
     height: auto;
@@ -905,7 +995,7 @@ h1 {
     padding: 12px;
   }
 
-  .sent-files-panel header {
+  .workspace-files-panel header {
     padding-bottom: 8px;
   }
 

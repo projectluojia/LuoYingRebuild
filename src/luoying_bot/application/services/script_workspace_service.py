@@ -301,6 +301,43 @@ class ScriptWorkspaceService:
             lines.append("(空)")
         return ScriptOpResult(True, "\n".join(lines), {"root": str(base)})
 
+    def tree_snapshot(self, user_id: str) -> ScriptOpResult:
+        base = self._user_dir(user_id=user_id).resolve()
+
+        def visible_children(path: Path) -> list[Path]:
+            return sorted(
+                (child for child in path.iterdir() if not child.name.startswith(".")),
+                key=lambda child: (not child.is_dir(), child.name.lower()),
+            )
+
+        def build_node(path: Path) -> dict:
+            rel_path = "" if path == base else path.relative_to(base).as_posix()
+            node: dict = {
+                "name": path.name,
+                "path": rel_path,
+                "type": "directory" if path.is_dir() else "file",
+            }
+            try:
+                stat = path.stat()
+            except OSError:
+                stat = None
+
+            if path.is_dir():
+                node["children"] = [build_node(child) for child in visible_children(path)]
+            else:
+                node["size"] = stat.st_size if stat is not None else 0
+                node["modified_at"] = stat.st_mtime if stat is not None else None
+            return node
+
+        return ScriptOpResult(
+            True,
+            "已读取工作区文件树",
+            {
+                "root": str(base),
+                "tree": build_node(base),
+            },
+        )
+
     def read_script(self,user_id:str,file_path:str)->ScriptOpResult:
         target = self._resolve_user_file(user_id=user_id,file_path=file_path)
         if not target.exists() or not target.is_file():

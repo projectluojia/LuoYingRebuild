@@ -51,15 +51,18 @@
       </form>
     </section>
 
-    <aside class="sent-files-panel" aria-label="已生成文件">
+    <aside class="workspace-files-panel" aria-label="工作区文件">
       <header>
-        <strong>文件</strong>
-        <span id="sentFilesCount">0</span>
+        <strong>工作区</strong>
+        <div class="workspace-files-actions">
+          <button id="workspaceRefreshButton" type="button" title="刷新工作区">刷新</button>
+          <span id="workspaceFilesCount">0</span>
+        </div>
       </header>
-      <div class="sent-files-empty" id="sentFilesEmpty">暂无文件</div>
-      <div class="sent-files-list" id="sentFilesList"></div>
+      <div class="workspace-files-empty" id="workspaceFilesEmpty">暂无文件</div>
+      <div class="workspace-files-list" id="workspaceFilesList"></div>
     </aside>
   </main>
-  <script src="/static/app.js?v=20260529-sent-files"></script>
+  <script src="/static/app.js?v=20260531-workspace-tree"></script>
 </body>
 </html>

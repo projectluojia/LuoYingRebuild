@@ -10,6 +10,7 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
@@ -69,6 +70,11 @@ class FileUploadResponse(BaseModel):
     content_type: str
     size: int
     url: str
+
+
+class WorkspaceTreeResponse(BaseModel):
+    user_id: str
+    root: dict[str, Any]
 
 
 async def get_current_web_user() -> WebCurrentUser:
@@ -148,6 +154,23 @@ def _resolve_script_download(user_id: str, file_path: str, user: WebCurrentUser)
     if not target.exists() or not target.is_file():
         raise HTTPException(status_code=404, detail="文件不存在")
     return target
+
+
+def _workspace_download_url(user_id: str, file_path: str) -> str:
+    return f"/download/{quote(user_id, safe='')}/{quote(file_path, safe='/')}"
+
+
+def _with_workspace_download_urls(node: dict[str, Any], user_id: str) -> dict[str, Any]:
+    hydrated = dict(node)
+    if hydrated.get("type") == "file" and hydrated.get("path"):
+        hydrated["url"] = _workspace_download_url(user_id, str(hydrated["path"]))
+    else:
+        hydrated["children"] = [
+            _with_workspace_download_urls(child, user_id)
+            for child in hydrated.get("children", [])
+            if isinstance(child, dict)
+        ]
+    return hydrated
 
 
 def _upload_extension(file: UploadFile) -> str:
@@ -315,6 +338,19 @@ class WebApiFactory:
             media_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
             return FileResponse(target, media_type=media_type, filename=target.name)
 
+        @app.get("/workspace/tree", response_model=WorkspaceTreeResponse)
+        async def workspace_tree(
+            user: WebCurrentUser = Depends(get_current_web_user),
+        ) -> WorkspaceTreeResponse:
+            result = container().script_workspace_service.tree_snapshot(user.user_id)
+            tree = result.data.get("tree")
+            if not result.ok or not isinstance(tree, dict):
+                raise HTTPException(status_code=500, detail=result.text or "读取工作区文件树失败")
+            return WorkspaceTreeResponse(
+                user_id=user.user_id,
+                root=_with_workspace_download_urls(tree, user.user_id),
+            )
+
         @app.post("/uploads/images", response_model=ImageUploadResponse)
         async def upload_image(
             file: UploadFile = File(...),
@@ -442,4 +478,3 @@ class WebApiFactory:
             return StreamingResponse(events(), media_type="text/event-stream")
 
         return app
-
