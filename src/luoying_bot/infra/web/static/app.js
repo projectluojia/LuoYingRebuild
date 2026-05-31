@@ -479,7 +479,16 @@ async function refreshWorkspaceTree({ silent = true } = {}) {
       headers: { Accept: "application/json" },
     });
     if (!resp.ok) throw new Error(`工作区文件树读取失败：${resp.status}`);
-    const data = await resp.json();
+    const contentType = resp.headers.get("content-type") || "";
+    if (!contentType.toLowerCase().includes("application/json")) {
+      throw new Error("工作区接口返回的不是 JSON，请刷新页面后重试");
+    }
+    let data = null;
+    try {
+      data = await resp.json();
+    } catch {
+      throw new Error("工作区文件树响应格式无效");
+    }
     workspaceTree = data.root || null;
     renderWorkspaceTree(workspaceTree);
   } catch (error) {
