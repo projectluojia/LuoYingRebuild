@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from luoying_bot.ports.repos import UserMemoryRepo
+
 @dataclass
 class UserMemoryResult:
     ok:bool
@@ -9,7 +11,7 @@ class UserMemoryResult:
     data:dict
 
 class UserMemoryService:
-    def __init__(self,repo):
+    def __init__(self,repo: UserMemoryRepo):
         self.repo=repo
 
     def get_memory(self,user_id:str)->UserMemoryResult:

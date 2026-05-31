@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 from luoying_bot.config import settings
+from luoying_bot.ports.repos import UserMemoryRepo
 
-class TextUserMemoryRepo:
+class TextUserMemoryRepo(UserMemoryRepo):
     def __init__(self,memory_dir:Path | None = None ):
         self.memory_dir=memory_dir or settings.user_memory_dir
         self.memory_dir.mkdir(parents=True,exist_ok=True)
@@ -29,4 +30,3 @@ class TextUserMemoryRepo:
         path=self._path(user_id)
         if path.exists():
             path.unlink()
-

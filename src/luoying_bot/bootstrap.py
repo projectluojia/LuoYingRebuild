@@ -18,14 +18,17 @@ from luoying_bot.application.services.script_workspace_service import ScriptWork
 from luoying_bot.application.services.user_prompt_settings_service import UserPromptSettingsService
 from luoying_bot.application.services.user_service import UserService
 from luoying_bot.application.services.user_memory_service import UserMemoryService
-from luoying_bot.config import settings
-from luoying_bot.infra.repos.text_user_memory_repo import TextUserMemoryRepo
+from luoying_bot.config import PROJECT_ROOT, settings
 from luoying_bot.infra.llm.openai_chat import OpenAICompatibleChatModel
 from luoying_bot.infra.memory.in_memory import InMemoryConversationMemory
-from luoying_bot.infra.repos.json_memo_repo import JsonMemoRepo
-from luoying_bot.infra.repos.json_reminder_repo import JsonReminderRepo
-from luoying_bot.infra.repos.json_user_prompt_settings_repo import JsonUserPromptSettingsRepo
-from luoying_bot.infra.repos.json_user_repo import JsonUserRepo
+from luoying_bot.infra.repos.sqlite_user_data_repo import (
+    SqliteMemoRepo,
+    SqliteReminderRepo,
+    SqliteUserDataStore,
+    SqliteUserMemoryRepo,
+    SqliteUserPromptSettingsRepo,
+    SqliteUserRepo,
+)
 from luoying_bot.infra.scheduler.async_scheduler import AsyncScheduler
 from luoying_bot.infra.transports.cli_transport import CliTransport
 from luoying_bot.infra.transports.qq_ws_transport import QQWsTransport
@@ -74,13 +77,31 @@ async def _build_container(
     enable_commands: bool = True,
     enable_quick_reply: bool = True,
 ) -> AppContainer:
-    user_service = UserService(JsonUserRepo(settings.user_db_file))
+    user_data_store = SqliteUserDataStore(settings.user_data_db_file)
+    user_data_store.migrate_from_legacy_paths(
+        user_db_file=settings.user_db_file,
+        user_prompt_settings_file=settings.user_prompt_settings_file,
+        user_memory_dir=settings.user_memory_dir,
+        memo_dir=settings.memo_dir,
+        reminder_db_file=settings.reminder_db_file,
+    )
+    src_data_dir = PROJECT_ROOT / "src" / "data"
+    if src_data_dir.exists() and src_data_dir != settings.data_dir:
+        user_data_store.migrate_from_legacy_paths(
+            user_db_file=src_data_dir / "userdatabase.json",
+            user_prompt_settings_file=src_data_dir / "user_prompt_settings.json",
+            user_memory_dir=src_data_dir / "user_memory",
+            memo_dir=src_data_dir / "memo",
+            reminder_db_file=src_data_dir / "reminders.json",
+        )
+
+    user_service = UserService(SqliteUserRepo(user_data_store))
     user_prompt_settings_service = UserPromptSettingsService(
-        JsonUserPromptSettingsRepo(settings.user_prompt_settings_file)
+        SqliteUserPromptSettingsRepo(user_data_store)
     )
     scheduler = AsyncScheduler()
     reminder_service = ReminderService(
-        JsonReminderRepo(settings.reminder_db_file),
+        SqliteReminderRepo(user_data_store),
         scheduler,
         transport,
     )
@@ -90,14 +111,14 @@ async def _build_container(
         transport=transport,
         runtime=runtime,
     )
-    memo_service = MemoService(JsonMemoRepo(settings.memo_dir))
+    memo_service = MemoService(SqliteMemoRepo(user_data_store))
     quick_reply_service =( QuickReplyService(settings.quick_reply_file) if enable_quick_reply else None)
     script_workspace_service = ScriptWorkspaceService(
         root_dir=settings.script_workspace_dir,
         python_timeout_sec=settings.python_script_timeout_sec,
     )
     user_memory_service = UserMemoryService(
-        TextUserMemoryRepo(settings.user_memory_dir)
+        SqliteUserMemoryRepo(user_data_store)
     )
 
 

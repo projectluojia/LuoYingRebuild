@@ -59,6 +59,17 @@ class UserPromptSettingsRepo(ABC):
     def delete(self, user_id: str) -> bool: ...
 
 
+class UserMemoryRepo(ABC):
+    @abstractmethod
+    def get(self, user_id: str) -> str: ...
+
+    @abstractmethod
+    def set(self, user_id: str, content: str) -> None: ...
+
+    @abstractmethod
+    def clear(self, user_id: str) -> None: ...
+
+
 #提醒基类
 class ReminderRepo(ABC):
     @abstractmethod

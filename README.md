@@ -17,7 +17,7 @@
 - 多模态输入：支持图片上传、QQ 图片下载与图片理解。
 - 外部信息：天气查询、Tavily / DuckDuckGo 搜索兜底、arXiv 论文检索。
 - Web API：非流式 `/chat` 与实验性流式 `/chat/stream`。
-- 本地持久化：JSON 与文本文件存储，默认写入 `data/`。
+- 本地持久化：用户资料、提示词偏好、长期记忆、备忘录与提醒事项统一写入 SQLite 数据库。
 
 ## 项目状态
 
@@ -27,7 +27,7 @@
 | Web 入口 | 可用但仍在演进 | 已支持聊天、SSE 流式事件、图片/文件上传、工作区文件树与文件下载。认证目前是固定匿名用户。 |
 | CLI 入口 | 可用 | 适合本地调试 Agent、Skill、流式输出和文件工作区。 |
 | Agent / Skill | 可用 | 使用 OpenAI-compatible API，部分 Skill 依赖额外 API Key。 |
-| 数据存储 | 简单可用 | 默认本地 JSON / 文本存储，还没有数据库迁移与多实例一致性方案。 |
+| 数据存储 | 可用 | 默认使用本地 SQLite；启动时会从旧 JSON / 文本路径导入尚未入库的数据。 |
 | 测试 / CI | 待完善 | 当前仓库尚未配置自动化测试与 CI。 |
 
 ## 快速开始
@@ -213,12 +213,13 @@ docker run --rm --env-file .env -e WEB_HOST=0.0.0.0 -p 8000:8000 -v "$PWD/data:/
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `DATA_DIR` | `./data` | 运行时数据根目录。 |
-| `USER_MEMORY_DIR` | `./data/user_memory` | 用户长期记忆。 |
-| `MEMO_DIR` | `./data/memo` | 用户备忘录。 |
+| `USER_DATA_DB_FILE` | `./data/luoying_user_data.sqlite3` | 用户资料、提示词偏好、长期记忆、备忘录与提醒事项的统一数据库。 |
+| `USER_MEMORY_DIR` | `./data/user_memory` | 旧版用户长期记忆目录，仅用于启动时导入。 |
+| `MEMO_DIR` | `./data/memo` | 旧版用户备忘录目录，仅用于启动时导入。 |
 | `QUICK_REPLY_FILE` | `./data/quick_replies.json` | 群聊快捷回复配置。 |
-| `USER_DB_FILE` | `./data/userdatabase.json` | 用户绑定资料。 |
-| `REMINDER_DB_FILE` | `./data/reminders.json` | 提醒事项。 |
-| `USER_PROMPT_SETTINGS_FILE` | `./data/user_prompt_settings.json` | 用户提示词偏好。 |
+| `USER_DB_FILE` | `./data/userdatabase.json` | 旧版用户绑定资料文件，仅用于启动时导入。 |
+| `REMINDER_DB_FILE` | `./data/reminders.json` | 旧版提醒事项文件，仅用于启动时导入。 |
+| `USER_PROMPT_SETTINGS_FILE` | `./data/user_prompt_settings.json` | 旧版用户提示词偏好文件，仅用于启动时导入。 |
 | `SCRIPT_WORKSPACE_DIR` | `./data/scripts` | 每个用户独立的文件/脚本工作区。 |
 
 ### 可选外部服务
@@ -358,7 +359,7 @@ src/luoying_bot/
 ├── infra/
 │   ├── cli/            # CLI TUI
 │   ├── llm/            # OpenAI-compatible 模型适配
-│   ├── repos/          # JSON / 文本持久化
+│   ├── repos/          # SQLite 持久化与旧版 JSON / 文本兼容仓储
 │   ├── scheduler/      # 异步计划任务
 │   ├── transports/     # QQ / Web / CLI transport
 │   └── web/            # FastAPI Web API 与内置静态页面
@@ -376,13 +377,16 @@ src/luoying_bot/
 
 ```text
 data/
-├── memo/                    # 用户备忘录
-├── reminders.json           # 提醒事项
+├── luoying_user_data.sqlite3 # 统一用户数据库
 ├── scripts/                 # 用户文件与脚本工作区
-├── user_memory/             # 用户长期记忆
-├── user_prompt_settings.json
-└── userdatabase.json
+├── memo/                    # 旧版用户备忘录，启动时按需导入
+├── reminders.json           # 旧版提醒事项，启动时按需导入
+├── user_memory/             # 旧版用户长期记忆，启动时按需导入
+├── user_prompt_settings.json # 旧版提示词偏好，启动时按需导入
+└── userdatabase.json         # 旧版用户绑定资料，启动时按需导入
 ```
+
+启动时会优先导入当前 `data/` 下的旧版文件；如果仓库里还存在历史 `src/data/`，也会补充导入尚未入库的用户数据。
 
 文件工作区按用户隔离，例如：
 
@@ -444,7 +448,7 @@ curl http://127.0.0.1:8000/health
 - 为 Web 入口补齐真实认证、会话管理和权限控制。
 - 将 `/chat/stream` 事件协议稳定化。
 - 增加统一的非文本输出事件模型，覆盖文件、图片生成、任务状态等结果。
-- 将本地 JSON / 文本存储升级为可选数据库实现。
+- 增加数据库备份、导出与管理命令。
 - 补齐 pytest 测试、类型检查和 GitHub Actions CI。
 - 增加标准 Python 包配置，取消手动 `PYTHONPATH=src` 的要求。
 - 正式接入图片生成 Skill。

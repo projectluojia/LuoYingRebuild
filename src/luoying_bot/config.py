@@ -57,6 +57,7 @@ class Settings:
     tavily_api_key: str = os.getenv('TAVILY_API_KEY', '')
 
     data_dir: Path = _env_path('DATA_DIR', './data')
+    user_data_db_file: Path = _env_path('USER_DATA_DB_FILE', './data/luoying_user_data.sqlite3')
     memo_dir: Path = _env_path('MEMO_DIR', './data/memo')
     quick_reply_file: Path = _env_path('QUICK_REPLY_FILE', './data/quick_replies.json')
     user_db_file: Path = _env_path('USER_DB_FILE', './data/userdatabase.json')
