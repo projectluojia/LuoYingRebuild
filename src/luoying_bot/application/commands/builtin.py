@@ -1,6 +1,7 @@
 from __future__ import annotations
 import random
 import asyncio
+from datetime import datetime
 from luoying_bot.config import settings
 from luoying_bot.application.commands.base import BaseCommand
 from luoying_bot.domain.context import ChatContext
@@ -39,8 +40,30 @@ class ClearCommand(BaseCommand):
     name = '/clear'
     async def validate(self, args): return args
     async def execute(self, context, args):
-        self.services.memory.clear(context.thread_id); 
+        self.services.memory.clear(context)
         return Reply(text='已清除当前会话记忆')
+
+class ThreadInfoCommand(BaseCommand):
+    name = '/thread'
+    aliases = ['/thread_info']
+    async def validate(self, args): return args
+
+    def _format_datetime(self, value):
+        if isinstance(value, datetime):
+            return value.isoformat()
+        return str(value) if value else None
+
+    async def execute(self, context, args):
+        thread = self.services.memory.ensure_thread(context)
+        summary = thread.summary.strip() or "暂无"
+        return Reply(text=(
+            "当前对话信息：\n"
+            f"ID：{thread.thread_id}\n"
+            f"标题：{thread.title}\n"
+            f"创建时间：{self._format_datetime(thread.created_at) or '未知'}\n"
+            f"更新时间：{self._format_datetime(thread.updated_at) or '未知'}\n"
+            f"总结：{summary}"
+        ))
 
 class TreeCommand(BaseCommand):
     name = '/tree'

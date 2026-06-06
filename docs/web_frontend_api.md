@@ -259,6 +259,96 @@ GET /download/web-user/aaa/ccc.py
 - `403`：无权下载该用户文件。
 - `404`：文件不存在。
 
+### GET `/conversations`
+
+列出当前 Web 用户可见的对话线程。该接口返回内存中的线程状态；当前实现尚未持久化到数据库。
+
+查询参数：
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `limit` | integer | 否 | `50` | 返回数量 |
+| `offset` | integer | 否 | `0` | 分页偏移 |
+| `include_archived` | boolean | 否 | `false` | 是否包含已归档对话 |
+
+响应：
+
+```json
+{
+  "conversations": [
+    {
+      "thread_id": "Platform.WEB:ChannelType.WEB:demo",
+      "title": "你好",
+      "summary": "",
+      "summarized_message_count": 0,
+      "archived": false,
+      "created_at": "2026-06-06T12:00:00+08:00",
+      "updated_at": "2026-06-06T12:01:00+08:00",
+      "user_id": "web-user",
+      "user_name": "网页用户",
+      "platform": "web",
+      "channel_type": "web",
+      "conversation_id": "demo"
+    }
+  ]
+}
+```
+
+### GET `/conversations/{thread_id}/messages`
+
+读取指定对话当前会喂给模型的上下文视图。该接口返回的是 `ConversationMemory.read()` 的适配结果：如果线程有压缩摘要，第一条可能是 `role=system` 的摘要，然后是最近保留的用户/助手消息。
+
+查询参数：
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `limit` | integer | 否 | `1000` | 最多读取多少条未压缩消息 |
+
+响应：
+
+```json
+{
+  "thread_id": "Platform.WEB:ChannelType.WEB:demo",
+  "messages": [
+    {"role": "user", "content": "你好"},
+    {"role": "assistant", "content": "你好呀。"}
+  ]
+}
+```
+
+常见错误：
+
+- `403`：无权访问该对话。
+- `404`：对话不存在。
+
+### PATCH `/conversations/{thread_id}/archive`
+
+归档指定对话。归档不会删除消息或摘要；调用恢复接口后可重新出现在默认对话列表中。
+
+响应：同 `GET /conversations` 中的单个对话对象。
+
+### PATCH `/conversations/{thread_id}/restore`
+
+恢复已归档对话。
+
+响应：同 `GET /conversations` 中的单个对话对象。
+
+### DELETE `/conversations/{thread_id}`
+
+彻底删除指定对话线程，包括线程本体、未压缩消息和摘要。该行为不同于归档，不提供恢复语义。
+
+响应：
+
+```json
+{
+  "deleted": true
+}
+```
+
+常见错误：
+
+- `403`：无权删除该对话。
+
 ### POST `/chat`
 
 发送一次非流式聊天请求。

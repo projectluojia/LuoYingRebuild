@@ -14,6 +14,7 @@ from luoying_bot.application.agent.skill_base import SkillRequest
 from luoying_bot.application.agent.skill_registry import SkillRegistry
 from luoying_bot.domain.message import UniMessage
 from luoying_bot.domain.context import Platform,ChannelType
+from luoying_bot.domain.result import Reply
 from luoying_bot.infra.logging_setup import context_log_extra
 from luoying_bot.ports.llm import ChatModel
 from luoying_bot.ports.memory import ConversationMemory
@@ -439,6 +440,7 @@ class AgentService:
 
         thread_id=message.context.thread_id
         user_text=self._render_user_message_for_agent(message)
+        self.memory.ensure_thread(message.context, title_hint=user_text)
         pltf=message.platform
         cntp=message.context.target.channel_type
         user_id=str(message.context.user.user_id)
@@ -572,8 +574,8 @@ class AgentService:
             except asyncio.TimeoutError:
                 answer = "我这边刚刚处理超时了，能再发一次或者换个更具体的说法吗？"
         
-        self.memory.append(thread_id,"user",user_text)
-        self.memory.append(thread_id,"assistant",answer)
+        self.memory.append_user(message)
+        self.memory.append_assistant(message.context, Reply(text=answer))
         logger.info("主 Agent 完成处理，耗时 %.2fs", time.monotonic() - start_at, extra=extra)
         return answer
 
@@ -585,6 +587,7 @@ class AgentService:
 
         thread_id = message.context.thread_id
         user_text = self._render_user_message_for_agent(message)
+        self.memory.ensure_thread(message.context, title_hint=user_text)
         pltf = message.platform
         cntp = message.context.target.channel_type
         user_id = str(message.context.user.user_id)
@@ -737,6 +740,6 @@ class AgentService:
                 answer = "我这边刚刚处理超时了，能再发一次或者换个更具体的说法吗？"
             yield answer
 
-        self.memory.append(thread_id, "user", user_text)
-        self.memory.append(thread_id, "assistant", answer)
+        self.memory.append_user(message)
+        self.memory.append_assistant(message.context, Reply(text=answer))
         logger.info("主 Agent 完成流式处理，耗时 %.2fs", time.monotonic() - start_at, extra=extra)

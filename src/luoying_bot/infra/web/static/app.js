@@ -11,6 +11,11 @@ const sendButton = document.querySelector("#sendButton");
 const messages = document.querySelector("#messages");
 const chatPanel = document.querySelector(".chat-panel");
 const chatStatus = document.querySelector("#chatStatus");
+const conversationCurrent = document.querySelector("#conversationCurrent");
+const conversationList = document.querySelector("#conversationList");
+const conversationEmpty = document.querySelector("#conversationEmpty");
+const conversationRefreshButton = document.querySelector("#conversationRefreshButton");
+const newConversationButton = document.querySelector("#newConversationButton");
 const workspaceFilesPanel = document.querySelector(".workspace-files-panel");
 const workspaceFilesList = document.querySelector("#workspaceFilesList");
 const workspaceFilesEmpty = document.querySelector("#workspaceFilesEmpty");
@@ -21,8 +26,8 @@ const STREAM_IDLE_TIMEOUT_MS = 45000;
 const MAX_PENDING_IMAGES = 8;
 const MAX_PENDING_FILES = 8;
 
-const sessionId = localStorage.getItem("luoying_session_id") || crypto.randomUUID();
-localStorage.setItem("luoying_session_id", sessionId);
+let currentSessionId = localStorage.getItem("luoying_session_id") || crypto.randomUUID();
+localStorage.setItem("luoying_session_id", currentSessionId);
 let pendingImages = [];
 let pendingFiles = [];
 let workspaceTree = null;
@@ -516,6 +521,137 @@ function signalWorkspaceChanged() {
   scheduleWorkspaceRefresh();
 }
 
+function updateConversationCurrent() {
+  if (!conversationCurrent) return;
+  conversationCurrent.textContent = `当前：${currentSessionId}`;
+}
+
+async function readJsonResponse(resp, fallbackMessage) {
+  let data = null;
+  try {
+    data = await resp.json();
+  } catch {
+    // keep null
+  }
+  if (!resp.ok) {
+    const detail = data?.detail || fallbackMessage || `请求失败：${resp.status}`;
+    throw new Error(detail);
+  }
+  return data;
+}
+
+function renderConversationList(conversations = []) {
+  if (!conversationList || !conversationEmpty) return;
+  conversationList.innerHTML = "";
+  conversationEmpty.hidden = conversations.length > 0;
+
+  for (const conversation of conversations) {
+    const item = document.createElement("div");
+    item.className = "conversation-item";
+    item.classList.toggle("is-active", conversation.conversation_id === currentSessionId);
+    item.classList.toggle("is-archived", Boolean(conversation.archived));
+    item.dataset.threadId = conversation.thread_id;
+    item.dataset.conversationId = conversation.conversation_id || "";
+
+    const title = document.createElement("strong");
+    title.textContent = conversation.title || "新对话";
+    item.appendChild(title);
+
+    const meta = document.createElement("span");
+    const state = conversation.archived ? "已归档" : "活跃";
+    meta.textContent = `${state} · ${conversation.conversation_id || conversation.thread_id}`;
+    item.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "conversation-item-actions";
+
+    const load = document.createElement("button");
+    load.type = "button";
+    load.dataset.action = "load";
+    load.textContent = "载入";
+    actions.appendChild(load);
+
+    const archive = document.createElement("button");
+    archive.type = "button";
+    archive.dataset.action = conversation.archived ? "restore" : "archive";
+    archive.textContent = conversation.archived ? "恢复" : "归档";
+    actions.appendChild(archive);
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.dataset.action = "delete";
+    remove.textContent = "删除";
+    actions.appendChild(remove);
+
+    item.appendChild(actions);
+    conversationList.appendChild(item);
+  }
+}
+
+async function refreshConversations() {
+  if (!conversationList) return;
+  updateConversationCurrent();
+  try {
+    const resp = await fetch("/conversations?include_archived=true", {
+      headers: { Accept: "application/json" },
+    });
+    const data = await readJsonResponse(resp, "对话列表读取失败");
+    renderConversationList(data.conversations || []);
+  } catch (error) {
+    renderConversationList([]);
+    createTrack(error.message || "对话列表读取失败");
+  }
+}
+
+async function loadConversation(threadId) {
+  const resp = await fetch(`/conversations/${encodeURIComponent(threadId)}/messages`, {
+    headers: { Accept: "application/json" },
+  });
+  const data = await readJsonResponse(resp, "对话读取失败");
+  messages.innerHTML = "";
+  for (const message of data.messages || []) {
+    if (message.role === "user") {
+      createBubble("user", message.content || "");
+    } else if (message.role === "assistant") {
+      const bubble = createBubble("assistant", "");
+      renderAssistantBubble(bubble, message.content || "");
+    } else {
+      createTrack(message.content || "");
+    }
+  }
+}
+
+function startNewConversation() {
+  currentSessionId = crypto.randomUUID();
+  localStorage.setItem("luoying_session_id", currentSessionId);
+  messages.innerHTML = "";
+  pendingImages = [];
+  pendingFiles = [];
+  renderPendingImages();
+  updateConversationCurrent();
+  chatStatus.textContent = "随时待命";
+  input.focus();
+}
+
+async function mutateConversation(threadId, action) {
+  const encoded = encodeURIComponent(threadId);
+  let resp = null;
+  if (action === "archive") {
+    resp = await fetch(`/conversations/${encoded}/archive`, { method: "PATCH" });
+  } else if (action === "restore") {
+    resp = await fetch(`/conversations/${encoded}/restore`, { method: "PATCH" });
+  } else if (action === "delete") {
+    resp = await fetch(`/conversations/${encoded}`, { method: "DELETE" });
+  } else {
+    return;
+  }
+  await readJsonResponse(resp, "对话操作失败");
+  if (action === "delete" && threadId.endsWith(`:${currentSessionId}`)) {
+    startNewConversation();
+  }
+  await refreshConversations();
+}
+
 function parseSse(raw) {
   const eventLine = raw.split("\n").find((line) => line.startsWith("event: "));
   const dataLine = raw.split("\n").find((line) => line.startsWith("data: "));
@@ -706,7 +842,7 @@ async function sendMessage(text, images = [], files = []) {
       headers: { "Content-Type": "application/json" },
       signal: controller.signal,
       body: JSON.stringify({
-        session_id: sessionId,
+        session_id: currentSessionId,
         image_ids: images.map((image) => image.image_id),
         file_ids: files.map((file) => file.file_id),
         text,
@@ -788,6 +924,7 @@ async function sendMessage(text, images = [], files = []) {
     setAssistantStreaming(assistantBubble, false);
     chatPanel.classList.remove("is-thinking");
     if (!failed) chatStatus.textContent = "随时待命";
+    refreshConversations();
   }
 }
 
@@ -803,6 +940,39 @@ fileButton.addEventListener("click", () => {
 
 workspaceRefreshButton?.addEventListener("click", () => {
   refreshWorkspaceTree({ silent: false });
+});
+
+conversationRefreshButton?.addEventListener("click", () => {
+  refreshConversations();
+});
+
+newConversationButton?.addEventListener("click", () => {
+  startNewConversation();
+});
+
+conversationList?.addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-action]");
+  if (!button) return;
+  const item = button.closest(".conversation-item");
+  const threadId = item?.dataset.threadId || "";
+  if (!threadId) return;
+
+  try {
+    const action = button.dataset.action;
+    if (action === "load") {
+      if (item.dataset.conversationId) {
+        currentSessionId = item.dataset.conversationId;
+        localStorage.setItem("luoying_session_id", currentSessionId);
+        updateConversationCurrent();
+      }
+      await loadConversation(threadId);
+      await refreshConversations();
+      return;
+    }
+    await mutateConversation(threadId, action);
+  } catch (error) {
+    createTrack(error.message || "对话操作失败");
+  }
 });
 
 imageInput.addEventListener("change", async () => {
@@ -867,6 +1037,8 @@ form.addEventListener("submit", async (event) => {
 });
 
 renderPendingImages();
+updateConversationCurrent();
+refreshConversations();
 refreshWorkspaceTree({ silent: true });
 
 messages.addEventListener("click", async (event) => {

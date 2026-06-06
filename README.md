@@ -250,6 +250,11 @@ docker run --rm --env-file .env -e WEB_HOST=0.0.0.0 -p 8000:8000 -v "$PWD/data:/
 | --- | --- | --- |
 | `GET` | `/health` | 健康检查。 |
 | `GET` | `/` | 返回内置 Web 页面。 |
+| `GET` | `/conversations` | 列出当前 Web 用户对话线程。 |
+| `GET` | `/conversations/{thread_id}/messages` | 读取指定对话的模型上下文视图。 |
+| `PATCH` | `/conversations/{thread_id}/archive` | 归档对话。 |
+| `PATCH` | `/conversations/{thread_id}/restore` | 恢复归档对话。 |
+| `DELETE` | `/conversations/{thread_id}` | 彻底删除对话。 |
 | `POST` | `/chat` | 非流式聊天。 |
 | `POST` | `/chat/stream` | 实验性 SSE 流式聊天。 |
 | `POST` | `/uploads/images` | 上传图片，最多 10MB。 |
@@ -275,6 +280,7 @@ curl -X POST http://127.0.0.1:8000/chat \
 | `/help` | 通用 | 返回帮助与开发日志链接。 |
 | `/version` | 通用 | 返回当前版本。 |
 | `/clear` | 通用 | 清除当前会话短期记忆。 |
+| `/thread` / `/thread_info` | QQ 群聊 / QQ 私聊 | 返回当前对话 ID、标题、时间与总结。 |
 | `/bind --college ... --year ... --department ... [--name ...]` | 通用 | 绑定用户资料。 |
 | `/upd [--college ... --department ... --year ... --name ...]` | 通用 | 更新用户资料。 |
 | `/withdraw` | 通用 | 删除用户绑定资料。 |

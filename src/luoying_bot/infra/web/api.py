@@ -20,8 +20,10 @@ from pydantic import BaseModel, Field
 
 from luoying_bot.bootstrap import AppContainer, build_web_container
 from luoying_bot.config import settings
+from luoying_bot.domain.context import UserIdentity
 from luoying_bot.domain.message import UniMessage
 from luoying_bot.infra.transports.web_transport import WebTransport
+from luoying_bot.ports.memory import ConversationThread
 
 WEB_DIR = Path(__file__).resolve().parent
 INDEX_HTML_FILE = WEB_DIR / "index.html"
@@ -47,6 +49,34 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+
+
+class ConversationThreadResponse(BaseModel):
+    thread_id: str
+    title: str
+    summary: str
+    summarized_message_count: int
+    archived: bool
+    created_at: str | None = None
+    updated_at: str | None = None
+    user_id: str | None = None
+    user_name: str | None = None
+    platform: str | None = None
+    channel_type: str | None = None
+    conversation_id: str | None = None
+
+
+class ConversationListResponse(BaseModel):
+    conversations: list[ConversationThreadResponse]
+
+
+class ConversationMessagesResponse(BaseModel):
+    thread_id: str
+    messages: list[dict[str, str]]
+
+
+class ConversationDeleteResponse(BaseModel):
+    deleted: bool
 
 
 class WebCurrentUser(BaseModel):
@@ -158,6 +188,40 @@ def _resolve_script_download(user_id: str, file_path: str, user: WebCurrentUser)
 
 def _workspace_download_url(user_id: str, file_path: str) -> str:
     return f"/download/{quote(user_id, safe='')}/{quote(file_path, safe='/')}"
+
+
+def _datetime_text(value: Any) -> str | None:
+    isoformat = getattr(value, "isoformat", None)
+    if callable(isoformat):
+        return isoformat()
+    return str(value) if value else None
+
+
+def _thread_response(thread: ConversationThread) -> ConversationThreadResponse:
+    context = thread.context
+    user = context.user if context is not None else None
+    target = context.target if context is not None else None
+    return ConversationThreadResponse(
+        thread_id=thread.thread_id,
+        title=thread.title,
+        summary=thread.summary,
+        summarized_message_count=thread.summarized_message_count,
+        archived=thread.archived,
+        created_at=_datetime_text(thread.created_at),
+        updated_at=_datetime_text(thread.updated_at),
+        user_id=user.user_id if user is not None else None,
+        user_name=user.user_name if user is not None else None,
+        platform=target.platform.value if target is not None else None,
+        channel_type=target.channel_type.value if target is not None else None,
+        conversation_id=target.conversation_id if target is not None else None,
+    )
+
+
+def _ensure_thread_access(thread: ConversationThread, user: WebCurrentUser) -> None:
+    if thread.context is None:
+        return
+    if thread.context.user.user_id != user.user_id:
+        raise HTTPException(status_code=403, detail="无权访问该对话")
 
 
 def _with_workspace_download_urls(node: dict[str, Any], user_id: str) -> dict[str, Any]:
@@ -417,6 +481,84 @@ class WebApiFactory:
             message = _build_message(req, user)
             reply = await container().message_processor.process(message)
             return ChatResponse(reply=reply.text)
+
+        @app.get("/conversations", response_model=ConversationListResponse)
+        async def list_conversations(
+            limit: int = 50,
+            offset: int = 0,
+            include_archived: bool = False,
+            user: WebCurrentUser = Depends(get_current_web_user),
+        ) -> ConversationListResponse:
+            current = container()
+            threads = current.services.memory.list_threads(
+                user=UserIdentity(user_id=user.user_id, user_name=user.user_name),
+                limit=limit,
+                offset=offset,
+                include_archived=include_archived,
+            )
+            return ConversationListResponse(
+                conversations=[_thread_response(thread) for thread in threads]
+            )
+
+        @app.get("/conversations/{thread_id}/messages", response_model=ConversationMessagesResponse)
+        async def get_conversation_messages(
+            thread_id: str,
+            limit: int = 1000,
+            user: WebCurrentUser = Depends(get_current_web_user),
+        ) -> ConversationMessagesResponse:
+            current = container()
+            thread = current.services.memory.get_thread(thread_id)
+            if thread is None:
+                raise HTTPException(status_code=404, detail="对话不存在")
+            _ensure_thread_access(thread, user)
+            return ConversationMessagesResponse(
+                thread_id=thread_id,
+                messages=current.services.memory.read(thread_id, limit=limit),
+            )
+
+        @app.patch("/conversations/{thread_id}/archive", response_model=ConversationThreadResponse)
+        async def archive_conversation(
+            thread_id: str,
+            user: WebCurrentUser = Depends(get_current_web_user),
+        ) -> ConversationThreadResponse:
+            current = container()
+            thread = current.services.memory.get_thread(thread_id)
+            if thread is None:
+                raise HTTPException(status_code=404, detail="对话不存在")
+            _ensure_thread_access(thread, user)
+            archived = current.services.memory.archive_thread(thread_id, archived=True)
+            if archived is None:
+                raise HTTPException(status_code=404, detail="对话不存在")
+            return _thread_response(archived)
+
+        @app.patch("/conversations/{thread_id}/restore", response_model=ConversationThreadResponse)
+        async def restore_conversation(
+            thread_id: str,
+            user: WebCurrentUser = Depends(get_current_web_user),
+        ) -> ConversationThreadResponse:
+            current = container()
+            thread = current.services.memory.get_thread(thread_id)
+            if thread is None:
+                raise HTTPException(status_code=404, detail="对话不存在")
+            _ensure_thread_access(thread, user)
+            restored = current.services.memory.archive_thread(thread_id, archived=False)
+            if restored is None:
+                raise HTTPException(status_code=404, detail="对话不存在")
+            return _thread_response(restored)
+
+        @app.delete("/conversations/{thread_id}", response_model=ConversationDeleteResponse)
+        async def delete_conversation(
+            thread_id: str,
+            user: WebCurrentUser = Depends(get_current_web_user),
+        ) -> ConversationDeleteResponse:
+            current = container()
+            thread = current.services.memory.get_thread(thread_id)
+            if thread is None:
+                return ConversationDeleteResponse(deleted=False)
+            _ensure_thread_access(thread, user)
+            return ConversationDeleteResponse(
+                deleted=current.services.memory.delete_thread(thread_id)
+            )
 
         @app.post("/chat/stream")
         async def chat_stream(

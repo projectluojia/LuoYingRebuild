@@ -27,6 +27,19 @@
       <p>现在就开始！</p>
     </section>
 
+    <aside class="conversation-panel" aria-label="对话">
+      <header>
+        <strong>对话</strong>
+        <div class="conversation-actions">
+          <button id="newConversationButton" type="button" title="新建对话">新建</button>
+          <button id="conversationRefreshButton" type="button" title="刷新对话">刷新</button>
+        </div>
+      </header>
+      <div class="conversation-current" id="conversationCurrent"></div>
+      <div class="conversation-empty" id="conversationEmpty">暂无对话</div>
+      <div class="conversation-list" id="conversationList"></div>
+    </aside>
+
     <section class="chat-panel" aria-label="聊天">
       <header class="chat-header">
         <div class="agent-avatar" aria-hidden="true">
