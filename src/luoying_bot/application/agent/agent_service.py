@@ -370,6 +370,42 @@ class AgentService:
             return await self.model.chat(messages)
         return await asyncio.wait_for(self.model.chat(messages), timeout=timeout)
 
+    async def _maybe_name_thread(self, thread_id: str, user_text: str, answer: str) -> None:
+        thread = self.memory.get_thread(thread_id)
+        if thread is None or thread.metadata.get("title_generated"):
+            return
+
+        history = [item for item in self.memory.read(thread_id) if item.get("role") in {"user", "assistant"}]
+        if len(history) != 2:
+            return
+
+        try:
+            title = await asyncio.wait_for(self.model.chat([
+                {
+                    "role": "system",
+                    "content": (
+                        "请根据用户第一条消息和助手第一条回复，为这个对话起一个简短标题。"
+                        "只输出标题本身，不要解释，不要加引号，不超过18个中文字符。"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"用户：{user_text}\n助手：{answer}",
+                },
+            ]), timeout=8)
+        except Exception:
+            logger.exception("生成对话标题失败")
+            return
+
+        title = title.strip().strip('"').strip("'").strip("“”‘’").replace("\n", " ")
+        title = title[:18].strip()
+        if not title:
+            return
+
+        thread.title = title
+        thread.metadata["title_generated"] = True
+        thread.updated_at = datetime.now(timezone(timedelta(hours=8)))
+
     async def _chat_stream_with_budget(
         self,
         messages: list[dict[str, str]],
@@ -576,6 +612,7 @@ class AgentService:
         
         self.memory.append_user(message)
         self.memory.append_assistant(message.context, Reply(text=answer))
+        await self._maybe_name_thread(thread_id, user_text, answer)
         logger.info("主 Agent 完成处理，耗时 %.2fs", time.monotonic() - start_at, extra=extra)
         return answer
 
@@ -742,4 +779,5 @@ class AgentService:
 
         self.memory.append_user(message)
         self.memory.append_assistant(message.context, Reply(text=answer))
+        await self._maybe_name_thread(thread_id, user_text, answer)
         logger.info("主 Agent 完成流式处理，耗时 %.2fs", time.monotonic() - start_at, extra=extra)
