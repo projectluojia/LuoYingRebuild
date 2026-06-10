@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+
+from memobase import AsyncMemoBaseClient, ChatBlob
+
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class UserMemoryResult:
@@ -8,33 +14,121 @@ class UserMemoryResult:
     text:str
     data:dict
 
+
 class UserMemoryService:
-    def __init__(self,repo):
-        self.repo=repo
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        project_url: str,
+        max_context_tokens: int = 1000,
+        write_sync: bool = False,
+    ):
+        self.enabled = bool((api_key or "").strip())
+        self.max_context_tokens = max_context_tokens
+        self.write_sync = write_sync
+        self.client = (
+            AsyncMemoBaseClient(api_key=api_key, project_url=project_url)
+            if self.enabled
+            else None
+        )
 
-    def get_memory(self,user_id:str)->UserMemoryResult:
-        content = self.repo.get(user_id)
+    async def _get_user(self, user_id: str):
+        if not self.client:
+            return None
+        return await self.client.get_or_create_user(user_id)
 
+    async def get_memory(self,user_id:str)->UserMemoryResult:
+        if not self.enabled:
+            return UserMemoryResult(False, "Memobase 未配置：请设置 MEMOBASE_API_KEY", {})
+        try:
+            user = await self._get_user(user_id)
+            content = await user.context(max_token_size=self.max_context_tokens)
+        except Exception as exc:
+            logger.exception("读取 Memobase 长期记忆失败：user_id=%s", user_id)
+            return UserMemoryResult(False, f"读取长期记忆失败：{type(exc).__name__}: {exc}", {})
         if not content:
             return UserMemoryResult(True, "当前没有长期记忆", {"memory": ""})
         return UserMemoryResult(True,content,{"memory":content})
 
-    def set_memory(self,user_id:str,content:str)->UserMemoryResult:
+    async def set_memory(self,user_id:str,content:str)->UserMemoryResult:
+        if not self.enabled:
+            return UserMemoryResult(False, "Memobase 未配置：请设置 MEMOBASE_API_KEY", {})
         content = (content or "").strip()
 
         if not content:
             return UserMemoryResult(False,"记忆内容不能为空",{})
-        self.repo.set(user_id, content)
-        return UserMemoryResult(True, "已更新长期记忆", {"memory": content})
+        try:
+            user = await self._get_user(user_id)
+            profile_id = await user.add_profile(
+                content=content,
+                topic="explicit_memory",
+                sub_topic="user_requested",
+            )
+        except Exception as exc:
+            logger.exception("写入 Memobase 长期记忆失败：user_id=%s", user_id)
+            return UserMemoryResult(False, f"写入长期记忆失败：{type(exc).__name__}: {exc}", {})
+        return UserMemoryResult(True, "已写入长期记忆", {"memory": content, "profile_id": profile_id})
 
-    def clear_memory(self, user_id: str) -> UserMemoryResult:
-        self.repo.clear(user_id)
+    async def clear_memory(self, user_id: str) -> UserMemoryResult:
+        if not self.enabled:
+            return UserMemoryResult(False, "Memobase 未配置：请设置 MEMOBASE_API_KEY", {})
+        try:
+            try:
+                await self.client.delete_user(user_id)
+            except Exception:
+                logger.info("Memobase 用户不存在或删除失败，将尝试重新创建：user_id=%s", user_id)
+            await self.client.add_user(data={"source": "luoying"}, id=user_id)
+        except Exception as exc:
+            logger.exception("清空 Memobase 长期记忆失败：user_id=%s", user_id)
+            return UserMemoryResult(False, f"清空长期记忆失败：{type(exc).__name__}: {exc}", {})
         return UserMemoryResult(True, "已清空长期记忆", {})
 
-    def build_prompt_block(self, user_id: str) -> str:
-        content = self.repo.get(user_id)
-        if not content:
+    async def build_prompt_block(self, user_id: str, latest_user_text: str = "") -> str:
+        if not self.enabled:
             return "（暂无该用户长期记忆）"
-        return content
+        try:
+            user = await self._get_user(user_id)
+            chats = (
+                [{"role": "user", "content": latest_user_text}]
+                if latest_user_text.strip()
+                else None
+            )
+            content = await user.context(
+                max_token_size=self.max_context_tokens,
+                chats=chats,
+            )
+        except Exception:
+            logger.exception("构建 Memobase 长期记忆上下文失败：user_id=%s", user_id)
+            return "（长期记忆暂时不可用）"
+        return content.strip() if content and content.strip() else "（暂无该用户长期记忆）"
+
+    async def record_turn(
+        self,
+        *,
+        user_id: str,
+        user_text: str,
+        assistant_text: str,
+    ) -> None:
+        if not self.enabled:
+            return
+        user_text = (user_text or "").strip()
+        assistant_text = (assistant_text or "").strip()
+        if not user_text and not assistant_text:
+            return
+        try:
+            user = await self._get_user(user_id)
+            await user.insert(
+                ChatBlob(
+                    messages=[
+                        {"role": "user", "content": user_text},
+                        {"role": "assistant", "content": assistant_text},
+                    ]
+                ),
+                sync=self.write_sync,
+            )
+            await user.flush(sync=self.write_sync)
+        except Exception:
+            logger.exception("写入 Memobase 对话记忆失败：user_id=%s", user_id)
     
     

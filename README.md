@@ -213,13 +213,22 @@ docker run --rm --env-file .env -e WEB_HOST=0.0.0.0 -p 8000:8000 -v "$PWD/data:/
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `DATA_DIR` | `./data` | 运行时数据根目录。 |
-| `USER_MEMORY_DIR` | `./data/user_memory` | 用户长期记忆。 |
 | `MEMO_DIR` | `./data/memo` | 用户备忘录。 |
 | `QUICK_REPLY_FILE` | `./data/quick_replies.json` | 群聊快捷回复配置。 |
 | `USER_DB_FILE` | `./data/userdatabase.json` | 用户绑定资料。 |
 | `REMINDER_DB_FILE` | `./data/reminders.json` | 提醒事项。 |
 | `USER_PROMPT_SETTINGS_FILE` | `./data/user_prompt_settings.json` | 用户提示词偏好。 |
 | `SCRIPT_WORKSPACE_DIR` | `./data/scripts` | 每个用户独立的文件/脚本工作区。 |
+
+### 长期记忆（Memobase）
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `MEMOBASE_API_KEY` | 空 | Memobase 项目 API Key；未配置时长期记忆不可用。 |
+| `MEMOBASE_PROJECT_URL` | `https://api.memobase.dev` | Memobase Cloud 或自托管后端地址。 |
+| `MEMOBASE_MAX_CONTEXT_TOKENS` | `1000` | 注入提示词的长期记忆上下文 token 上限。 |
+| `MEMOBASE_WRITE_SYNC` | `false` | 写入对话后是否等待 Memobase 同步处理。 |
+| `MEMOBASE_LLM_API_KEY` / `MEMOBASE_EMBEDDING_API_KEY` | 空 | 自托管 Memobase 后端可使用的模型与 embedding Key；由 Memobase 后端进程读取。 |
 
 ### 可选外部服务
 
@@ -311,7 +320,7 @@ Agent 会根据用户意图选择 Skill。已注册的主要 Skill：
 | --- | --- | --- |
 | `reminder` | QQ / Web / CLI | 创建、查看、删除一次性、每日重复或周期提醒。 |
 | `memo` | QQ / Web / CLI | 读写、搜索、更新、删除用户备忘录。 |
-| `user_memory` | QQ / Web / CLI | 读取与维护当前用户长期记忆。 |
+| `user_memory` | QQ / Web / CLI | 用户明确要求时读取、写入或清空当前用户长期记忆。 |
 | `weather` | QQ / Web / CLI | 查询武汉天气。 |
 | `web_search` | QQ / Web / CLI | 联网搜索，优先 Tavily，失败时尝试 DuckDuckGo HTML。 |
 | `arxiv` | QQ / Web / CLI | 查询 arXiv 论文并返回原文链接。 |
@@ -385,7 +394,6 @@ data/
 ├── memo/                    # 用户备忘录
 ├── reminders.json           # 提醒事项
 ├── scripts/                 # 用户文件与脚本工作区
-├── user_memory/             # 用户长期记忆
 ├── user_prompt_settings.json
 └── userdatabase.json
 ```

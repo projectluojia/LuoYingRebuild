@@ -25,7 +25,7 @@ from luoying_bot.system_prompt_parts import build_system_prompt
 logger = logging.getLogger(__name__)
 
 CLI_STREAM_REACT_INSTRUCTION = """1. 判断是否需要调用技能
-2. 每轮对话必须调用长期记忆功能来更新对用户的记忆。
+2. 只有当用户明确要求查看、写入、修改、删除或清空长期记忆时，才调用长期记忆技能。
 3. 如果需要，可以多步调用多个技能
 4. 每次只能做一件事：要么调用一个技能，要么确认可以开始最终回答
 5. 不要把内部推理过程直接暴露给用户
@@ -152,7 +152,7 @@ class AgentService:
             messages.append({
                 "role": "system",
                 "content": (
-                    "以下是系统保存的该用户长期记忆。这是一段简短的用户简介。"
+                    "以下是 Memobase 保存的该用户长期记忆。"
                     "它不是本轮用户消息。仅在相关时参考；如果与用户本轮明确表述冲突，以本轮明确表述为准。\n\n"
                     f"{user_memory_text}"
                 ),
@@ -212,7 +212,7 @@ class AgentService:
             messages.append({
                 "role": "system",
                 "content": (
-                    "以下是系统保存的该用户长期记忆。这是一段简短的用户简介。"
+                    "以下是该用户长期记忆。"
                     "仅在相关时参考；如果与本轮用户明确表述冲突，以本轮为准。\n\n"
                     f"{user_memory_text}"
                 ),
@@ -448,7 +448,7 @@ class AgentService:
             messages.append({
                 "role": "system",
                 "content": (
-                    "以下是系统保存的该用户长期记忆。这是一段简短的用户简介。"
+                    "以下是该用户长期记忆。"
                     "仅在相关时参考；如果与本轮用户明确表述冲突，以本轮为准。\n\n"
                     f"{user_memory_text}"
                 ),
@@ -475,13 +475,17 @@ class AgentService:
 
 
         thread_id=message.context.thread_id
+        raw_user_text=message.to_llm_text()
         user_text=self._render_user_message_for_agent(message)
         self.memory.ensure_thread(message.context, title_hint=user_text)
         pltf=message.platform
         cntp=message.context.target.channel_type
         user_id=str(message.context.user.user_id)
         system_prompt=self._select_system_prompt(pltf,cntp,user_id)
-        user_memory_text=self.skills.services.user_memory_service.build_prompt_block(user_id)
+        user_memory_text=await self.skills.services.user_memory_service.build_prompt_block(
+            user_id,
+            latest_user_text=raw_user_text,
+        )
 
 
 
@@ -612,6 +616,11 @@ class AgentService:
         
         self.memory.append_user(message)
         self.memory.append_assistant(message.context, Reply(text=answer))
+        await self.skills.services.user_memory_service.record_turn(
+            user_id=user_id,
+            user_text=raw_user_text,
+            assistant_text=answer,
+        )
         await self._maybe_name_thread(thread_id, user_text, answer)
         logger.info("主 Agent 完成处理，耗时 %.2fs", time.monotonic() - start_at, extra=extra)
         return answer
@@ -623,13 +632,17 @@ class AgentService:
         deadline = start_at + self.total_timeout_sec if self.total_timeout_sec > 0 else None
 
         thread_id = message.context.thread_id
+        raw_user_text = message.to_llm_text()
         user_text = self._render_user_message_for_agent(message)
         self.memory.ensure_thread(message.context, title_hint=user_text)
         pltf = message.platform
         cntp = message.context.target.channel_type
         user_id = str(message.context.user.user_id)
         system_prompt = self._select_system_prompt(pltf, cntp, user_id)
-        user_memory_text = self.skills.services.user_memory_service.build_prompt_block(user_id)
+        user_memory_text = await self.skills.services.user_memory_service.build_prompt_block(
+            user_id,
+            latest_user_text=raw_user_text,
+        )
 
         logger.info("主 Agent 开始处理流式消息", extra=extra)
         scratchpad: list[AgentStep] = []
@@ -779,5 +792,10 @@ class AgentService:
 
         self.memory.append_user(message)
         self.memory.append_assistant(message.context, Reply(text=answer))
+        await self.skills.services.user_memory_service.record_turn(
+            user_id=user_id,
+            user_text=raw_user_text,
+            assistant_text=answer,
+        )
         await self._maybe_name_thread(thread_id, user_text, answer)
         logger.info("主 Agent 完成流式处理，耗时 %.2fs", time.monotonic() - start_at, extra=extra)

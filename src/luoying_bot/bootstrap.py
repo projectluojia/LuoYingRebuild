@@ -19,7 +19,6 @@ from luoying_bot.application.services.user_prompt_settings_service import UserPr
 from luoying_bot.application.services.user_service import UserService
 from luoying_bot.application.services.user_memory_service import UserMemoryService
 from luoying_bot.config import settings
-from luoying_bot.infra.repos.text_user_memory_repo import TextUserMemoryRepo
 from luoying_bot.infra.llm.openai_chat import OpenAICompatibleChatModel
 from luoying_bot.infra.memory.in_memory import InMemoryConversationMemory
 from luoying_bot.infra.repos.json_memo_repo import JsonMemoRepo
@@ -97,7 +96,10 @@ async def _build_container(
         python_timeout_sec=settings.python_script_timeout_sec,
     )
     user_memory_service = UserMemoryService(
-        TextUserMemoryRepo(settings.user_memory_dir)
+        api_key=settings.memobase_api_key,
+        project_url=settings.memobase_project_url,
+        max_context_tokens=settings.memobase_max_context_tokens,
+        write_sync=settings.memobase_write_sync,
     )
 
 

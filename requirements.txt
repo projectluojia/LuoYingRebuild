@@ -15,6 +15,7 @@ python-pptx>=1.0.0
 beautifulsoup4>=4.12.0
 odfpy>=1.4.1
 openai>=2.0.0
+memobase>=0.0.27
 langchain>=1.0.0
 langchain-core>=1.0.0
 langchain-openai>=1.0.0

@@ -62,9 +62,13 @@ class Settings:
     user_db_file: Path = _env_path('USER_DB_FILE', './data/userdatabase.json')
     user_prompt_settings_file: Path = _env_path('USER_PROMPT_SETTINGS_FILE', './data/user_prompt_settings.json')
     reminder_db_file: Path = _env_path('REMINDER_DB_FILE', './data/reminders.json')
-    user_memory_dir: Path = _env_path('USER_MEMORY_DIR', './data/user_memory')
     script_workspace_dir: Path = _env_path('SCRIPT_WORKSPACE_DIR', './data/scripts')
     python_script_timeout_sec: int = int(os.getenv('PYTHON_SCRIPT_TIMEOUT_SEC', '15'))
+
+    memobase_api_key: str = os.getenv('MEMOBASE_API_KEY', '')
+    memobase_project_url: str = os.getenv('MEMOBASE_PROJECT_URL', 'https://api.memobase.dev')
+    memobase_max_context_tokens: int = int(os.getenv('MEMOBASE_MAX_CONTEXT_TOKENS', '1000'))
+    memobase_write_sync: bool = _env_bool('MEMOBASE_WRITE_SYNC', False)
 
 
     memory_max_messages_per_thread: int = int(os.getenv('MEMORY_MAX_MESSAGES_PER_THREAD', '80'))
