@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import logging
-import re
+import uuid
 from dataclasses import dataclass
 
 from memobase import AsyncMemoBaseClient, ChatBlob
 
 logger = logging.getLogger(__name__)
-
-_SAFE_MEMOBASE_USER_ID_RE = re.compile(r"[^A-Za-z0-9_-]+")
 
 
 @dataclass
@@ -37,9 +35,7 @@ class UserMemoryService:
         )
 
     def _memobase_user_id(self, user_id: str) -> str:
-        cleaned = _SAFE_MEMOBASE_USER_ID_RE.sub("_", str(user_id or "").strip())
-        cleaned = cleaned.strip("_") or "unknown"
-        return f"luoying_{cleaned}"
+        return str(uuid.uuid5(uuid.NAMESPACE_URL, f"luoying:user:{user_id or 'unknown'}"))
 
     async def _get_user(self, user_id: str):
         if not self.client:
