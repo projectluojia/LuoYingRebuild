@@ -1,47 +1,65 @@
-# 珞樱 Luoying
+# LuoYing
 
-珞樱（Luoying）是一个面向校园与社群场景的多端 Agent 系统。它把 QQ、Web、CLI 等入口收到的消息统一转换为内部消息模型，再交给命令系统、业务服务和可调用 Skill 共同处理。
+```text
+ __                          __      __  __                     
+/  |                        /  \    /  |/  |                    
+$$ |       __    __   ______$$  \  /$$/ $$/  _______    ______  
+$$ |      /  |  /  | /      \$$  \/$$/  /  |/       \  /      \ 
+$$ |      $$ |  $$ |/$$$$$$  |$$  $$/   $$ |$$$$$$$  |/$$$$$$  |
+$$ |      $$ |  $$ |$$ |  $$ | $$$$/    $$ |$$ |  $$ |$$ |  $$ |
+$$ |_____ $$ \__$$ |$$ \__$$ |  $$ |    $$ |$$ |  $$ |$$ \__$$ |
+$$       |$$    $$/ $$    $$/   $$ |    $$ |$$ |  $$ |$$    $$ |
+$$$$$$$$/  $$$$$$/   $$$$$$/    $$/     $$/ $$/   $$/  $$$$$$$ |
+                                                      /  \__$$ |
+                                                      $$    $$/ 
+                                                       $$$$$$/  
+```
 
-当前仓库最成熟的入口是 **QQ OneBot WebSocket**，同时提供了可运行的 **Web 聊天入口** 和 **CLI 调试入口**。项目仍在快速演进中，适合用作校园 Agent、社群机器人、多端聊天后端或 Agent 能力编排框架的基础。
+**LuoYing**（珞樱）是一个面向 QQ、Web 与 CLI 的多端 Agent 机器人框架。它把不同平台的消息统一成平台无关的内部模型，再通过命令系统、业务服务、长期记忆和可调用 Skill 组织成一条可维护的对话处理链路。
 
-> 本项目为闭源项目，仓库访问、代码使用、复制、分发与商用均以项目维护者的明确授权为准。
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](#环境要求)
+[![许可证](https://img.shields.io/badge/license-Apache--2.0-green)](./LICENSE)
+[![OpenAI compatible](https://img.shields.io/badge/LLM-OpenAI--compatible-7c3aed)](#模型配置)
+
+LuoYing 的目标不是只做一个固定功能的聊天机器人，而是提供一个适合二次开发的 Agent 应用骨架：平台接入、会话调度、工具调用、文件工作区、长期记忆、提醒与备忘录等能力都尽量放在清晰的边界内。
 
 ## 特性
 
-- 多端入口：QQ OneBot WebSocket、Web HTTP/SSE、CLI。
-- 统一消息模型：`UniMessage`、`MessageSegment`、`ChatContext`。
-- 混合处理链路：确定性命令、业务服务、ReAct 风格 Agent 与 Skill 系统协同工作。
-- 会话调度：同一会话串行处理，跨会话并发处理。
-- 长期能力：提醒事项、备忘录、用户绑定资料、用户长期记忆、快捷回复。
-- 文件工作区：上传文件、读取常见文档、生成脚本、运行 Python 脚本，并通过工作区文件树下载文件。
-- 多模态输入：支持图片上传、QQ 图片下载与图片理解。
-- 外部信息：天气查询、Tavily / DuckDuckGo 搜索兜底、arXiv 论文检索。
-- Web API：非流式 `/chat` 与实验性流式 `/chat/stream`。
-- 本地持久化：JSON 与文本文件存储，默认写入 `data/`。
+- **多端入口**：支持 QQ OneBot WebSocket、FastAPI Web API 和 CLI 调试入口。
+- **统一消息模型**：通过 `UniMessage`、`MessageSegment`、`ChatContext` 屏蔽平台差异。
+- **混合处理链路**：确定性命令、快捷回复、业务服务、ReAct 风格 Agent 与 Skill 协同工作。
+- **会话调度**：同一会话串行处理，跨会话并发处理。
+- **长期能力**：提醒事项、备忘录、用户资料、Memobase 长期记忆、用户提示词偏好。
+- **文件工作区**：上传文档、读取常见文件、生成脚本、运行 Python、下载工作区文件。
+- **多模态输入**：支持图片上传、QQ 图片下载、图片理解、OCR 与截图分析。
+- **外部信息**：天气查询、Tavily / DuckDuckGo 搜索兜底、arXiv 论文检索。
+- **Web API**：提供普通 `/chat` 与实验性 SSE `/chat/stream`。
+- **兼容模型服务**：可接入 DeepSeek、DashScope、OpenAI 或其他 OpenAI-compatible 服务。
 
 ## 项目状态
 
 | 模块 | 状态 | 说明 |
 | --- | --- | --- |
-| QQ 入口 | 可用 | 主链路，支持群聊、私聊白名单、OneBot 事件、图片、私聊文件、群管理相关能力。 |
-| Web 入口 | 可用但仍在演进 | 已支持聊天、SSE 流式事件、图片/文件上传、工作区文件树与文件下载。认证目前是固定匿名用户。 |
+| QQ 入口 | 日常可用 | 主链路，支持群聊、私聊白名单、OneBot 事件、图片、文件与部分群管理能力。 |
+| Web 入口 | 可用，持续演进 | 支持聊天、SSE、图片/文件上传、工作区文件树和文件下载；认证仍是简化实现。 |
 | CLI 入口 | 可用 | 适合本地调试 Agent、Skill、流式输出和文件工作区。 |
-| Agent / Skill | 可用 | 使用 OpenAI-compatible API，部分 Skill 依赖额外 API Key。 |
-| 数据存储 | 简单可用 | 默认本地 JSON / 文本存储，还没有数据库迁移与多实例一致性方案。 |
-| 测试 / CI | 待完善 | 当前仓库尚未配置自动化测试与 CI。 |
+| Agent / Skill | 可用 | 使用 OpenAI-compatible API；部分 Skill 需要额外 API Key。 |
+| 长期记忆 | 可用 | 短期上下文保存在进程内；长期记忆通过 Memobase 接入。 |
+| 数据持久化 | 混合实现 | 备忘录、提醒、用户资料等默认使用本地 JSON / SQLite / 目录文件。 |
+| 测试与 CI | 计划中 | 当前主要依赖手动 smoke test，欢迎补充 pytest 与 CI。 |
+
+## 环境要求
+
+- Python 3.11+
+- 一个 OpenAI-compatible Chat Completions 服务
+- 可选：OneBot v11 兼容实现，用于 QQ 入口
+- 可选：Memobase，用于长期记忆
+- 可选：Tavily、和风天气、图片理解/编程模型等外部服务
 
 ## 快速开始
 
-### 1. 准备环境
-
-要求：
-
-- Python 3.11+
-- 一个 OpenAI-compatible Chat Completions 服务；例如 DeepSeek、DashScope 兼容模式或其他兼容 OpenAI SDK 的服务。
-- 如果运行 QQ 入口，需要 OneBot v11 兼容实现，并启用反向 WebSocket 或等价连接。
-
 ```bash
-# 从内部代码仓库取得源码后进入项目目录
+git clone https://github.com/projectluojia/LuoYingRebuild.git
 cd LuoYingRebuild
 
 python -m venv .venv
@@ -49,11 +67,6 @@ source .venv/bin/activate
 
 pip install -r requirements.txt
 cp .env.example .env
-```
-
-本仓库目前没有 `pyproject.toml` 安装配置，开发运行时请显式设置 `PYTHONPATH`：
-
-```bash
 export PYTHONPATH=src
 ```
 
@@ -63,27 +76,29 @@ Windows PowerShell：
 $env:PYTHONPATH = "src"
 ```
 
-### 2. 配置模型
+### 模型配置
 
-编辑 `.env`，至少填写：
+编辑 `.env`，至少配置主模型：
 
 ```env
 OPENAI_BASE_URL=https://api.deepseek.com
-OPENAI_API_KEY=你的主模型 API Key
+OPENAI_API_KEY=your_api_key
 OPENAI_MODEL=deepseek-chat
+LLM_TEMPERATURE=1.0
 ```
 
-如果要使用文件工作区 Agent 或图片理解能力，还需要配置编程/多模态模型：
+如果要使用文件工作区、代码生成、图片理解或截图分析能力，还需要配置编程/多模态模型：
 
 ```env
 CODER_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-CODER_API_KEY=你的 API Key
+CODER_API_KEY=your_api_key
 CODER_MODEL=qwen3-max
+CODER_TEMPERATURE=0.2
 ```
 
-没有配置 `OPENAI_API_KEY` 时，主模型实现会返回一个本地占位回复，方便做启动 smoke test；真实对话和多数 Agent 能力仍需要有效模型。
+当 `OPENAI_API_KEY` 为空时，主模型适配器会返回本地占位回复，方便做启动检查；真实对话和 Agent 能力仍需要有效模型。
 
-### 3. 启动 Web 入口
+### 启动 Web 入口
 
 ```bash
 PYTHONPATH=src python -m luoying_bot.main_web
@@ -101,66 +116,91 @@ http://127.0.0.1:8000
 PYTHONPATH=src uvicorn luoying_bot.main_web:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
-### 4. 启动 CLI 入口
+### 启动 CLI 入口
 
 ```bash
 PYTHONPATH=src python -m luoying_bot.main_cli_stream
 ```
 
-常用参数：
+指定会话和用户信息：
 
 ```bash
 PYTHONPATH=src python -m luoying_bot.main_cli_stream \
   --session-id local-dev \
   --user-id cli-user \
-  --user-name 本地用户
+  --user-name local-user
 ```
 
 输入 `exit`、`quit`、`q`、`退出` 或 `再见` 结束会话。
 
-### 5. 启动 QQ 入口
+### 启动 QQ 入口
 
-先在 `.env` 中配置 OneBot WebSocket 与机器人信息：
+在 `.env` 中配置 OneBot 与机器人信息：
 
 ```env
 WS_URL=ws://127.0.0.1:3001
 WS_TOKEN=
-BOT_QQ=你的机器人 QQ
+BOT_QQ=your_bot_qq
 BOT_NAME=珞樱
-SPECIFIC_GROUP_IDS=允许响应的群号1,允许响应的群号2
-QQ_PRIVATE_USER_IDS=允许私聊的用户QQ1,允许私聊的用户QQ2
-OPS=管理员QQ1,管理员QQ2
+SPECIFIC_GROUP_IDS=group_id_1,group_id_2
+QQ_PRIVATE_USER_IDS=user_id_1,user_id_2
+OPS=admin_user_id_1,admin_user_id_2
 ```
 
-然后启动：
+启动：
 
 ```bash
 PYTHONPATH=src python -m luoying_bot.main_qq
 ```
 
-QQ 群聊默认只响应被 @ 的消息；私聊默认使用白名单，`QQ_PRIVATE_USER_IDS` 为空时不回复任何 QQ 私聊。
+QQ 群聊默认只处理被机器人提及的消息。QQ 私聊默认使用白名单；如果 `QQ_PRIVATE_USER_IDS` 为空，则不会回复 QQ 私聊。
 
 ## Docker
 
-仓库提供了一个面向 QQ 入口的基础镜像：
+构建并运行默认 QQ 入口：
 
 ```bash
 docker build -t luoying .
 docker run --rm --env-file .env -v "$PWD/data:/app/data" luoying
 ```
 
-镜像默认命令是：
+运行 Web 入口：
 
 ```bash
-python -m luoying_bot.main_qq
-```
-
-如需运行 Web 入口，可以覆盖命令：
-
-```bash
-docker run --rm --env-file .env -e WEB_HOST=0.0.0.0 -p 8000:8000 -v "$PWD/data:/app/data" \
+docker run --rm --env-file .env \
+  -e WEB_HOST=0.0.0.0 \
+  -p 8000:8000 \
+  -v "$PWD/data:/app/data" \
   luoying python -m luoying_bot.main_web
 ```
+
+生产或准生产 QQ 部署建议使用 Docker Compose：OneBot 实现、LuoYing、可选 Memobase、可选 embedding 服务和持久化卷放在同一套编排里。
+
+## 长期记忆
+
+LuoYing 使用 Memobase 作为长期记忆后端。应用层会先把平台用户 ID 映射为稳定 UUID，再调用 Memobase，因为新版 Memobase API 要求用户 ID 是 UUID。
+
+LuoYing 侧配置：
+
+```env
+MEMOBASE_PROJECT_URL=http://127.0.0.1:8019
+MEMOBASE_API_KEY=secret
+MEMOBASE_MAX_CONTEXT_TOKENS=1000
+MEMOBASE_WRITE_SYNC=false
+```
+
+自托管 Memobase 可以搭配本地 embedding 服务。仓库提供了一个诊断脚本，用来检查 Memobase 健康状态、embedding 维度、用户创建、聊天写入、flush 和 context 读取：
+
+```bash
+python3 scripts/diagnose_memobase.py \
+  --memobase-url http://127.0.0.1:8019 \
+  --memobase-key secret \
+  --embedding-url http://127.0.0.1:8080/v1 \
+  --user-id 2564664062 \
+  --output /tmp/memobase_diag.json
+```
+
+旧的 `data/user_memory/*.txt` 用户画像文件不会被 Memobase 实现读取。
 
 ## 配置说明
 
@@ -170,9 +210,9 @@ docker run --rm --env-file .env -e WEB_HOST=0.0.0.0 -p 8000:8000 -v "$PWD/data:/
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `VERSION` | `v2.4.0` | 当前运行版本展示值。 |
+| `VERSION` | `v2.4.0` | 版本展示值。 |
 | `BOT_QQ` | `3949843218` | QQ 机器人账号。 |
-| `BOT_NAME` | `珞樱` | 机器人名称，用于消息归一化。 |
+| `BOT_NAME` | `珞樱` | 机器人显示名，用于消息归一化。 |
 | `HELP` | 博客链接 | `/help` 返回的帮助链接。 |
 | `LOG` | 博客链接 | `/help` 返回的开发日志链接。 |
 
@@ -183,11 +223,11 @@ docker run --rm --env-file .env -e WEB_HOST=0.0.0.0 -p 8000:8000 -v "$PWD/data:/
 | `OPENAI_BASE_URL` | 主 Agent 使用的 OpenAI-compatible API 地址。 |
 | `OPENAI_API_KEY` | 主 Agent API Key。 |
 | `OPENAI_MODEL` | 主 Agent 模型名。 |
-| `LLM_TEMPERATURE` | 主 Agent 默认温度。 |
+| `LLM_TEMPERATURE` | 主 Agent 温度。 |
 | `OPENAI_ENABLE_THINKING` | 是否向兼容服务传递 thinking 开关。 |
-| `CODER_BASE_URL` | 文件工作区 Agent / 图片理解使用的兼容 API 地址。 |
-| `CODER_API_KEY` | 文件工作区 Agent / 图片理解 API Key。 |
-| `CODER_MODEL` | 文件工作区 Agent / 图片理解模型名。 |
+| `CODER_BASE_URL` | 文件工作区、代码生成、图片理解模型 API 地址。 |
+| `CODER_API_KEY` | 文件工作区、代码生成、图片理解模型 API Key。 |
+| `CODER_MODEL` | 文件工作区、代码生成、图片理解模型名。 |
 | `CODER_TEMPERATURE` | 编程模型温度。 |
 
 ### QQ 配置
@@ -199,45 +239,32 @@ docker run --rm --env-file .env -e WEB_HOST=0.0.0.0 -p 8000:8000 -v "$PWD/data:/
 | `OPS` | 管理员用户 ID，逗号分隔。 |
 | `SPECIFIC_GROUP_IDS` | 允许响应的 QQ 群号，逗号分隔。 |
 | `QQ_PRIVATE_USER_IDS` | 允许私聊的 QQ 用户 ID，逗号分隔。 |
-| `TRIGGER_PREFIX` | 命令触发前缀配置；当前命令处理主要识别 `/`。 |
+| `TRIGGER_PREFIX` | 命令触发前缀。 |
 
-### Web 配置
-
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `WEB_HOST` | `127.0.0.1` | Web 服务监听地址；容器内对外暴露时通常设为 `0.0.0.0`。 |
-| `WEB_PORT` | `8000` | Web 服务端口。 |
-
-### 数据与工作区
+### 数据配置
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `DATA_DIR` | `./data` | 运行时数据根目录。 |
-| `MEMO_DIR` | `./data/memo` | 用户备忘录。 |
-| `QUICK_REPLY_FILE` | `./data/quick_replies.json` | 群聊快捷回复配置。 |
+| `MEMO_DIR` | `./data/memo` | 用户备忘录目录。 |
+| `QUICK_REPLY_FILE` | `./data/quick_replies.json` | 快捷回复配置。 |
 | `USER_DB_FILE` | `./data/userdatabase.json` | 用户绑定资料。 |
 | `REMINDER_DB_FILE` | `./data/reminders.json` | 提醒事项。 |
 | `USER_PROMPT_SETTINGS_FILE` | `./data/user_prompt_settings.json` | 用户提示词偏好。 |
 | `SCRIPT_WORKSPACE_DIR` | `./data/scripts` | 每个用户独立的文件/脚本工作区。 |
 
-### 长期记忆（Memobase）
-
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `MEMOBASE_API_KEY` | 空 | Memobase 项目 API Key；未配置时长期记忆不可用。 |
-| `MEMOBASE_PROJECT_URL` | `https://api.memobase.dev` | Memobase Cloud 或自托管后端地址。 |
-| `MEMOBASE_MAX_CONTEXT_TOKENS` | `1000` | 注入提示词的长期记忆上下文 token 上限。 |
-| `MEMOBASE_WRITE_SYNC` | `false` | 写入对话后是否等待 Memobase 同步处理。 |
-| `MEMOBASE_LLM_API_KEY` / `MEMOBASE_EMBEDDING_API_KEY` | 空 | 自托管 Memobase 后端可使用的模型与 embedding Key；由 Memobase 后端进程读取。 |
-
 ### 可选外部服务
 
 | 变量 | 说明 |
 | --- | --- |
-| `QWEATHER_API_KEY` | 和风天气 API Key；未配置时天气 Skill 会提示不可用。 |
-| `WEATHER_BASE_URL` | 天气接口地址，默认查询武汉实时天气。 |
+| `MEMOBASE_PROJECT_URL` | Memobase Cloud 或自托管地址。 |
+| `MEMOBASE_API_KEY` | Memobase 项目 token。 |
+| `MEMOBASE_MAX_CONTEXT_TOKENS` | 注入提示词的长期记忆上下文 token 上限。 |
+| `MEMOBASE_WRITE_SYNC` | 写入记忆后是否等待 Memobase 处理完成。 |
+| `QWEATHER_API_KEY` | 和风天气 API Key。 |
+| `WEATHER_BASE_URL` | 天气接口地址。 |
 | `TAVILY_API_KEY` | Tavily 搜索 API Key；未配置时会尝试 DuckDuckGo HTML 兜底。 |
-| `IMAGE_API_KEY` / `IMAGE_BASE_URL` / `IMAGE_MODEL` | 预留图片生成配置，当前主链路尚未正式接入图片生成 Skill。 |
+| `IMAGE_API_KEY` / `IMAGE_BASE_URL` / `IMAGE_MODEL` | 预留图片生成配置。 |
 
 ### 运行限制
 
@@ -251,24 +278,23 @@ docker run --rm --env-file .env -e WEB_HOST=0.0.0.0 -p 8000:8000 -v "$PWD/data:/
 
 ## Web API
 
-详细协议见 [`docs/web_frontend_api.md`](./docs/web_frontend_api.md)。
+完整协议见 [docs/web_frontend_api.md](./docs/web_frontend_api.md)。
 
 常用端点：
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/health` | 健康检查。 |
-| `GET` | `/` | 返回内置 Web 页面。 |
-| `GET` | `/conversations` | 列出当前 Web 用户对话线程。 |
+| `GET` | `/` | 内置 Web 页面。 |
+| `GET` | `/conversations` | 列出当前 Web 用户的对话。 |
 | `GET` | `/conversations/{thread_id}/messages` | 读取指定对话的模型上下文视图。 |
 | `PATCH` | `/conversations/{thread_id}/archive` | 归档对话。 |
 | `PATCH` | `/conversations/{thread_id}/restore` | 恢复归档对话。 |
-| `DELETE` | `/conversations/{thread_id}` | 彻底删除对话。 |
+| `DELETE` | `/conversations/{thread_id}` | 删除对话。 |
 | `POST` | `/chat` | 非流式聊天。 |
 | `POST` | `/chat/stream` | 实验性 SSE 流式聊天。 |
-| `POST` | `/uploads/images` | 上传图片，最多 10MB。 |
-| `POST` | `/uploads/files` | 上传普通文件，最多 25MB。 |
-| `GET` | `/uploads/images/{image_id}` | 读取已上传图片。 |
+| `POST` | `/uploads/images` | 上传图片，最大 10 MB。 |
+| `POST` | `/uploads/files` | 上传普通文件，最大 25 MB。 |
 | `GET` | `/workspace/tree` | 获取当前 Web 用户工作区文件树。 |
 | `GET` | `/download/{user_id}/{file_path}` | 下载工作区文件。 |
 
@@ -282,83 +308,67 @@ curl -X POST http://127.0.0.1:8000/chat \
 
 ## 命令
 
-命令在 QQ 入口中默认启用，Web 入口当前关闭命令系统，优先走 Agent。命令参数格式为 `--key value`，部分参数提供短别名。
+QQ 入口默认启用命令系统。Web 入口当前优先走 Agent，默认关闭命令派发。
 
 | 命令 | 场景 | 说明 |
 | --- | --- | --- |
 | `/help` | 通用 | 返回帮助与开发日志链接。 |
-| `/version` | 通用 | 返回当前版本。 |
+| `/version` | 通用 | 返回版本信息。 |
 | `/clear` | 通用 | 清除当前会话短期记忆。 |
-| `/thread` / `/thread_info` | QQ 群聊 / QQ 私聊 | 返回当前对话 ID、标题、时间与总结。 |
-| `/bind --college ... --year ... --department ... [--name ...]` | 通用 | 绑定用户资料。 |
-| `/upd [--college ... --department ... --year ... --name ...]` | 通用 | 更新用户资料。 |
-| `/withdraw` | 通用 | 删除用户绑定资料。 |
-| `/prompt` | 通用 | 查看当前提示词偏好。 |
-| `/prompt_style --style ...` | 通用 | 设置基础风格。 |
-| `/prompt_trait --trait ... --level ...` | 通用 | 设置额外风格强度。 |
-| `/prompt_reset` | 通用 | 重置提示词偏好。 |
-| `/prompt_help` | 通用 | 查看提示词偏好命令帮助。 |
+| `/thread` / `/thread_info` | QQ | 查看当前对话 ID、标题、时间和摘要。 |
+| `/bind` / `/upd` / `/withdraw` | 通用 | 管理用户绑定资料。 |
+| `/prompt*` | 通用 | 管理用户提示词偏好。 |
 | `/tree` | QQ 私聊 | 查看当前用户脚本工作区文件树。 |
-| `/refresh_list` | QQ 群聊 | 刷新群成员缓存。 |
-| `/random_one` | QQ 群聊 | 随机抽取一位群成员。 |
-| `/title --title ...` | QQ 群聊 | 设置当前用户群头衔。 |
-| `/rmtitle` | QQ 群聊 | 清除当前用户群头衔。 |
-| `/emoji --code ...` | QQ 群聊 | 给当前消息添加表情反应。 |
-| `/emoji_range --left ... --right ...` | QQ 群聊 | 批量测试表情代码，范围最多 20 个。 |
-| `/emoji_list` | 通用 | 返回 QQ 表情代码文档链接。 |
-| `/dice` | 通用 | 发送 QQ 骰子 CQ 码。 |
-| `/ban --id ...` | 管理员 | 全局阻塞指定用户消息。 |
-| `/unban --id ...` | 管理员 | 取消阻塞指定用户。 |
-| `/whole_ban` | 管理员 QQ 群聊 | 开启全员禁言。 |
-| `/dis_whole_ban` | 管理员 QQ 群聊 | 关闭全员禁言。 |
+| `/refresh_list` / `/random_one` | QQ 群聊 | 刷新成员缓存或随机抽取群成员。 |
+| `/title` / `/rmtitle` | QQ 群聊 | 管理群头衔。 |
+| `/emoji*` / `/dice` | QQ | 表情反应、表情代码测试和骰子 CQ 码。 |
+| `/ban` / `/unban` | 管理员 | 全局阻塞或解除阻塞用户。 |
+| `/whole_ban` / `/dis_whole_ban` | 管理员 QQ 群聊 | 开启或关闭全员禁言。 |
 
-## Agent Skills
-
-Agent 会根据用户意图选择 Skill。已注册的主要 Skill：
+## Agent 技能
 
 | Skill | 平台 | 能力 |
 | --- | --- | --- |
-| `reminder` | QQ / Web / CLI | 创建、查看、删除一次性、每日重复或周期提醒。 |
-| `memo` | QQ / Web / CLI | 读写、搜索、更新、删除用户备忘录。 |
-| `user_memory` | QQ / Web / CLI | 用户明确要求时读取、写入或清空当前用户长期记忆。 |
-| `weather` | QQ / Web / CLI | 查询武汉天气。 |
-| `web_search` | QQ / Web / CLI | 联网搜索，优先 Tavily，失败时尝试 DuckDuckGo HTML。 |
-| `arxiv` | QQ / Web / CLI | 查询 arXiv 论文并返回原文链接。 |
+| `reminder` | QQ / Web / CLI | 创建、查看和删除提醒事项。 |
+| `memo` | QQ / Web / CLI | 读写、搜索、更新和删除备忘录。 |
+| `user_memory` | QQ / Web / CLI | 在用户明确要求时读取、写入或清空长期记忆。 |
+| `weather` | QQ / Web / CLI | 查询天气。 |
+| `web_search` | QQ / Web / CLI | 通过 Tavily 或 DuckDuckGo 兜底搜索网页。 |
+| `arxiv` | QQ / Web / CLI | 检索 arXiv 论文。 |
 | `time` | QQ / Web / CLI | 查询当前时间。 |
-| `fortune` | QQ / Web / CLI | 根据用户与日期生成每日运势。 |
+| `fortune` | QQ / Web / CLI | 生成每日运势。 |
 | `image_agent` | QQ / Web / CLI | 图片描述、OCR、多图比较、截图分析。 |
-| `file_workspace_agent` | QQ / Web / CLI | 读取文档、管理工作区文件、生成脚本、运行 Python 脚本。 |
-| `qq_context_info` | QQ | 查询 QQ 群资料、成员信息和用户绑定资料。 |
+| `file_workspace_agent` | QQ / Web / CLI | 读取文档、管理工作区文件、生成并运行 Python 脚本。 |
+| `qq_context_info` | QQ | 查询 QQ 群、成员和用户绑定上下文。 |
 
 ## 架构概览
 
 ```text
-平台入口
-  QQ / Web / CLI
-      |
-      v
+QQ / Web / CLI
+     |
+     v
 ChatTransport
-      |
-      v
+     |
+     v
 UniMessage + ChatContext
-      |
-      v
+     |
+     v
 MessageProcessor
-  - 会话内串行
-  - 跨会话并发
-      |
-      v
+  - 同一会话串行处理
+  - 不同会话并发处理
+     |
+     v
 EventHandler
-  - 运行状态 / 白名单 / 风控
+  - 运行状态
   - 快捷回复
   - 命令派发
-  - Agent 调用
-      |
-      v
-Command / Agent / Service / Repo
+  - Agent 派发
+     |
+     v
+Command / Skill / Service / Repo / External API
 ```
 
-目录结构：
+源码结构：
 
 ```text
 src/luoying_bot/
@@ -366,34 +376,34 @@ src/luoying_bot/
 │   ├── agent/          # AgentService、SkillRegistry、Skill 实现
 │   ├── commands/       # 命令系统
 │   ├── jobs/           # 内置计划任务
-│   ├── services/       # 业务服务层
+│   ├── services/       # 应用服务层
 │   ├── event_handler.py
 │   └── message_processor.py
 ├── domain/             # 平台无关领域模型
 ├── infra/
-│   ├── cli/            # CLI TUI
+│   ├── cli/            # CLI UI
 │   ├── llm/            # OpenAI-compatible 模型适配
-│   ├── repos/          # JSON / 文本持久化
-│   ├── scheduler/      # 异步计划任务
+│   ├── repos/          # 本地持久化实现
+│   ├── scheduler/      # 异步调度器
 │   ├── transports/     # QQ / Web / CLI transport
-│   └── web/            # FastAPI Web API 与内置静态页面
+│   └── web/            # FastAPI 应用和内置 Web 页面
 ├── ports/              # 抽象接口
-├── bootstrap.py        # 容器装配
-├── config.py           # 环境变量读取
+├── bootstrap.py        # 依赖装配
+├── config.py           # 环境变量配置
 ├── main_cli_stream.py
 ├── main_qq.py
 └── main_web.py
 ```
 
-## 数据存储
+## 运行时数据
 
-默认运行时数据位于 `data/`，该目录已在 `.gitignore` 中忽略：
+默认运行时数据位于 `data/`，该目录已被 Git 忽略：
 
 ```text
 data/
 ├── memo/                    # 用户备忘录
 ├── reminders.json           # 提醒事项
-├── scripts/                 # 用户文件与脚本工作区
+├── scripts/                 # 用户文件/脚本工作区
 ├── user_prompt_settings.json
 └── userdatabase.json
 ```
@@ -405,46 +415,34 @@ data/scripts/web-user/
 data/scripts/<qq-user-id>/
 ```
 
-## 安全提示
+Memobase 的长期记忆由 Memobase 部署保存，不再由 `data/user_memory` 维护。
 
-- `.env` 包含 API Key 和平台 token，不要提交到仓库。
-- 文件工作区可以运行 Python 脚本，当前不是强沙箱。请只在可信部署环境中开放该能力。
-- Web 端当前使用固定匿名用户 `web-user`，没有真实登录鉴权，不适合直接暴露到公网。
-- 上传文件会落入 `SCRIPT_WORKSPACE_DIR`；图片上限 10MB，普通文件上限 25MB。
-- 对话内容、图片和文件摘要可能被发送给你配置的模型服务，请遵守对应供应商的数据政策。
-- QQ 入口会按配置读取群成员、消息、图片、私聊文件链接等 OneBot 能力，请谨慎配置机器人权限。
+## 开发
 
-## 开发指南
-
-### 本地检查
-
-当前没有测试套件，提交前建议至少运行：
+提交前建议至少运行：
 
 ```bash
 PYTHONPATH=src python -m compileall src
 PYTHONPATH=src python -m luoying_bot.main_cli_stream
 PYTHONPATH=src python -m luoying_bot.main_web
-```
-
-Web API smoke test：
-
-```bash
 curl http://127.0.0.1:8000/health
 ```
 
 ### 添加命令
 
 1. 在 `src/luoying_bot/application/commands/` 下新增或修改命令模块。
-2. 继承 `BaseCommand`，设置 `name`、`aliases`、权限与参数约束。
-3. 实现 `validate()` 和 `execute()`。
-4. QQ 容器启动时会通过 `CommandDispatcher.auto_register()` 自动注册。
+2. 继承 `BaseCommand`。
+3. 设置 `name`、`aliases`、权限和参数约束。
+4. 实现 `validate()` 和 `execute()`。
+5. 启动时 `CommandDispatcher.auto_register()` 会自动注册命令。
 
-### 添加 Skill
+### 添加技能
 
-1. 在 `src/luoying_bot/application/agent/skills/` 下新增 Skill。
-2. 继承 `BaseSkill`，设置 `name`、`platform`、`description`。
-3. 在 `run()` 中返回 `SkillResult`。
-4. `SkillRegistry.auto_register()` 会按当前 transport 平台自动注册可用 Skill。
+1. 在 `src/luoying_bot/application/agent/skills/` 下新增模块。
+2. 继承 `BaseSkill`。
+3. 设置 `name`、`platform` 和 `description`。
+4. 在 `run()` 中返回 `SkillResult`。
+5. 启动时 `SkillRegistry.auto_register()` 会按当前 transport 平台注册可用 Skill。
 
 ### 添加新平台
 
@@ -453,27 +451,34 @@ curl http://127.0.0.1:8000/health
 3. 在 `bootstrap.py` 中增加容器装配函数。
 4. 尽量让平台差异停留在 transport 层，不要把平台专属逻辑写入 service 或 domain。
 
+## 安全提示
+
+- 不要提交 `.env`，其中包含 API Key 和平台 token。
+- 文件工作区可以运行 Python 脚本，目前不是强沙箱。
+- Web 入口当前使用固定匿名用户，不适合直接暴露到公网。
+- 上传文件会写入 `SCRIPT_WORKSPACE_DIR`；图片上限 10 MB，普通文件上限 25 MB。
+- 对话内容、图片、文档片段和生成摘要可能会发送给你配置的模型服务。
+- QQ 集成依赖 OneBot 权限，请只授予确实需要的能力。
+
 ## 路线图
 
-- 为 Web 入口补齐真实认证、会话管理和权限控制。
-- 将 `/chat/stream` 事件协议稳定化。
-- 增加统一的非文本输出事件模型，覆盖文件、图片生成、任务状态等结果。
-- 将本地 JSON / 文本存储升级为可选数据库实现。
-- 补齐 pytest 测试、类型检查和 GitHub Actions CI。
-- 增加标准 Python 包配置，取消手动 `PYTHONPATH=src` 的要求。
-- 正式接入图片生成 Skill。
+- 为 Web 入口补充真实认证、用户管理和权限控制。
+- 稳定 `/chat/stream` 事件协议。
+- 增加统一的非文本输出事件模型，覆盖文件、生成图片和任务状态。
+- 为提醒、备忘录、快捷回复和提示词偏好提供可选数据库实现。
+- 补充 pytest、类型检查和 GitHub Actions。
+- 增加标准 Python 包配置，取消手动 `PYTHONPATH=src`。
+- 完善 Memobase 部署文档，并提供示例 Compose 栈。
 
-## 内部协作
+## 贡献
 
-本项目当前按闭源项目维护。内部变更建议保持小而清晰，并说明：
+欢迎提交 Issue 和 Pull Request。建议变更保持小而清晰，并说明：
 
-- 解决的问题或新增能力。
-- 影响的平台入口：QQ、Web、CLI 或通用核心。
-- 是否新增环境变量、数据文件或 API 字段。
-- 你运行过的检查命令。
+- 影响的入口：QQ、Web、CLI 或通用核心；
+- 新增的环境变量、数据文件或 API 字段；
+- 运行过的检查命令；
+- 兼容性和迁移注意事项。
 
-当前项目处在架构收口阶段，新增功能时请优先复用既有的 `Command`、`Skill`、`Service`、`Repo`、`Transport` 边界。
+## 许可证
 
-## License
-
-本仓库为闭源项目，未授予开源许可证。除非项目维护者另行书面授权，外部使用者不拥有复制、修改、再分发或商用授权。
+LuoYing 使用 [Apache License 2.0](./LICENSE) 开源。
