@@ -63,6 +63,7 @@ class Settings:
     user_prompt_settings_file: Path = _env_path('USER_PROMPT_SETTINGS_FILE', './data/user_prompt_settings.json')
     reminder_db_file: Path = _env_path('REMINDER_DB_FILE', './data/reminders.json')
     script_workspace_dir: Path = _env_path('SCRIPT_WORKSPACE_DIR', './data/scripts')
+    knowledge_db_file: Path = _env_path('KNOWLEDGE_DB_FILE', './data/knowledge.json')
     python_script_timeout_sec: int = int(os.getenv('PYTHON_SCRIPT_TIMEOUT_SEC', '15'))
 
     memobase_api_key: str = os.getenv('MEMOBASE_API_KEY', '')

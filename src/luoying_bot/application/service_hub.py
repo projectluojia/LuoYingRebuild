@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from luoying_bot.application.services.group_runtime import GroupRuntime
+    from luoying_bot.application.services.knowledge_service import KnowledgeService
     from luoying_bot.application.services.memo_service import MemoService
     from luoying_bot.application.services.reminder_service import ReminderService
     from luoying_bot.application.services.risk_control_service import RiskControlService
@@ -31,3 +32,4 @@ class ServiceHub:
     risk_control_service: 'RiskControlService'
     user_memory_service: 'UserMemoryService'
     user_prompt_settings_service: 'UserPromptSettingsService'
+    knowledge_service: 'KnowledgeService'
