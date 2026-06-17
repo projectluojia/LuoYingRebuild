@@ -74,6 +74,74 @@ class DirectusClient(StructuredBackend):
         item = data.get("data", {})
         return dict(item) if isinstance(item, dict) else {}
 
+    async def list_collections(self) -> set[str]:
+        if not self.configured:
+            raise BackendUnavailable("Directus 未配置")
+        data = await self._request("GET", "/collections")
+        result: set[str] = set()
+        for item in data.get("data", []):
+            if isinstance(item, dict) and item.get("collection"):
+                result.add(str(item["collection"]))
+        return result
+
+    async def create_collection(self, collection: str, *, note: str = "") -> dict[str, Any]:
+        if not self.configured:
+            raise BackendUnavailable("Directus 未配置")
+        return await self._request(
+            "POST",
+            "/collections",
+            json_body={
+                "collection": collection,
+                "meta": {
+                    "collection": collection,
+                    "note": note,
+                    "hidden": False,
+                },
+                "schema": {},
+            },
+        )
+
+    async def list_fields(self, collection: str) -> set[str]:
+        if not self.configured:
+            raise BackendUnavailable("Directus 未配置")
+        data = await self._request("GET", f"/fields/{collection}")
+        result: set[str] = set()
+        for item in data.get("data", []):
+            if isinstance(item, dict) and item.get("field"):
+                result.add(str(item["field"]))
+        return result
+
+    async def create_field(
+        self,
+        collection: str,
+        field: str,
+        *,
+        field_type: str,
+        interface: str | None = None,
+        note: str = "",
+        required: bool = False,
+        default_value: Any = None,
+    ) -> dict[str, Any]:
+        if not self.configured:
+            raise BackendUnavailable("Directus 未配置")
+        schema: dict[str, Any] = {}
+        if default_value is not None:
+            schema["default_value"] = default_value
+        return await self._request(
+            "POST",
+            f"/fields/{collection}",
+            json_body={
+                "field": field,
+                "type": field_type,
+                "meta": {
+                    "interface": interface or self._default_interface(field_type),
+                    "note": note,
+                    "required": required,
+                },
+                "schema": schema,
+            },
+        )
+
     async def _request(
         self,
         method: str,
@@ -106,3 +174,13 @@ class DirectusClient(StructuredBackend):
             )
         payload = response.json()
         return dict(payload) if isinstance(payload, dict) else {}
+
+    def _default_interface(self, field_type: str) -> str:
+        return {
+            "text": "input-multiline",
+            "json": "input-code",
+            "datetime": "datetime",
+            "integer": "input",
+            "float": "input",
+            "boolean": "boolean",
+        }.get(field_type, "input")

@@ -12,6 +12,7 @@ from urllib.parse import urldefrag, urljoin, urlparse
 import httpx
 
 from luoying_bot.capabilities.knowledge_base.ports import StructuredBackend
+from luoying_bot.capabilities.knowledge_base.ragflow_client import RagflowClient
 
 ASSET_SUFFIXES = {
     ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
@@ -26,6 +27,7 @@ class SiteCrawlConfig:
     name: str
     base_url: str
     space_id: str
+    ragflow_dataset_id: str
     allowed_domains: list[str]
     entry_urls: list[str]
     max_pages: int = 100
@@ -34,6 +36,7 @@ class SiteCrawlConfig:
     user_agent: str = DEFAULT_USER_AGENT
     include_url_patterns: list[str] = field(default_factory=list)
     exclude_url_patterns: list[str] = field(default_factory=list)
+    blocked_page_patterns: list[str] = field(default_factory=list)
     sync_to_ragflow: bool = True
     extract_structured: bool = True
 
@@ -44,6 +47,7 @@ class SiteCrawlConfig:
             name=str(data.get("name") or data["site_id"]),
             base_url=str(data["base_url"]),
             space_id=str(data.get("space_id") or data["site_id"]),
+            ragflow_dataset_id=str(data.get("ragflow_dataset_id") or ""),
             allowed_domains=[str(x) for x in data.get("allowed_domains", [])],
             entry_urls=[str(x) for x in data.get("entry_urls", [])],
             max_pages=int(data.get("max_pages") or 100),
@@ -52,9 +56,49 @@ class SiteCrawlConfig:
             user_agent=str(data.get("user_agent") or DEFAULT_USER_AGENT),
             include_url_patterns=[str(x) for x in data.get("include_url_patterns", [])],
             exclude_url_patterns=[str(x) for x in data.get("exclude_url_patterns", [])],
+            blocked_page_patterns=[str(x) for x in data.get("blocked_page_patterns", [])],
             sync_to_ragflow=bool(data.get("sync_to_ragflow", True)),
             extract_structured=bool(data.get("extract_structured", True)),
         )
+
+    @classmethod
+    def from_site_record(cls, record: dict[str, Any]) -> "SiteCrawlConfig":
+        crawl_config = record.get("crawl_config") if isinstance(record.get("crawl_config"), dict) else {}
+        return cls.from_dict(
+            {
+                **crawl_config,
+                "site_id": record["site_id"],
+                "name": record.get("name") or record["site_id"],
+                "base_url": record["base_url"],
+                "space_id": record.get("space_id") or record["site_id"],
+                "ragflow_dataset_id": record.get("ragflow_dataset_id") or "",
+                "allowed_domains": record.get("allowed_domains") or [],
+                "entry_urls": record.get("entry_urls") or [],
+            }
+        )
+
+    def to_site_record(self) -> dict[str, Any]:
+        return {
+            "site_id": self.site_id,
+            "name": self.name,
+            "base_url": self.base_url,
+            "space_id": self.space_id,
+            "ragflow_dataset_id": self.ragflow_dataset_id,
+            "allowed_domains": self.allowed_domains,
+            "entry_urls": self.entry_urls,
+            "crawl_config": {
+                "max_pages": self.max_pages,
+                "max_depth": self.max_depth,
+                "request_timeout_sec": self.request_timeout_sec,
+                "user_agent": self.user_agent,
+                "include_url_patterns": self.include_url_patterns,
+                "exclude_url_patterns": self.exclude_url_patterns,
+                "blocked_page_patterns": self.blocked_page_patterns,
+                "sync_to_ragflow": self.sync_to_ragflow,
+                "extract_structured": self.extract_structured,
+            },
+            "enabled": True,
+        }
 
 
 @dataclass(slots=True)
@@ -187,7 +231,26 @@ class KnowledgeSiteCrawler:
             try:
                 status, content_type, body = await self.fetcher.fetch(url, config)
                 parsed = parse_html(url, body) if status < 400 and "html" in content_type.lower() else None
-                results.append(CrawlPageResult(url=url, status_code=status, content_type=content_type, depth=depth, parsed=parsed))
+                if parsed and self._blocked_page(parsed, config):
+                    results.append(
+                        CrawlPageResult(
+                            url=url,
+                            status_code=status,
+                            content_type=content_type,
+                            depth=depth,
+                            error="blocked_page_detected",
+                        )
+                    )
+                    continue
+                results.append(
+                    CrawlPageResult(
+                        url=url,
+                        status_code=status,
+                        content_type=content_type,
+                        depth=depth,
+                        parsed=parsed,
+                    )
+                )
                 if parsed and depth < config.max_depth:
                     for link in parsed.links:
                         if link.is_asset:
@@ -204,7 +267,11 @@ class KnowledgeSiteCrawler:
             started_at=started,
             finished_at=finished,
             pages_seen=len(seen),
-            pages_ok=sum(1 for item in results if item.status_code and item.status_code < 400),
+            pages_ok=sum(
+                1
+                for item in results
+                if item.status_code and item.status_code < 400 and not item.error
+            ),
             pages_failed=sum(1 for item in results if item.error or item.status_code >= 400),
             assets_seen=len(assets),
             results=results,
@@ -222,10 +289,17 @@ class KnowledgeSiteCrawler:
             return False
         return True
 
+    def _blocked_page(self, page: ParsedPage, config: SiteCrawlConfig) -> bool:
+        if not config.blocked_page_patterns:
+            return False
+        target = f"{page.title}\n{page.text}"
+        return any(re.search(pattern, target) for pattern in config.blocked_page_patterns)
+
 
 class DirectusCrawlRecorder:
-    def __init__(self, backend: StructuredBackend):
+    def __init__(self, backend: StructuredBackend, ragflow: RagflowClient | None = None):
         self.backend = backend
+        self.ragflow = ragflow
 
     async def record(self, config: SiteCrawlConfig, result: CrawlResult) -> dict[str, Any]:
         run = await self.backend.create_item(
@@ -274,10 +348,12 @@ class DirectusCrawlRecorder:
             "published_at": page.published_at,
             "content_hash": page.content_hash,
             "status": "active",
-            "ragflow_sync_status": "pending" if config.sync_to_ragflow else "disabled",
-            "extract_status": "pending" if config.extract_structured else "disabled",
             "last_crawled_at": now_iso(),
             "last_crawl_run": run_id,
+        }
+        version_status = {
+            "ragflow_sync_status": "pending" if config.sync_to_ragflow else "disabled",
+            "extract_status": "pending" if config.extract_structured else "disabled",
         }
         if existing:
             current = existing[0]
@@ -285,15 +361,33 @@ class DirectusCrawlRecorder:
             if current.get("content_hash") == page.content_hash:
                 await self.backend.update_item("kb_pages", item_id, payload)
                 return "unchanged"
-            await self.backend.update_item("kb_pages", item_id, payload)
-            await self._create_version(item_id, page)
+            await self.backend.update_item("kb_pages", item_id, {**payload, **version_status})
+            await self._create_version(config, item_id, page)
             return "updated"
-        created = await self.backend.create_item("kb_pages", payload)
+        created = await self.backend.create_item("kb_pages", {**payload, **version_status})
         if created.get("id"):
-            await self._create_version(str(created["id"]), page)
+            await self._create_version(config, str(created["id"]), page)
         return "created"
 
-    async def _create_version(self, page_id: str, page: ParsedPage) -> None:
+    async def _create_version(self, config: SiteCrawlConfig, page_id: str, page: ParsedPage) -> None:
+        ragflow_document_id = None
+        ragflow_status = "disabled"
+        if config.sync_to_ragflow and self.ragflow is not None:
+            ragflow_status = "pending"
+            uploaded = await self.ragflow.upload_text_document(
+                dataset_id=config.ragflow_dataset_id,
+                name=f"{page.title}_{page.content_hash[:12]}",
+                text=self._ragflow_text(page),
+            )
+            document_ids = [str(item["id"]) for item in uploaded if item.get("id")]
+            if document_ids:
+                ragflow_document_id = document_ids[0]
+                await self.ragflow.parse_documents(
+                    dataset_id=config.ragflow_dataset_id,
+                    document_ids=document_ids,
+                )
+                ragflow_status = "parsing"
+
         await self.backend.create_item(
             "kb_page_versions",
             {
@@ -301,9 +395,28 @@ class DirectusCrawlRecorder:
                 "content_hash": page.content_hash,
                 "raw_html": page.raw_html,
                 "clean_text": page.text,
+                "ragflow_document_id": ragflow_document_id,
+                "ragflow_sync_status": ragflow_status,
                 "created_at": now_iso(),
             },
         )
+        if ragflow_document_id:
+            await self.backend.update_item(
+                "kb_pages",
+                page_id,
+                {
+                    "ragflow_document_id": ragflow_document_id,
+                    "ragflow_sync_status": ragflow_status,
+                },
+            )
+
+    def _ragflow_text(self, page: ParsedPage) -> str:
+        return (
+            f"标题：{page.title}\n"
+            f"来源：{page.url}\n"
+            f"发布日期：{page.published_at or '未知'}\n\n"
+            f"{page.text}"
+        ).strip()
 
 
 def parse_html(url: str, html: str) -> ParsedPage:

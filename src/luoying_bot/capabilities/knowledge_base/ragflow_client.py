@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import httpx
@@ -41,14 +42,78 @@ class RagflowClient(RagBackend):
             raise BackendUnavailable("RAGFlow 未配置")
         payload = {
             "question": query,
-            "query": query,
-            "dataset_id": dataset_id,
             "dataset_ids": [dataset_id] if dataset_id else [],
-            "filters": filters,
+            "metadata_condition": self._metadata_condition(filters),
+            "page": 1,
+            "page_size": top_k,
             "top_k": top_k,
+            "keyword": True,
+            "highlight": False,
         }
         data = await self._request(payload)
         return self._parse_chunks(data)
+
+    async def upload_text_document(
+        self,
+        *,
+        dataset_id: str,
+        name: str,
+        text: str,
+    ) -> list[dict[str, Any]]:
+        if not self.configured:
+            raise BackendUnavailable("RAGFlow 未配置")
+        safe_name = self._safe_file_name(name)
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        files = {
+            "file": (
+                safe_name,
+                text.encode("utf-8"),
+                "text/plain",
+            )
+        }
+        path = f"/api/v1/datasets/{dataset_id}/documents"
+        if self.client is not None:
+            response = await self.client.post(
+                f"{self.base_url}{path}",
+                files=files,
+                headers=headers,
+            )
+        else:
+            async with httpx.AsyncClient(timeout=self.timeout_sec) as client:
+                response = await client.post(
+                    f"{self.base_url}{path}",
+                    files=files,
+                    headers=headers,
+                )
+        payload = self._json_response(response, "RAGFlow 文档上传失败")
+        data = payload.get("data", [])
+        return [dict(item) for item in data if isinstance(item, dict)]
+
+    async def parse_documents(
+        self,
+        *,
+        dataset_id: str,
+        document_ids: list[str],
+    ) -> None:
+        if not document_ids:
+            return
+        payload = {"document_ids": document_ids}
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        path = f"/api/v1/datasets/{dataset_id}/chunks"
+        if self.client is not None:
+            response = await self.client.post(
+                f"{self.base_url}{path}",
+                json=payload,
+                headers=headers,
+            )
+        else:
+            async with httpx.AsyncClient(timeout=self.timeout_sec) as client:
+                response = await client.post(
+                    f"{self.base_url}{path}",
+                    json=payload,
+                    headers=headers,
+                )
+        self._json_response(response, "RAGFlow 文档解析启动失败")
 
     async def _request(self, payload: dict[str, Any]) -> dict[str, Any]:
         headers = {"Authorization": f"Bearer {self.api_key}"}
@@ -71,6 +136,16 @@ class RagflowClient(RagBackend):
             )
         result = response.json()
         return dict(result) if isinstance(result, dict) else {}
+
+    def _json_response(self, response: httpx.Response, message: str) -> dict[str, Any]:
+        if response.status_code >= 400:
+            raise BackendUnavailable(f"{message}：{response.status_code} {response.text[:300]}")
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise BackendUnavailable(f"{message}：响应格式无效")
+        if payload.get("code") not in (None, 0):
+            raise BackendUnavailable(f"{message}：{payload.get('message') or payload.get('code')}")
+        return payload
 
     def _parse_chunks(self, payload: dict[str, Any]) -> list[RetrievedChunk]:
         containers: list[Any] = [
@@ -136,3 +211,26 @@ class RagflowClient(RagBackend):
         text = str(value or "").strip()
         return text or None
 
+    def _metadata_condition(self, filters: dict[str, Any]) -> dict[str, Any] | None:
+        conditions = []
+        for key, value in filters.items():
+            if value in (None, "", [], {}):
+                continue
+            conditions.append(
+                {
+                    "name": str(key),
+                    "comparison_operator": "=",
+                    "value": str(value),
+                }
+            )
+        if not conditions:
+            return None
+        return {"logic": "and", "conditions": conditions}
+
+    def _safe_file_name(self, name: str) -> str:
+        clean = re.sub(r"[^A-Za-z0-9._\-\u4e00-\u9fff]+", "_", name).strip("._-")
+        if not clean:
+            clean = "knowledge_page"
+        if not clean.lower().endswith(".txt"):
+            clean += ".txt"
+        return clean[:160]
