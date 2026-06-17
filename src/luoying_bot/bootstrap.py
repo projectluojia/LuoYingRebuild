@@ -18,7 +18,13 @@ from luoying_bot.application.services.script_workspace_service import ScriptWork
 from luoying_bot.application.services.user_prompt_settings_service import UserPromptSettingsService
 from luoying_bot.application.services.user_service import UserService
 from luoying_bot.application.services.user_memory_service import UserMemoryService
-from luoying_bot.application.services.knowledge_service import KnowledgeService
+from luoying_bot.capabilities.knowledge_base import KnowledgeBaseConfig, KnowledgeBaseService
+from luoying_bot.capabilities.knowledge_base.answering import KnowledgeAnswerGenerator
+from luoying_bot.capabilities.knowledge_base.directus_client import DirectusClient
+from luoying_bot.capabilities.knowledge_base.domains.admissions import AdmissionsKnowledgeDomain
+from luoying_bot.capabilities.knowledge_base.domains.general import GeneralKnowledgeDomain
+from luoying_bot.capabilities.knowledge_base.policy import KnowledgeBasePolicy
+from luoying_bot.capabilities.knowledge_base.ragflow_client import RagflowClient
 from luoying_bot.config import settings
 from luoying_bot.infra.llm.openai_chat import OpenAICompatibleChatModel
 from luoying_bot.infra.memory.in_memory import InMemoryConversationMemory
@@ -26,7 +32,6 @@ from luoying_bot.infra.repos.json_memo_repo import JsonMemoRepo
 from luoying_bot.infra.repos.json_reminder_repo import JsonReminderRepo
 from luoying_bot.infra.repos.json_user_prompt_settings_repo import JsonUserPromptSettingsRepo
 from luoying_bot.infra.repos.json_user_repo import JsonUserRepo
-from luoying_bot.infra.repos.json_knowledge_repo import JsonKnowledgeRepo
 from luoying_bot.infra.scheduler.async_scheduler import AsyncScheduler
 from luoying_bot.infra.transports.cli_transport import CliTransport
 from luoying_bot.infra.transports.qq_ws_transport import QQWsTransport
@@ -116,9 +121,32 @@ async def _build_container(
         settings.openai_enable_thinking,
     )
 
-    knowledge_service = KnowledgeService(
-        repo=JsonKnowledgeRepo(settings.knowledge_db_file),
-        model=model,
+    knowledge_base_service = KnowledgeBaseService(
+        rag_backend=RagflowClient(
+            base_url=settings.ragflow_url,
+            api_key=settings.ragflow_api_key,
+            search_path=settings.ragflow_search_path,
+        ),
+        structured_backend=DirectusClient(
+            base_url=settings.directus_url,
+            token=settings.directus_token,
+        ),
+        domains={
+            "general": GeneralKnowledgeDomain(
+                default_dataset_id=settings.ragflow_default_dataset_id,
+            ),
+            "admissions": AdmissionsKnowledgeDomain(
+                dataset_id=settings.ragflow_admissions_dataset_id or settings.ragflow_default_dataset_id,
+                collection_prefix=settings.directus_collection_prefix,
+            ),
+        },
+        answer_generator=KnowledgeAnswerGenerator(model),
+        config=KnowledgeBaseConfig(
+            default_space_id=settings.kb_default_space_id,
+            default_domain=settings.kb_default_domain,
+            require_citation=settings.kb_require_citation,
+        ),
+        policy=KnowledgeBasePolicy(require_citation=settings.kb_require_citation),
     )
     #把以上东西打个包
     services = ServiceHub(
@@ -135,7 +163,7 @@ async def _build_container(
         risk_control_service=risk_control_service,
         user_memory_service=user_memory_service,
         user_prompt_settings_service=user_prompt_settings_service,
-        knowledge_service=knowledge_service,
+        knowledge_base_service=knowledge_base_service,
     )
 
     #指令

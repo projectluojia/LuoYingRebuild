@@ -63,7 +63,6 @@ class Settings:
     user_prompt_settings_file: Path = _env_path('USER_PROMPT_SETTINGS_FILE', './data/user_prompt_settings.json')
     reminder_db_file: Path = _env_path('REMINDER_DB_FILE', './data/reminders.json')
     script_workspace_dir: Path = _env_path('SCRIPT_WORKSPACE_DIR', './data/scripts')
-    knowledge_db_file: Path = _env_path('KNOWLEDGE_DB_FILE', './data/knowledge.json')
     python_script_timeout_sec: int = int(os.getenv('PYTHON_SCRIPT_TIMEOUT_SEC', '15'))
 
     memobase_api_key: str = os.getenv('MEMOBASE_API_KEY', '')
@@ -71,6 +70,17 @@ class Settings:
     memobase_max_context_tokens: int = int(os.getenv('MEMOBASE_MAX_CONTEXT_TOKENS', '1000'))
     memobase_write_sync: bool = _env_bool('MEMOBASE_WRITE_SYNC', False)
 
+    ragflow_url: str = os.getenv('RAGFLOW_URL', '')
+    ragflow_api_key: str = os.getenv('RAGFLOW_API_KEY', '')
+    ragflow_search_path: str = os.getenv('RAGFLOW_SEARCH_PATH', '/api/v1/retrieval')
+    ragflow_default_dataset_id: str = os.getenv('RAGFLOW_DEFAULT_DATASET_ID', '')
+    ragflow_admissions_dataset_id: str = os.getenv('RAGFLOW_ADMISSIONS_DATASET_ID', '')
+    directus_url: str = os.getenv('DIRECTUS_URL', '')
+    directus_token: str = os.getenv('DIRECTUS_TOKEN', '')
+    directus_collection_prefix: str = os.getenv('DIRECTUS_COLLECTION_PREFIX', '')
+    kb_default_space_id: str = os.getenv('KB_DEFAULT_SPACE_ID', 'admissions')
+    kb_default_domain: str = os.getenv('KB_DEFAULT_DOMAIN', 'admissions')
+    kb_require_citation: bool = _env_bool('KB_REQUIRE_CITATION', True)
 
     memory_max_messages_per_thread: int = int(os.getenv('MEMORY_MAX_MESSAGES_PER_THREAD', '80'))
     agent_skill_timeout_sec: float = float(os.getenv('AGENT_SKILL_TIMEOUT_SEC', '30'))

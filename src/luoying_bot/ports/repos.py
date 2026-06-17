@@ -87,24 +87,3 @@ class MemoRepo(ABC):
 
     @abstractmethod
     def save_items(self, user_id: str, items: list[MemoItem]) -> None: ...
-
-
-# 知识库条目
-@dataclass
-class KnowledgeItem:
-    id: str
-    title: str
-    content: str
-    tags: list[str] = field(default_factory=list)
-    source: str = ""
-    created_at: str = ""
-    updated_at: str = ""
-
-
-# 知识库仓库基类（全局共享，不需要 user_id）
-class KnowledgeRepo(ABC):
-    @abstractmethod
-    def list_items(self) -> list[KnowledgeItem]: ...
-
-    @abstractmethod
-    def save_items(self, items: list[KnowledgeItem]) -> None: ...

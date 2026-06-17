@@ -22,6 +22,7 @@ from luoying_bot.bootstrap import AppContainer, build_web_container
 from luoying_bot.config import settings
 from luoying_bot.domain.context import UserIdentity
 from luoying_bot.domain.message import UniMessage
+from luoying_bot.infra.web.knowledge_base_api import create_knowledge_base_router
 from luoying_bot.infra.transports.web_transport import WebTransport
 from luoying_bot.ports.memory import ConversationThread
 
@@ -365,6 +366,13 @@ class WebApiFactory:
             if current is None:
                 raise HTTPException(status_code=503, detail="Web Agent 尚未启动完成")
             return current
+
+        app.include_router(
+            create_knowledge_base_router(
+                container_provider=container,
+                current_user_dependency=get_current_web_user,
+            )
+        )
 
         @app.get("/health")
         async def health() -> dict[str, str]:
