@@ -62,6 +62,18 @@ class DirectusClient(StructuredBackend):
         item = data.get("data", {})
         return dict(item) if isinstance(item, dict) else {}
 
+    async def update_item(
+        self,
+        collection: str,
+        item_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        if not self.configured:
+            raise BackendUnavailable("Directus 未配置")
+        data = await self._request("PATCH", f"/items/{collection}/{item_id}", json_body=payload)
+        item = data.get("data", {})
+        return dict(item) if isinstance(item, dict) else {}
+
     async def _request(
         self,
         method: str,
@@ -94,4 +106,3 @@ class DirectusClient(StructuredBackend):
             )
         payload = response.json()
         return dict(payload) if isinstance(payload, dict) else {}
-

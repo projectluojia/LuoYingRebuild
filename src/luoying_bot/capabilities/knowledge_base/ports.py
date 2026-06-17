@@ -42,6 +42,14 @@ class StructuredBackend(ABC):
         payload: dict[str, Any],
     ) -> dict[str, Any]: ...
 
+    @abstractmethod
+    async def update_item(
+        self,
+        collection: str,
+        item_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]: ...
+
 
 class KnowledgeDomain(ABC):
     name: str
@@ -64,4 +72,3 @@ class KnowledgeDomain(ABC):
 
     @abstractmethod
     def validate_answer(self, answer: KnowledgeAnswer) -> KnowledgeAnswer: ...
-
