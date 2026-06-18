@@ -62,20 +62,35 @@ docs/site_configs/sai_whu.json
 ## Configuration
 
 ```env
-RAGFLOW_URL=
+RAGFLOW_URL=http://127.0.0.1:9380
 RAGFLOW_API_KEY=
 RAGFLOW_SEARCH_PATH=/api/v1/retrieval
 RAGFLOW_DEFAULT_DATASET_ID=
 RAGFLOW_ADMISSIONS_DATASET_ID=
 
-DIRECTUS_URL=
+DIRECTUS_URL=http://127.0.0.1:8055
 DIRECTUS_TOKEN=
 DIRECTUS_COLLECTION_PREFIX=
 
-KB_DEFAULT_SPACE_ID=admissions
+KB_DEFAULT_SPACE_ID=sai
 KB_DEFAULT_DOMAIN=admissions
 KB_REQUIRE_CITATION=true
 ```
+
+Local Directus and RAGFlow deployment lives under:
+
+```text
+deploy/kb/
+```
+
+Start local services:
+
+```bash
+bash deploy/kb/bin/start-directus.sh
+bash deploy/kb/bin/start-ragflow.sh
+```
+
+`start-ragflow.sh` creates or reuses the local RAGFlow API token, registers the local TEI embedding model, registers the project OpenAI-compatible chat model from `.env`, creates or reuses the `sai_whu` dataset, and writes `RAGFLOW_DEFAULT_DATASET_ID` back into `.env`.
 
 ## API
 
@@ -132,20 +147,21 @@ PYTHONPATH=src python scripts/crawl_site_to_directus.py \
 The sync command requires:
 
 ```env
-DIRECTUS_URL=
+DIRECTUS_URL=http://127.0.0.1:8055
 DIRECTUS_TOKEN=
-RAGFLOW_URL=
+RAGFLOW_URL=http://127.0.0.1:9380
 RAGFLOW_API_KEY=
 RAGFLOW_DEFAULT_DATASET_ID=
 ```
 
 If `docs/site_configs/sai_whu.json` sets `ragflow_dataset_id`, that dataset is used; otherwise the sync command uses `RAGFLOW_DEFAULT_DATASET_ID`. The command fails fast if no dataset ID is available while `sync_to_ragflow` is enabled.
 
-Observed result on 2026-06-17:
+Observed result on 2026-06-18 against the real local Directus/RAGFlow deployment:
 
-- `https://sai.whu.edu.cn/` returns `200 OK` with a standard browser User-Agent.
-- `robots.txt` and `sitemap.xml` return `404`.
-- Preview crawl with `max_pages=80` returned 74 successful knowledge pages and 6 blocked verification pages.
+- `https://sai.whu.edu.cn/` returned 80 successful pages and 0 failed pages with the configured browser User-Agent.
+- Directus contains 80 `kb_pages`, 81 `kb_page_versions`, and 2 `kb_crawl_runs`.
+- RAGFlow contains 81 real documents, 81 chunks, and 43,887 tokens for dataset `sai_whu`.
+- Retrieval query `本科生培养` returned the official `本科生培养-武汉大学人工智能学院` page as the top hit.
 - No Obscura or stealth browser is required for this site in current tests.
 
 Important: the site returned `403` when using the default bot User-Agent. The SAI config therefore uses a normal browser User-Agent while still limiting scope to `sai.whu.edu.cn` and configured entry URLs.

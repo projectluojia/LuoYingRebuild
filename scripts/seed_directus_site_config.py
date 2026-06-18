@@ -16,6 +16,8 @@ async def main() -> None:
     args = parser.parse_args()
 
     config = SiteCrawlConfig.from_dict(json.loads(Path(args.config).read_text(encoding="utf-8")))
+    if config.sync_to_ragflow and not config.ragflow_dataset_id:
+        config.ragflow_dataset_id = settings.ragflow_default_dataset_id
     client = DirectusClient(base_url=settings.directus_url, token=settings.directus_token)
     existing = await client.list_items(
         "kb_sites",

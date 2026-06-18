@@ -127,14 +127,15 @@ class DirectusClient(StructuredBackend):
         schema: dict[str, Any] = {}
         if default_value is not None:
             schema["default_value"] = default_value
+        directus_type = self._directus_type(field_type)
         return await self._request(
             "POST",
             f"/fields/{collection}",
             json_body={
                 "field": field,
-                "type": field_type,
+                "type": directus_type,
                 "meta": {
-                    "interface": interface or self._default_interface(field_type),
+                    "interface": interface or self._default_interface(directus_type),
                     "note": note,
                     "required": required,
                 },
@@ -175,11 +176,17 @@ class DirectusClient(StructuredBackend):
         payload = response.json()
         return dict(payload) if isinstance(payload, dict) else {}
 
+    def _directus_type(self, field_type: str) -> str:
+        return {
+            "datetime": "dateTime",
+            "big_integer": "bigInteger",
+        }.get(field_type, field_type)
+
     def _default_interface(self, field_type: str) -> str:
         return {
             "text": "input-multiline",
             "json": "input-code",
-            "datetime": "datetime",
+            "dateTime": "datetime",
             "integer": "input",
             "float": "input",
             "boolean": "boolean",
