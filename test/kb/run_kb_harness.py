@@ -12,11 +12,10 @@ from typing import Any
 
 from luoying_bot.capabilities.knowledge_base import KnowledgeBaseConfig, KnowledgeBaseService
 from luoying_bot.capabilities.knowledge_base.answering import KnowledgeAnswerGenerator
-from luoying_bot.capabilities.knowledge_base.directus_client import DirectusClient
 from luoying_bot.capabilities.knowledge_base.domains.admissions import AdmissionsKnowledgeDomain
 from luoying_bot.capabilities.knowledge_base.domains.general import GeneralKnowledgeDomain
+from luoying_bot.capabilities.knowledge_base.local_store import LocalKnowledgeStore
 from luoying_bot.capabilities.knowledge_base.policy import KnowledgeBasePolicy
-from luoying_bot.capabilities.knowledge_base.ragflow_client import RagflowClient
 from luoying_bot.config import settings
 from luoying_bot.infra.llm.openai_chat import OpenAICompatibleChatModel
 
@@ -59,24 +58,19 @@ def build_service(*, with_answer: bool) -> KnowledgeBaseService:
             settings.llm_temperature,
             settings.openai_enable_thinking,
         )
+    store = LocalKnowledgeStore(
+        settings.kb_metadata_db,
+        vector_dimensions=settings.kb_vector_dimensions,
+    )
     return KnowledgeBaseService(
-        rag_backend=RagflowClient(
-            base_url=settings.ragflow_url,
-            api_key=settings.ragflow_api_key,
-            search_path=settings.ragflow_search_path,
-        ),
-        structured_backend=DirectusClient(
-            base_url=settings.directus_url,
-            token=settings.directus_token,
-        ),
+        rag_backend=store,
+        structured_backend=store,
         domains={
             "general": GeneralKnowledgeDomain(
-                default_dataset_id=settings.ragflow_default_dataset_id,
+                default_dataset_id=settings.kb_default_space_id,
             ),
             "admissions": AdmissionsKnowledgeDomain(
-                dataset_id=settings.ragflow_admissions_dataset_id
-                or settings.ragflow_default_dataset_id,
-                collection_prefix=settings.directus_collection_prefix,
+                dataset_id=settings.kb_default_space_id,
             ),
         },
         answer_generator=KnowledgeAnswerGenerator(model),
@@ -148,7 +142,9 @@ async def run_case(
         {
             "title": citation.title,
             "source": citation.source,
-            "score": getattr(citation, "metadata", {}).get("similarity"),
+            "score": getattr(citation, "metadata", {}).get("score"),
+            "lexical_score": getattr(citation, "metadata", {}).get("lexical_score"),
+            "vector_score": getattr(citation, "metadata", {}).get("vector_score"),
         }
         for citation in citations[:5]
     ]
@@ -303,13 +299,12 @@ def percentile(ordered: list[float], ratio: float) -> float:
 
 def safe_settings_snapshot() -> dict[str, Any]:
     return {
-        "directus_url": settings.directus_url,
-        "ragflow_url": settings.ragflow_url,
-        "ragflow_search_path": settings.ragflow_search_path,
-        "ragflow_default_dataset_id_set": bool(settings.ragflow_default_dataset_id),
+        "kb_artifact_root": str(settings.kb_artifact_root),
+        "kb_metadata_db": str(settings.kb_metadata_db),
         "kb_default_space_id": settings.kb_default_space_id,
         "kb_default_domain": settings.kb_default_domain,
         "kb_require_citation": settings.kb_require_citation,
+        "kb_vector_dimensions": settings.kb_vector_dimensions,
     }
 
 

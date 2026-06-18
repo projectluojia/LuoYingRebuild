@@ -1,0 +1,26 @@
+{
+  "document_id": "dangqun_gqt_txdt.htm_b9661e164e91",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "团学动态",
+  "source_url": "https://sai.whu.edu.cn/dangqun/gqt/txdt.htm",
+  "published_at": null,
+  "content_hash": "1b542800ac53177fe4a6873e841d2a59733ea378752569fd513d69a16ba99623",
+  "markdown_path": "knowledge/sources/sai_whu/documents/dangqun_gqt_txdt.htm_b9661e164e91/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/dangqun_gqt_txdt.htm_b9661e164e91/raw.html",
+  "quality": {
+    "ok": true,
+    "score": 1.0,
+    "warnings": [],
+    "metrics": {
+      "chars": 481,
+      "lines": 14,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}

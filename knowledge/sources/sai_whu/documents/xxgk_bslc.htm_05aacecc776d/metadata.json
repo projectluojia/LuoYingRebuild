@@ -1,0 +1,26 @@
+{
+  "document_id": "xxgk_bslc.htm_05aacecc776d",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "办事流程",
+  "source_url": "https://sai.whu.edu.cn/xxgk/bslc.htm",
+  "published_at": null,
+  "content_hash": "23ba433b5b2f6a6419358dcecd8e9159fcf1e4acc52c50cef291d20d892ce9fa",
+  "markdown_path": "knowledge/sources/sai_whu/documents/xxgk_bslc.htm_05aacecc776d/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/xxgk_bslc.htm_05aacecc776d/raw.html",
+  "quality": {
+    "ok": true,
+    "score": 1.0,
+    "warnings": [],
+    "metrics": {
+      "chars": 422,
+      "lines": 14,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}

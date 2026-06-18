@@ -1,0 +1,26 @@
+{
+  "document_id": "teacher_gccrc.htm_7046f7bf72d2",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "高层次人才",
+  "source_url": "https://sai.whu.edu.cn/teacher/gccrc.htm",
+  "published_at": null,
+  "content_hash": "212c4cfd58d18b8743b7faa49e68366146e39247c3e9a8ecc80107ded8f5f6d1",
+  "markdown_path": "knowledge/sources/sai_whu/documents/teacher_gccrc.htm_7046f7bf72d2/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/teacher_gccrc.htm_7046f7bf72d2/raw.html",
+  "quality": {
+    "ok": true,
+    "score": 1.0,
+    "warnings": [],
+    "metrics": {
+      "chars": 245,
+      "lines": 59,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}

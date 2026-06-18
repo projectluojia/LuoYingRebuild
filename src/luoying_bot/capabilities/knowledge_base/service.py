@@ -14,7 +14,6 @@ from luoying_bot.capabilities.knowledge_base.models import (
     KnowledgeAnswer,
     KnowledgeQuery,
     RetrievalResult,
-    RetrievedChunk,
     StructuredRecord,
 )
 from luoying_bot.capabilities.knowledge_base.policy import KnowledgeBasePolicy
@@ -133,7 +132,6 @@ class KnowledgeBaseService:
             "source_conversation_id": source_conversation_id,
             "source_message_id": source_message_id,
             "review_status": "pending",
-            "ragflow_synced": False,
             "metadata": metadata or {},
             "created_at": self._now_iso(),
         }
@@ -188,12 +186,11 @@ class KnowledgeBaseService:
             chunks = await self.rag_backend.search(
                 query=hydrated.question,
                 dataset_id=domain.dataset_id_for_space(hydrated.space_id),
-                filters=filters,
+                filters={**filters, "space_id": hydrated.space_id},
                 top_k=hydrated.top_k,
             )
-            await self._hydrate_chunk_citations(chunks)
         except BackendUnavailable as exc:
-            logger.warning("RAGFlow 知识库不可用：%s", exc)
+            logger.warning("本地知识索引不可用：%s", exc)
             errors.append(str(exc))
 
         return RetrievalResult(
@@ -242,56 +239,6 @@ class KnowledgeBaseService:
         matched.sort(key=lambda record: len(str(record.data.get("title") or "")), reverse=True)
         return matched[:5]
 
-    async def _hydrate_chunk_citations(self, chunks: list[RetrievedChunk]) -> None:
-        document_ids = sorted(
-            {
-                str(chunk.citation.metadata.get("document_id"))
-                for chunk in chunks
-                if chunk.citation is not None and chunk.citation.metadata.get("document_id")
-            }
-        )
-        if not document_ids:
-            return
-        versions = await self.structured_backend.list_items(
-            "kb_page_versions",
-            filters={"ragflow_document_id": {"_in": document_ids}},
-            fields=["page_id", "ragflow_document_id"],
-            limit=len(document_ids),
-        )
-        page_ids = sorted({str(item.get("page_id")) for item in versions if item.get("page_id")})
-        if not page_ids:
-            return
-        pages = await self.structured_backend.list_items(
-            "kb_pages",
-            filters={"id": {"_in": page_ids}},
-            fields=["id", "title", "canonical_url", "published_at"],
-            limit=len(page_ids),
-        )
-        pages_by_id = {str(item["id"]): item for item in pages if item.get("id")}
-        page_by_document_id: dict[str, dict[str, Any]] = {}
-        for version in versions:
-            document_id = str(version.get("ragflow_document_id") or "")
-            page = pages_by_id.get(str(version.get("page_id") or ""))
-            if document_id and page:
-                page_by_document_id[document_id] = page
-
-        for chunk in chunks:
-            if chunk.citation is None:
-                continue
-            document_id = str(chunk.citation.metadata.get("document_id") or "")
-            page = page_by_document_id.get(document_id)
-            if not page:
-                continue
-            chunk.citation = Citation(
-                title=str(page.get("title") or chunk.citation.title),
-                source=str(page.get("canonical_url") or chunk.citation.source),
-                snippet=chunk.citation.snippet,
-                published_at=self._optional_text(page.get("published_at"))
-                or chunk.citation.published_at,
-                department=chunk.citation.department,
-                metadata=chunk.citation.metadata,
-            )
-
     async def _record_answer_log(
         self,
         *,
@@ -308,8 +255,8 @@ class KnowledgeBaseService:
             "user_id": query.user_id,
             "question": query.question,
             "extracted_slots": query.filters,
-            "directus_results": [record.to_dict() for record in retrieval.structured_records],
-            "ragflow_results": [chunk.to_dict() for chunk in retrieval.chunks],
+            "structured_records": [record.to_dict() for record in retrieval.structured_records],
+            "retrieved_chunks": [chunk.to_dict() for chunk in retrieval.chunks],
             "citations": [citation.to_dict() for citation in answer.citations],
             "answer": answer.answer,
             "confidence": answer.confidence,

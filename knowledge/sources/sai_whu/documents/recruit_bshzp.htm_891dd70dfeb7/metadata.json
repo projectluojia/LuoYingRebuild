@@ -1,0 +1,26 @@
+{
+  "document_id": "recruit_bshzp.htm_891dd70dfeb7",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "博士后招聘",
+  "source_url": "https://sai.whu.edu.cn/recruit/bshzp.htm",
+  "published_at": null,
+  "content_hash": "10746467386093fdbc4eefda78f2e7e043b276930692169e6266836ea6b5619c",
+  "markdown_path": "knowledge/sources/sai_whu/documents/recruit_bshzp.htm_891dd70dfeb7/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/recruit_bshzp.htm_891dd70dfeb7/raw.html",
+  "quality": {
+    "ok": true,
+    "score": 1.0,
+    "warnings": [],
+    "metrics": {
+      "chars": 209,
+      "lines": 10,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}

@@ -3,7 +3,6 @@
   "name": "武汉大学人工智能学院官网",
   "base_url": "https://sai.whu.edu.cn/",
   "space_id": "sai",
-  "ragflow_dataset_id": "",
   "allowed_domains": ["sai.whu.edu.cn"],
   "entry_urls": [
     "https://sai.whu.edu.cn/",
@@ -41,7 +40,5 @@
     "//*[contains(@class, 'mianbao')]",
     "//*[contains(@class, 'nav_mask')]",
     "//*[contains(@class, 'search')]"
-  ],
-  "sync_to_ragflow": true,
-  "extract_structured": true
+  ]
 }

@@ -49,10 +49,10 @@ class AdmissionsKnowledgeDomain(KnowledgeDomain):
         collections = self._collections_for_question(query.question)
         records: list[StructuredRecord] = []
         for collection in collections:
-            directus_filter = self._directus_filter(query, collection)
+            metadata_filter = self._metadata_filter(query, collection)
             items = await backend.list_items(
                 self._collection(collection),
-                filters=directus_filter,
+                filters=metadata_filter,
                 limit=8,
                 sort=["-year"] if collection in {"admission_scores", "admission_plans"} else None,
             )
@@ -92,7 +92,7 @@ class AdmissionsKnowledgeDomain(KnowledgeDomain):
             collections.append("class_types")
         return collections or ["majors", "class_types"]
 
-    def _directus_filter(self, query: KnowledgeQuery, collection: str) -> dict[str, Any]:
+    def _metadata_filter(self, query: KnowledgeQuery, collection: str) -> dict[str, Any]:
         clauses: list[dict[str, Any]] = [
             {"review_status": {"_eq": "approved"}},
         ]
@@ -151,4 +151,3 @@ class AdmissionsKnowledgeDomain(KnowledgeDomain):
             "湖北", "湖南", "广东", "广西", "海南", "重庆", "四川", "贵州",
             "云南", "西藏", "陕西", "甘肃", "青海", "宁夏", "新疆",
         )
-

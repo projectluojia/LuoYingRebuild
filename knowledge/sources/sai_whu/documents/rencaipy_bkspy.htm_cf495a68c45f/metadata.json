@@ -1,0 +1,26 @@
+{
+  "document_id": "rencaipy_bkspy.htm_cf495a68c45f",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "本科生培养",
+  "source_url": "https://sai.whu.edu.cn/rencaipy/bkspy.htm",
+  "published_at": null,
+  "content_hash": "a9e0c969837d492f3332c6d3ff1e1bd2808843da51740d667fe221ba6371a4ca",
+  "markdown_path": "knowledge/sources/sai_whu/documents/rencaipy_bkspy.htm_cf495a68c45f/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/rencaipy_bkspy.htm_cf495a68c45f/raw.html",
+  "quality": {
+    "ok": true,
+    "score": 1.0,
+    "warnings": [],
+    "metrics": {
+      "chars": 424,
+      "lines": 27,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}

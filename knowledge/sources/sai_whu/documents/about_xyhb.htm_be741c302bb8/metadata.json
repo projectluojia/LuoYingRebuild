@@ -1,0 +1,26 @@
+{
+  "document_id": "about_xyhb.htm_be741c302bb8",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "学院徽标",
+  "source_url": "https://sai.whu.edu.cn/about/xyhb.htm",
+  "published_at": null,
+  "content_hash": "c0298111aa5aa2e7b7ce17e92dd57d01e34ab6e697dac8825667e5bd4e498941",
+  "markdown_path": "knowledge/sources/sai_whu/documents/about_xyhb.htm_be741c302bb8/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/about_xyhb.htm_be741c302bb8/raw.html",
+  "quality": {
+    "ok": true,
+    "score": 1.0,
+    "warnings": [],
+    "metrics": {
+      "chars": 97,
+      "lines": 10,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "document_id": "kxyj_xsdt.htm_255cf51524dd",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "学术动态",
+  "source_url": "https://sai.whu.edu.cn/kxyj/xsdt.htm",
+  "published_at": null,
+  "content_hash": "8cd4730284069de06d4ebd210fb9020946baf3b2524251c619f2012641af071a",
+  "markdown_path": "knowledge/sources/sai_whu/documents/kxyj_xsdt.htm_255cf51524dd/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/kxyj_xsdt.htm_255cf51524dd/raw.html",
+  "quality": {
+    "ok": true,
+    "score": 1.0,
+    "warnings": [],
+    "metrics": {
+      "chars": 652,
+      "lines": 14,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}

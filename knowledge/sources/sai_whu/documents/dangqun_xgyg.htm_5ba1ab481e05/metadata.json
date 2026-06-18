@@ -1,0 +1,26 @@
+{
+  "document_id": "dangqun_xgyg.htm_5ba1ab481e05",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "学工研工",
+  "source_url": "https://sai.whu.edu.cn/dangqun/xgyg.htm",
+  "published_at": null,
+  "content_hash": "0fa70858a3c6347282c798e62e2bcccd7f228b9f1bdc78c549b244cd223a288a",
+  "markdown_path": "knowledge/sources/sai_whu/documents/dangqun_xgyg.htm_5ba1ab481e05/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/dangqun_xgyg.htm_5ba1ab481e05/raw.html",
+  "quality": {
+    "ok": true,
+    "score": 1.0,
+    "warnings": [],
+    "metrics": {
+      "chars": 491,
+      "lines": 14,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}

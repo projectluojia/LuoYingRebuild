@@ -1,0 +1,26 @@
+{
+  "document_id": "kxyj_ptjd.htm_ce884e82d517",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "平台基地",
+  "source_url": "https://sai.whu.edu.cn/kxyj/ptjd.htm",
+  "published_at": null,
+  "content_hash": "140504d55a0e6f7776c3de2998e5a63987211fe792fc21df5aa92a42005a0e2b",
+  "markdown_path": "knowledge/sources/sai_whu/documents/kxyj_ptjd.htm_ce884e82d517/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/kxyj_ptjd.htm_ce884e82d517/raw.html",
+  "quality": {
+    "ok": true,
+    "score": 1.0,
+    "warnings": [],
+    "metrics": {
+      "chars": 100,
+      "lines": 7,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}

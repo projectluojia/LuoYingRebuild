@@ -10,14 +10,15 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
-from luoying_bot.capabilities.knowledge_base.ports import StructuredBackend
+from luoying_bot.capabilities.knowledge_base.artifacts import MarkdownArtifactStore
 from luoying_bot.capabilities.knowledge_base.extraction import (
     DEFAULT_PRUNE_XPATH,
     TrafilaturaExtractor,
     normalize_space,
     normalize_url,
 )
-from luoying_bot.capabilities.knowledge_base.ragflow_client import RagflowClient
+from luoying_bot.capabilities.knowledge_base.local_store import IndexedDocument, LocalKnowledgeStore
+from luoying_bot.capabilities.knowledge_base.quality import MarkdownQualityChecker
 
 ASSET_SUFFIXES = {
     ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
@@ -32,7 +33,6 @@ class SiteCrawlConfig:
     name: str
     base_url: str
     space_id: str
-    ragflow_dataset_id: str
     allowed_domains: list[str]
     entry_urls: list[str]
     max_pages: int = 100
@@ -43,8 +43,6 @@ class SiteCrawlConfig:
     exclude_url_patterns: list[str] = field(default_factory=list)
     blocked_page_patterns: list[str] = field(default_factory=list)
     prune_xpath: list[str] = field(default_factory=lambda: list(DEFAULT_PRUNE_XPATH))
-    sync_to_ragflow: bool = True
-    extract_structured: bool = True
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SiteCrawlConfig":
@@ -53,7 +51,6 @@ class SiteCrawlConfig:
             name=str(data.get("name") or data["site_id"]),
             base_url=str(data["base_url"]),
             space_id=str(data.get("space_id") or data["site_id"]),
-            ragflow_dataset_id=str(data.get("ragflow_dataset_id") or ""),
             allowed_domains=[str(x) for x in data.get("allowed_domains", [])],
             entry_urls=[str(x) for x in data.get("entry_urls", [])],
             max_pages=int(data.get("max_pages") or 100),
@@ -64,8 +61,6 @@ class SiteCrawlConfig:
             exclude_url_patterns=[str(x) for x in data.get("exclude_url_patterns", [])],
             blocked_page_patterns=[str(x) for x in data.get("blocked_page_patterns", [])],
             prune_xpath=[str(x) for x in data.get("prune_xpath", DEFAULT_PRUNE_XPATH)],
-            sync_to_ragflow=bool(data.get("sync_to_ragflow", True)),
-            extract_structured=bool(data.get("extract_structured", True)),
         )
 
     @classmethod
@@ -78,7 +73,6 @@ class SiteCrawlConfig:
                 "name": record.get("name") or record["site_id"],
                 "base_url": record["base_url"],
                 "space_id": record.get("space_id") or record["site_id"],
-                "ragflow_dataset_id": record.get("ragflow_dataset_id") or "",
                 "allowed_domains": record.get("allowed_domains") or [],
                 "entry_urls": record.get("entry_urls") or [],
             }
@@ -90,7 +84,6 @@ class SiteCrawlConfig:
             "name": self.name,
             "base_url": self.base_url,
             "space_id": self.space_id,
-            "ragflow_dataset_id": self.ragflow_dataset_id,
             "allowed_domains": self.allowed_domains,
             "entry_urls": self.entry_urls,
             "crawl_config": {
@@ -102,8 +95,6 @@ class SiteCrawlConfig:
                 "exclude_url_patterns": self.exclude_url_patterns,
                 "blocked_page_patterns": self.blocked_page_patterns,
                 "prune_xpath": self.prune_xpath,
-                "sync_to_ragflow": self.sync_to_ragflow,
-                "extract_structured": self.extract_structured,
             },
             "enabled": True,
         }
@@ -294,13 +285,19 @@ class KnowledgeSiteCrawler:
         return any(re.search(pattern, target) for pattern in config.blocked_page_patterns)
 
 
-class DirectusCrawlRecorder:
-    def __init__(self, backend: StructuredBackend, ragflow: RagflowClient | None = None):
-        self.backend = backend
-        self.ragflow = ragflow
+class KnowledgeCrawlRecorder:
+    def __init__(
+        self,
+        *,
+        store: LocalKnowledgeStore,
+        artifact_store: MarkdownArtifactStore,
+    ):
+        self.store = store
+        self.artifact_store = artifact_store
+        self.quality_checker = MarkdownQualityChecker()
 
     async def record(self, config: SiteCrawlConfig, result: CrawlResult) -> dict[str, Any]:
-        run = await self.backend.create_item(
+        run = await self.store.create_item(
             "kb_crawl_runs",
             {
                 "site_id": config.site_id,
@@ -325,7 +322,7 @@ class DirectusCrawlRecorder:
             elif change == "updated":
                 updated += 1
         if run.get("id"):
-            run = await self.backend.update_item(
+            run = await self.store.update_item(
                 "kb_crawl_runs",
                 str(run["id"]),
                 {"pages_created": created, "pages_updated": updated},
@@ -333,88 +330,50 @@ class DirectusCrawlRecorder:
         return run
 
     async def _upsert_page(self, config: SiteCrawlConfig, page: ParsedPage, run_id: Any) -> str:
-        existing = await self.backend.list_items(
+        existing = await self.store.list_items(
             "kb_pages",
-            filters={"canonical_url": {"_eq": page.url}},
-            limit=1,
-        )
-        payload = {
-            "site_id": config.site_id,
-            "space_id": config.space_id,
-            "canonical_url": page.url,
-            "title": page.title,
-            "published_at": page.published_at,
-            "content_hash": page.content_hash,
-            "status": "active",
-            "last_crawled_at": now_iso(),
-            "last_crawl_run": run_id,
-        }
-        version_status = {
-            "ragflow_sync_status": "pending" if config.sync_to_ragflow else "disabled",
-            "extract_status": "pending" if config.extract_structured else "disabled",
-        }
-        if existing:
-            current = existing[0]
-            item_id = str(current["id"])
-            if current.get("content_hash") == page.content_hash:
-                await self.backend.update_item("kb_pages", item_id, payload)
-                return "unchanged"
-            await self.backend.update_item("kb_pages", item_id, {**payload, **version_status})
-            await self._create_version(config, item_id, page)
-            return "updated"
-        created = await self.backend.create_item("kb_pages", {**payload, **version_status})
-        if created.get("id"):
-            await self._create_version(config, str(created["id"]), page)
-        return "created"
-
-    async def _create_version(self, config: SiteCrawlConfig, page_id: str, page: ParsedPage) -> None:
-        ragflow_document_id = None
-        ragflow_status = "disabled"
-        if config.sync_to_ragflow and self.ragflow is not None:
-            ragflow_status = "pending"
-            uploaded = await self.ragflow.upload_text_document(
-                dataset_id=config.ragflow_dataset_id,
-                name=f"{page.title}_{page.content_hash[:12]}",
-                text=self._ragflow_text(page),
-            )
-            document_ids = [str(item["id"]) for item in uploaded if item.get("id")]
-            if document_ids:
-                ragflow_document_id = document_ids[0]
-                await self.ragflow.parse_documents(
-                    dataset_id=config.ragflow_dataset_id,
-                    document_ids=document_ids,
-                )
-                ragflow_status = "parsing"
-
-        await self.backend.create_item(
-            "kb_page_versions",
-            {
-                "page_id": page_id,
-                "content_hash": page.content_hash,
-                "raw_html": page.raw_html,
-                "clean_text": page.text,
-                "ragflow_document_id": ragflow_document_id,
-                "ragflow_sync_status": ragflow_status,
-                "created_at": now_iso(),
+            filters={
+                "_and": [
+                    {"space_id": {"_eq": config.space_id}},
+                    {"status": {"_eq": "active"}},
+                ]
             },
+            fields=["id", "canonical_url", "content_hash"],
+            limit=10000,
         )
-        if ragflow_document_id:
-            await self.backend.update_item(
-                "kb_pages",
-                page_id,
-                {
-                    "ragflow_document_id": ragflow_document_id,
-                    "ragflow_sync_status": ragflow_status,
-                },
+        current = next((item for item in existing if item.get("canonical_url") == page.url), None)
+        markdown_body = text_to_markdown_body(page.title, page.text)
+        quality = self.quality_checker.check(markdown_body).to_dict()
+        artifact = self.artifact_store.write_document(
+            site_id=config.site_id,
+            space_id=config.space_id,
+            url=page.url,
+            title=page.title,
+            published_at=page.published_at,
+            markdown_body=markdown_body,
+            raw_html=page.raw_html,
+            quality=quality,
+        )
+        await self.store.upsert_document(
+            IndexedDocument(
+                document_id=artifact.document_id,
+                space_id=config.space_id,
+                site_id=config.site_id,
+                title=page.title,
+                source_url=page.url,
+                published_at=page.published_at,
+                content_hash=str(artifact.metadata["content_hash"]),
+                markdown_path=str(artifact.markdown_path),
+                raw_html_path=str(artifact.raw_html_path),
+                quality=quality,
+                markdown=artifact.markdown,
             )
-
-    def _ragflow_text(self, page: ParsedPage) -> str:
-        return (
-            f"标题：{page.title}\n"
-            f"来源：{page.url}\n"
-            f"发布日期：{page.published_at or '未知'}\n\n"
-            f"{page.text}"
-        ).strip()
+        )
+        if current is None:
+            return "created"
+        if current.get("content_hash") == artifact.metadata["content_hash"]:
+            return "unchanged"
+        return "updated"
 
 
 def parse_html(url: str, html: str, config: SiteCrawlConfig) -> ParsedPage:
@@ -446,6 +405,65 @@ def dedupe_links(links: list[Link]) -> list[Link]:
 def is_asset_url(url: str) -> bool:
     path = urlparse(url).path.lower()
     return any(path.endswith(suffix) for suffix in ASSET_SUFFIXES)
+
+
+def text_to_markdown_body(title: str, text: str) -> str:
+    lines = [line.strip() for line in text.splitlines()]
+    output: list[str] = [f"# {title.strip() or '未命名文档'}"]
+    content_lines = [
+        line
+        for line in lines
+        if line and line != title and line not in {"首页", "上页", "下页", "尾页", "TOP"}
+        and not re.fullmatch(r"\d+", line)
+    ]
+    list_like = sum(1 for line in content_lines if is_date_line(line)) >= 2
+    for line in content_lines:
+        if is_section_heading(line):
+            output.extend(["", f"## {line}"])
+            continue
+        if list_like:
+            if is_date_line(line) and output[-1].startswith("- "):
+                output.append(f"  - 日期：{line}")
+            elif line.startswith("- "):
+                output.append(line)
+            else:
+                output.append(f"- {line}")
+            continue
+        if not line or line == title:
+            continue
+        if line.startswith("- "):
+            output.append(line)
+        elif is_date_line(line):
+            output.append(f"- {line}")
+        else:
+            output.append(line)
+    return "\n".join(output).strip()
+
+
+SECTION_HEADINGS = {
+    "招生咨讯",
+    "培养方案",
+    "通知公告",
+    "本科专业",
+    "硕士学位点",
+    "博士学位点",
+    "规章制度",
+    "办事流程",
+    "常用下载",
+    "平台基地",
+    "师资招聘",
+    "博士后招聘",
+    "非编人员招聘",
+}
+
+
+def is_section_heading(line: str) -> bool:
+    return line in SECTION_HEADINGS
+
+
+def is_date_line(line: str) -> bool:
+    return bool(re.fullmatch(r"20\d{2}[-./年]\d{1,2}[-./月]\d{1,2}日?", line))
+
 
 def now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")

@@ -2,6 +2,20 @@
 
 This directory contains repeatable tests for the LuoYing knowledge base.
 
+The harness reads the local SQLite metadata/index configured by `KB_METADATA_DB`.
+Build it from committed Markdown artifacts with:
+
+```bash
+PYTHONPATH=src python scripts/rebuild_kb_index.py
+```
+
+Or crawl fresh Markdown artifacts and index them with:
+
+```bash
+PYTHONPATH=src python scripts/crawl_site_to_kb.py \
+  --config docs/site_configs/sai_whu.json
+```
+
 ## Commands
 
 Smoke test:

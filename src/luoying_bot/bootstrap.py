@@ -20,11 +20,10 @@ from luoying_bot.application.services.user_service import UserService
 from luoying_bot.application.services.user_memory_service import UserMemoryService
 from luoying_bot.capabilities.knowledge_base import KnowledgeBaseConfig, KnowledgeBaseService
 from luoying_bot.capabilities.knowledge_base.answering import KnowledgeAnswerGenerator
-from luoying_bot.capabilities.knowledge_base.directus_client import DirectusClient
 from luoying_bot.capabilities.knowledge_base.domains.admissions import AdmissionsKnowledgeDomain
 from luoying_bot.capabilities.knowledge_base.domains.general import GeneralKnowledgeDomain
+from luoying_bot.capabilities.knowledge_base.local_store import LocalKnowledgeStore
 from luoying_bot.capabilities.knowledge_base.policy import KnowledgeBasePolicy
-from luoying_bot.capabilities.knowledge_base.ragflow_client import RagflowClient
 from luoying_bot.config import settings
 from luoying_bot.infra.llm.openai_chat import OpenAICompatibleChatModel
 from luoying_bot.infra.memory.in_memory import InMemoryConversationMemory
@@ -121,23 +120,19 @@ async def _build_container(
         settings.openai_enable_thinking,
     )
 
+    knowledge_store = LocalKnowledgeStore(
+        settings.kb_metadata_db,
+        vector_dimensions=settings.kb_vector_dimensions,
+    )
     knowledge_base_service = KnowledgeBaseService(
-        rag_backend=RagflowClient(
-            base_url=settings.ragflow_url,
-            api_key=settings.ragflow_api_key,
-            search_path=settings.ragflow_search_path,
-        ),
-        structured_backend=DirectusClient(
-            base_url=settings.directus_url,
-            token=settings.directus_token,
-        ),
+        rag_backend=knowledge_store,
+        structured_backend=knowledge_store,
         domains={
             "general": GeneralKnowledgeDomain(
-                default_dataset_id=settings.ragflow_default_dataset_id,
+                default_dataset_id=settings.kb_default_space_id,
             ),
             "admissions": AdmissionsKnowledgeDomain(
-                dataset_id=settings.ragflow_admissions_dataset_id or settings.ragflow_default_dataset_id,
-                collection_prefix=settings.directus_collection_prefix,
+                dataset_id=settings.kb_default_space_id,
             ),
         },
         answer_generator=KnowledgeAnswerGenerator(model),

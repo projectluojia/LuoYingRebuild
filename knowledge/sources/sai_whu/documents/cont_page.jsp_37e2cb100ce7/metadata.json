@@ -1,0 +1,26 @@
+{
+  "document_id": "cont_page.jsp_37e2cb100ce7",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "人工智能学院关于调整教学系及组建研究所的通知",
+  "source_url": "https://sai.whu.edu.cn/cont_page.jsp?urltype=news.NewsContentUrl&wbtreeid=1601&wbnewsid=17301",
+  "published_at": null,
+  "content_hash": "015b74aef1e00f930cf7b75b59afe8941cecda9dae36c88c84857d2ce8e36c06",
+  "markdown_path": "knowledge/sources/sai_whu/documents/cont_page.jsp_37e2cb100ce7/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/cont_page.jsp_37e2cb100ce7/raw.html",
+  "quality": {
+    "ok": true,
+    "score": 1.0,
+    "warnings": [],
+    "metrics": {
+      "chars": 1103,
+      "lines": 38,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}

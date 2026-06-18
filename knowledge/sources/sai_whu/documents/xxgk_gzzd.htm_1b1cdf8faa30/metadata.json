@@ -1,0 +1,26 @@
+{
+  "document_id": "xxgk_gzzd.htm_1b1cdf8faa30",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "规章制度",
+  "source_url": "https://sai.whu.edu.cn/xxgk/gzzd.htm",
+  "published_at": null,
+  "content_hash": "89822cb1599fcccc24700b5abfbe81f854ab35f07ee327c515136b6c4beb9183",
+  "markdown_path": "knowledge/sources/sai_whu/documents/xxgk_gzzd.htm_1b1cdf8faa30/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/xxgk_gzzd.htm_1b1cdf8faa30/raw.html",
+  "quality": {
+    "ok": true,
+    "score": 1.0,
+    "warnings": [],
+    "metrics": {
+      "chars": 344,
+      "lines": 17,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}

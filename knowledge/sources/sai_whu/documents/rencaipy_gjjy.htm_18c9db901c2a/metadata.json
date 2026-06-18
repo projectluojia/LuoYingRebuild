@@ -1,0 +1,28 @@
+{
+  "document_id": "rencaipy_gjjy.htm_18c9db901c2a",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "国际教育",
+  "source_url": "https://sai.whu.edu.cn/rencaipy/gjjy.htm",
+  "published_at": null,
+  "content_hash": "2e65376fcc7a341e1e9bb8990cdf294993cf7742f45e8c9def6e92f21161715e",
+  "markdown_path": "knowledge/sources/sai_whu/documents/rencaipy_gjjy.htm_18c9db901c2a/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/rencaipy_gjjy.htm_18c9db901c2a/raw.html",
+  "quality": {
+    "ok": false,
+    "score": 0.85,
+    "warnings": [
+      "too_short"
+    ],
+    "metrics": {
+      "chars": 38,
+      "lines": 3,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}

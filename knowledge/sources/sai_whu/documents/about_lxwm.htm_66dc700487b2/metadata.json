@@ -1,0 +1,26 @@
+{
+  "document_id": "about_lxwm.htm_66dc700487b2",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "联系我们",
+  "source_url": "https://sai.whu.edu.cn/about/lxwm.htm",
+  "published_at": null,
+  "content_hash": "3045cca71c2465f9de95084fa8ece19824acd305c8caa852d3df1be571043037",
+  "markdown_path": "knowledge/sources/sai_whu/documents/about_lxwm.htm_66dc700487b2/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/about_lxwm.htm_66dc700487b2/raw.html",
+  "quality": {
+    "ok": true,
+    "score": 1.0,
+    "warnings": [],
+    "metrics": {
+      "chars": 905,
+      "lines": 46,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}

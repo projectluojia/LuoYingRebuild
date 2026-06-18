@@ -1,0 +1,28 @@
+{
+  "document_id": "about_xcp.htm_dfbfb4649430",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "宣传片",
+  "source_url": "https://sai.whu.edu.cn/about/xcp.htm",
+  "published_at": null,
+  "content_hash": "51409c38e9caf51551cd35b033cd1fa32b51032fa5dce70fffa3f5a8233cb293",
+  "markdown_path": "knowledge/sources/sai_whu/documents/about_xcp.htm_dfbfb4649430/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/about_xcp.htm_dfbfb4649430/raw.html",
+  "quality": {
+    "ok": false,
+    "score": 0.85,
+    "warnings": [
+      "too_short"
+    ],
+    "metrics": {
+      "chars": 5,
+      "lines": 1,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}

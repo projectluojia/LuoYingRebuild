@@ -1,0 +1,26 @@
+{
+  "document_id": "dangqun_ghgz.htm_71ded8b876f6",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "工会工作",
+  "source_url": "https://sai.whu.edu.cn/dangqun/ghgz.htm",
+  "published_at": null,
+  "content_hash": "38f43365d860d2a3691a739d937fdbb55d17687ab03a784ea5b3c183183a3661",
+  "markdown_path": "knowledge/sources/sai_whu/documents/dangqun_ghgz.htm_71ded8b876f6/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/dangqun_ghgz.htm_71ded8b876f6/raw.html",
+  "quality": {
+    "ok": true,
+    "score": 1.0,
+    "warnings": [],
+    "metrics": {
+      "chars": 308,
+      "lines": 8,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}

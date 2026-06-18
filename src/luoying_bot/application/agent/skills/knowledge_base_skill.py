@@ -9,7 +9,7 @@ class KnowledgeBaseSkill(BaseSkill):
     platform = [Platform.QQ, Platform.WEB, Platform.CLI]
     description = (
         "查询学校知识库。适合回答招生、政策、专业介绍、办事说明、学校资料等需要可靠来源的问题。"
-        "本技能只使用 RAGFlow 和 Directus 中的正式知识，不读取本地旧知识库。"
+        "本技能只使用 Git 管理的 Markdown 知识库和本地混合索引。"
         "回答会附带来源；没有可靠来源时会拒绝给出确定结论。"
         "payload 示例："
         '{"question":"去年河北物理类人工智能最低多少分？","domain":"admissions","space_id":"admissions"} '
@@ -59,4 +59,3 @@ class KnowledgeBaseSkill(BaseSkill):
         except (TypeError, ValueError):
             return 8
         return max(1, min(top_k, 20))
-

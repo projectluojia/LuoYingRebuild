@@ -1,0 +1,26 @@
+{
+  "document_id": "about_jigou_jxzz.htm_d2ad686f00db",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "教学组织",
+  "source_url": "https://sai.whu.edu.cn/about/jigou/jxzz.htm",
+  "published_at": null,
+  "content_hash": "e8ce9556500c841ba28c3f0465917b42c4ba436e3356b023213347a28bdf90c5",
+  "markdown_path": "knowledge/sources/sai_whu/documents/about_jigou_jxzz.htm_d2ad686f00db/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/about_jigou_jxzz.htm_d2ad686f00db/raw.html",
+  "quality": {
+    "ok": true,
+    "score": 1.0,
+    "warnings": [],
+    "metrics": {
+      "chars": 123,
+      "lines": 25,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}

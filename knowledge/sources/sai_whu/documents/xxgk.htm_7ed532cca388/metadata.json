@@ -1,0 +1,26 @@
+{
+  "document_id": "xxgk.htm_7ed532cca388",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "信息公开",
+  "source_url": "https://sai.whu.edu.cn/xxgk.htm",
+  "published_at": null,
+  "content_hash": "ebfd784885aff1d433b7ffbd1c7947b0123b924d3b7466e00845ff8fd319fb73",
+  "markdown_path": "knowledge/sources/sai_whu/documents/xxgk.htm_7ed532cca388/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/xxgk.htm_7ed532cca388/raw.html",
+  "quality": {
+    "ok": true,
+    "score": 1.0,
+    "warnings": [],
+    "metrics": {
+      "chars": 554,
+      "lines": 33,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}

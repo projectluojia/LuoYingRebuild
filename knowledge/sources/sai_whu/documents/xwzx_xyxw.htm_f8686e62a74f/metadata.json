@@ -1,0 +1,26 @@
+{
+  "document_id": "xwzx_xyxw.htm_f8686e62a74f",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "学院新闻",
+  "source_url": "https://sai.whu.edu.cn/xwzx/xyxw.htm",
+  "published_at": null,
+  "content_hash": "e3c7be9bbab769e55deb0ad47ff12138a2ebbdc7f9a1d964682483115b1088c2",
+  "markdown_path": "knowledge/sources/sai_whu/documents/xwzx_xyxw.htm_f8686e62a74f/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/xwzx_xyxw.htm_f8686e62a74f/raw.html",
+  "quality": {
+    "ok": true,
+    "score": 1.0,
+    "warnings": [],
+    "metrics": {
+      "chars": 509,
+      "lines": 14,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "document_id": "cont_page.jsp_3fa6f1d502bc",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "人工智能学院关于2026年端午节假期安排的通知",
+  "source_url": "https://sai.whu.edu.cn/cont_page.jsp?urltype=news.NewsContentUrl&wbtreeid=1601&wbnewsid=17411",
+  "published_at": null,
+  "content_hash": "49a966b708df959156c8ed61ddb9ce268b1840a6e5b54c07a7a6351c6968a613",
+  "markdown_path": "knowledge/sources/sai_whu/documents/cont_page.jsp_3fa6f1d502bc/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/cont_page.jsp_3fa6f1d502bc/raw.html",
+  "quality": {
+    "ok": true,
+    "score": 1.0,
+    "warnings": [],
+    "metrics": {
+      "chars": 355,
+      "lines": 11,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}

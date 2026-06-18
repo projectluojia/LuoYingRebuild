@@ -1,0 +1,26 @@
+{
+  "document_id": "about_xkzy.htm_9a735f53a080",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "学科专业",
+  "source_url": "https://sai.whu.edu.cn/about/xkzy.htm",
+  "published_at": null,
+  "content_hash": "0c6b1c1da89a8454eae28b5d435f726f26c82e986b7035bb8e7622b5da85aa27",
+  "markdown_path": "knowledge/sources/sai_whu/documents/about_xkzy.htm_9a735f53a080/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/about_xkzy.htm_9a735f53a080/raw.html",
+  "quality": {
+    "ok": true,
+    "score": 1.0,
+    "warnings": [],
+    "metrics": {
+      "chars": 179,
+      "lines": 16,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}

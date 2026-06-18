@@ -12,10 +12,10 @@ env/
 .env
 .env.*
 !.env.example
-deploy/kb/directus.env
-deploy/kb/ragflow/ragflow-logs/
 
 data/
+var/
+deploy/kb/
 
 *.zip
 

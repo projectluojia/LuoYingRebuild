@@ -1,0 +1,26 @@
+{
+  "document_id": "xwzx_tzgg.htm_7360840821d9",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "通知公告",
+  "source_url": "https://sai.whu.edu.cn/xwzx/tzgg.htm",
+  "published_at": null,
+  "content_hash": "f8aedc6e1584fa16b23f47a591f9c35e57ee3f823a48454029c26f58d4759b41",
+  "markdown_path": "knowledge/sources/sai_whu/documents/xwzx_tzgg.htm_7360840821d9/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/xwzx_tzgg.htm_7360840821d9/raw.html",
+  "quality": {
+    "ok": true,
+    "score": 1.0,
+    "warnings": [],
+    "metrics": {
+      "chars": 469,
+      "lines": 14,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "document_id": "kxyj_xmsb.htm_35434be767ac",
+  "site_id": "sai_whu",
+  "space_id": "sai",
+  "title": "项目申报",
+  "source_url": "https://sai.whu.edu.cn/kxyj/xmsb.htm",
+  "published_at": null,
+  "content_hash": "93a9d59c4ff527330b98d748af7cedc91ea4ee7a2d1fc41d9fbb7a08238ad1f9",
+  "markdown_path": "knowledge/sources/sai_whu/documents/kxyj_xmsb.htm_35434be767ac/current.md",
+  "raw_html_path": "knowledge/sources/sai_whu/documents/kxyj_xmsb.htm_35434be767ac/raw.html",
+  "quality": {
+    "ok": true,
+    "score": 1.0,
+    "warnings": [],
+    "metrics": {
+      "chars": 518,
+      "lines": 13,
+      "main_nav_hits": 0,
+      "footer_hits": 0,
+      "breadcrumb_hits": 0,
+      "script_hits": 0,
+      "pagination_hits": 0,
+      "duplicate_line_ratio": 0.0
+    }
+  }
+}
