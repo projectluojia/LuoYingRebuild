@@ -1,0 +1,62 @@
+[
+  {
+    "id": "sai_undergraduate_training",
+    "question": "武汉大学人工智能学院本科生培养有哪些信息？",
+    "domain": "admissions",
+    "space_id": "sai",
+    "top_k": 5,
+    "expected_any": ["本科生培养", "人工智能", "培养方案"],
+    "expected_sources_any": ["sai.whu.edu.cn/rencaipy/bkspy.htm"],
+    "min_citations": 1
+  },
+  {
+    "id": "sai_graduate_training",
+    "question": "武汉大学人工智能学院研究生培养有哪些信息？",
+    "domain": "admissions",
+    "space_id": "sai",
+    "top_k": 5,
+    "expected_any": ["研究生培养", "博士", "硕士"],
+    "expected_sources_any": ["sai.whu.edu.cn/rencaipy/yjspy.htm"],
+    "min_citations": 1
+  },
+  {
+    "id": "sai_faculty_recruitment",
+    "question": "武汉大学人工智能学院师资招聘有什么信息？",
+    "domain": "admissions",
+    "space_id": "sai",
+    "top_k": 5,
+    "expected_any": ["师资招聘", "招聘", "人才"],
+    "expected_sources_any": ["sai.whu.edu.cn/recruit/szzp.htm"],
+    "min_citations": 1
+  },
+  {
+    "id": "sai_disciplines",
+    "question": "武汉大学人工智能学院有哪些学科专业？",
+    "domain": "admissions",
+    "space_id": "sai",
+    "top_k": 5,
+    "expected_any": ["学科专业", "智能科学与技术", "人工智能"],
+    "expected_sources_any": ["sai.whu.edu.cn/about/xkzy.htm"],
+    "min_citations": 1
+  },
+  {
+    "id": "sai_office_process",
+    "question": "武汉大学人工智能学院办事流程在哪里看？",
+    "domain": "admissions",
+    "space_id": "sai",
+    "top_k": 5,
+    "expected_any": ["办事流程", "学院概况"],
+    "expected_sources_any": ["sai.whu.edu.cn/xxgk/bslc.htm"],
+    "min_citations": 1
+  },
+  {
+    "id": "sai_common_downloads",
+    "question": "武汉大学人工智能学院常用下载有哪些？",
+    "domain": "admissions",
+    "space_id": "sai",
+    "top_k": 5,
+    "expected_any": ["常用下载", "下载"],
+    "expected_sources_any": ["sai.whu.edu.cn/xxgk/cyxz.htm"],
+    "min_citations": 1
+  }
+]

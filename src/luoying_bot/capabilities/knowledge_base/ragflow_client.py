@@ -148,58 +148,73 @@ class RagflowClient(RagBackend):
         return payload
 
     def _parse_chunks(self, payload: dict[str, Any]) -> list[RetrievedChunk]:
-        containers: list[Any] = [
-            payload.get("data"),
-            payload,
-        ]
-        candidates: list[Any] = []
-        for container in containers:
-            if isinstance(container, dict):
-                for key in ("chunks", "results", "documents", "items"):
-                    value = container.get(key)
-                    if isinstance(value, list):
-                        candidates = value
-                        break
-            if candidates:
-                break
+        if payload.get("code") not in (None, 0):
+            raise BackendUnavailable(f"RAGFlow 检索失败：{payload.get('message') or payload.get('code')}")
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            raise BackendUnavailable("RAGFlow 检索响应缺少 data")
+        candidates = data.get("chunks")
+        if not isinstance(candidates, list):
+            raise BackendUnavailable("RAGFlow 检索响应缺少 data.chunks")
+
         chunks: list[RetrievedChunk] = []
         for item in candidates:
             if not isinstance(item, dict):
                 continue
-            text = str(
-                item.get("content")
-                or item.get("text")
-                or item.get("chunk")
-                or item.get("document")
-                or ""
-            ).strip()
+            text = str(item.get("content") or "").strip()
             if not text:
                 continue
-            title = str(
-                item.get("document_name")
-                or item.get("doc_name")
-                or item.get("title")
-                or item.get("filename")
-                or "RAGFlow 文档"
-            )
-            source = str(
-                item.get("url")
-                or item.get("source")
-                or item.get("document_id")
-                or item.get("doc_id")
-                or ""
-            )
-            score = self._to_float(item.get("score") or item.get("similarity") or 0.0)
+            front_matter = self._extract_front_matter(text)
+            document_id = str(item.get("document_id") or "")
+            title = front_matter.get("title") or str(item.get("document_keyword") or document_id)
+            source = front_matter.get("source") or ""
+            score = self._to_float(item.get("similarity") or 0.0)
+            metadata = {
+                "chunk_id": item.get("id"),
+                "document_id": document_id,
+                "dataset_id": item.get("dataset_id"),
+                "similarity": item.get("similarity"),
+                "term_similarity": item.get("term_similarity"),
+                "vector_similarity": item.get("vector_similarity"),
+                "document_keyword": item.get("document_keyword"),
+                "important_keywords": item.get("important_keywords"),
+                "positions": item.get("positions"),
+                "row_id": item.get("row_id"),
+                "image_id": item.get("image_id"),
+                "doc_type_kwd": item.get("doc_type_kwd"),
+                "tag_kwd": item.get("tag_kwd"),
+                "mom_id": item.get("mom_id"),
+            }
+            metadata = {key: value for key, value in metadata.items() if value not in (None, "", [])}
             citation = Citation(
                 title=title,
                 source=source,
                 snippet=text[:500],
-                published_at=self._to_optional_text(item.get("published_at")),
-                department=self._to_optional_text(item.get("department")),
-                metadata={k: v for k, v in item.items() if k not in {"content", "text", "chunk"}},
+                published_at=self._to_optional_text(front_matter.get("published_at")),
+                department=None,
+                metadata=metadata,
             )
             chunks.append(RetrievedChunk(text=text, score=score, citation=citation, metadata=item))
         return chunks
+
+    def _extract_front_matter(self, text: str) -> dict[str, str]:
+        result: dict[str, str] = {}
+        for line in text.splitlines()[:8]:
+            clean = line.strip()
+            for key, target in (
+                ("标题", "title"),
+                ("来源", "source"),
+                ("发布日期", "published_at"),
+            ):
+                prefix = f"{key}:"
+                alt_prefix = f"{key}："
+                if clean.startswith(prefix):
+                    result[target] = clean[len(prefix):].strip()
+                elif clean.startswith(alt_prefix):
+                    result[target] = clean[len(alt_prefix):].strip()
+        if result.get("published_at") == "未知":
+            result.pop("published_at", None)
+        return result
 
     def _to_float(self, value: Any) -> float:
         try:
