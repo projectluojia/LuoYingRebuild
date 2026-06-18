@@ -14,6 +14,7 @@ from luoying_bot.capabilities.knowledge_base import KnowledgeBaseConfig, Knowled
 from luoying_bot.capabilities.knowledge_base.answering import KnowledgeAnswerGenerator
 from luoying_bot.capabilities.knowledge_base.domains.admissions import AdmissionsKnowledgeDomain
 from luoying_bot.capabilities.knowledge_base.domains.general import GeneralKnowledgeDomain
+from luoying_bot.capabilities.knowledge_base.embeddings import OpenAICompatibleEmbeddingProvider
 from luoying_bot.capabilities.knowledge_base.local_store import LocalKnowledgeStore
 from luoying_bot.capabilities.knowledge_base.policy import KnowledgeBasePolicy
 from luoying_bot.config import settings
@@ -60,7 +61,12 @@ def build_service(*, with_answer: bool) -> KnowledgeBaseService:
         )
     store = LocalKnowledgeStore(
         settings.kb_metadata_db,
-        vector_dimensions=settings.kb_vector_dimensions,
+        embedding_provider=OpenAICompatibleEmbeddingProvider(
+            base_url=settings.kb_embedding_base_url,
+            api_key=settings.kb_embedding_api_key,
+            model=settings.kb_embedding_model,
+            batch_size=settings.kb_embedding_batch_size,
+        ),
     )
     return KnowledgeBaseService(
         rag_backend=store,
@@ -143,8 +149,11 @@ async def run_case(
             "title": citation.title,
             "source": citation.source,
             "score": getattr(citation, "metadata", {}).get("score"),
+            "title_score": getattr(citation, "metadata", {}).get("title_score"),
+            "phrase_score": getattr(citation, "metadata", {}).get("phrase_score"),
             "lexical_score": getattr(citation, "metadata", {}).get("lexical_score"),
             "vector_score": getattr(citation, "metadata", {}).get("vector_score"),
+            "embedding_model": getattr(citation, "metadata", {}).get("embedding_model"),
         }
         for citation in citations[:5]
     ]
@@ -304,7 +313,9 @@ def safe_settings_snapshot() -> dict[str, Any]:
         "kb_default_space_id": settings.kb_default_space_id,
         "kb_default_domain": settings.kb_default_domain,
         "kb_require_citation": settings.kb_require_citation,
-        "kb_vector_dimensions": settings.kb_vector_dimensions,
+        "kb_embedding_base_url": settings.kb_embedding_base_url,
+        "kb_embedding_model": settings.kb_embedding_model,
+        "kb_embedding_batch_size": settings.kb_embedding_batch_size,
     }
 
 

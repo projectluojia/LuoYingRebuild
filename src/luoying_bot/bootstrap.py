@@ -22,6 +22,7 @@ from luoying_bot.capabilities.knowledge_base import KnowledgeBaseConfig, Knowled
 from luoying_bot.capabilities.knowledge_base.answering import KnowledgeAnswerGenerator
 from luoying_bot.capabilities.knowledge_base.domains.admissions import AdmissionsKnowledgeDomain
 from luoying_bot.capabilities.knowledge_base.domains.general import GeneralKnowledgeDomain
+from luoying_bot.capabilities.knowledge_base.embeddings import OpenAICompatibleEmbeddingProvider
 from luoying_bot.capabilities.knowledge_base.local_store import LocalKnowledgeStore
 from luoying_bot.capabilities.knowledge_base.policy import KnowledgeBasePolicy
 from luoying_bot.config import settings
@@ -122,7 +123,12 @@ async def _build_container(
 
     knowledge_store = LocalKnowledgeStore(
         settings.kb_metadata_db,
-        vector_dimensions=settings.kb_vector_dimensions,
+        embedding_provider=OpenAICompatibleEmbeddingProvider(
+            base_url=settings.kb_embedding_base_url,
+            api_key=settings.kb_embedding_api_key,
+            model=settings.kb_embedding_model,
+            batch_size=settings.kb_embedding_batch_size,
+        ),
     )
     knowledge_base_service = KnowledgeBaseService(
         rag_backend=knowledge_store,

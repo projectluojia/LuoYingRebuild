@@ -58,5 +58,25 @@
     "expected_any": ["常用下载", "下载"],
     "expected_sources_any": ["sai.whu.edu.cn/xxgk/cyxz.htm"],
     "min_citations": 1
+  },
+  {
+    "id": "sai_self_strengthening_training_plan",
+    "question": "自强班的完整培养计划文档在哪里？",
+    "domain": "admissions",
+    "space_id": "sai",
+    "top_k": 5,
+    "expected_any": ["人工智能自强班", "培养方案", "151学分"],
+    "expected_sources_any": ["sai.whu.edu.cn/info/1311/8021.htm"],
+    "min_citations": 1
+  },
+  {
+    "id": "sai_self_strengthening_courses_credits",
+    "question": "自强班课程设置、学分要求和四年规划是什么？",
+    "domain": "admissions",
+    "space_id": "sai",
+    "top_k": 5,
+    "expected_any": ["课程名称", "修读", "151学分"],
+    "expected_sources_any": ["sai.whu.edu.cn/info/1311/8021.htm"],
+    "min_citations": 1
   }
 ]

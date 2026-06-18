@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from luoying_bot.capabilities.knowledge_base.artifacts import parse_markdown_artifact
+from luoying_bot.capabilities.knowledge_base.embeddings import OpenAICompatibleEmbeddingProvider
 from luoying_bot.capabilities.knowledge_base.local_store import IndexedDocument, LocalKnowledgeStore
 from luoying_bot.config import settings
 
@@ -18,12 +19,17 @@ async def main() -> None:
     root = Path(args.artifact_root)
     store = LocalKnowledgeStore(
         settings.kb_metadata_db,
-        vector_dimensions=settings.kb_vector_dimensions,
+        embedding_provider=OpenAICompatibleEmbeddingProvider(
+            base_url=settings.kb_embedding_base_url,
+            api_key=settings.kb_embedding_api_key,
+            model=settings.kb_embedding_model,
+            batch_size=settings.kb_embedding_batch_size,
+        ),
     )
     count = 0
     for markdown_path in sorted(root.glob("sources/*/pages/*.md")):
         markdown = markdown_path.read_text(encoding="utf-8")
-        metadata, _ = parse_markdown_artifact(markdown)
+        metadata, body = parse_markdown_artifact(markdown)
         source_dir = markdown_path.parents[1]
         raw_html_path = source_dir / str(metadata["raw_path"])
         await store.upsert_document(
@@ -38,7 +44,7 @@ async def main() -> None:
                 markdown_path=str(markdown_path),
                 raw_html_path=str(raw_html_path),
                 quality=dict(metadata.get("quality") or {}),
-                markdown=markdown,
+                markdown=body,
             )
         )
         count += 1

@@ -334,7 +334,7 @@ class KnowledgeCrawlRecorder:
                 markdown_path=str(artifact.markdown_path),
                 raw_html_path=str(artifact.raw_html_path),
                 quality=quality,
-                markdown=artifact.markdown,
+                markdown=page.markdown,
             )
         )
         if current is None:

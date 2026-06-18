@@ -11,6 +11,7 @@ from luoying_bot.capabilities.knowledge_base.crawling import (
     KnowledgeSiteCrawler,
     SiteCrawlConfig,
 )
+from luoying_bot.capabilities.knowledge_base.embeddings import OpenAICompatibleEmbeddingProvider
 from luoying_bot.capabilities.knowledge_base.local_store import LocalKnowledgeStore
 from luoying_bot.config import settings
 
@@ -24,7 +25,12 @@ async def main() -> None:
     result = await KnowledgeSiteCrawler().crawl(config)
     store = LocalKnowledgeStore(
         settings.kb_metadata_db,
-        vector_dimensions=settings.kb_vector_dimensions,
+        embedding_provider=OpenAICompatibleEmbeddingProvider(
+            base_url=settings.kb_embedding_base_url,
+            api_key=settings.kb_embedding_api_key,
+            model=settings.kb_embedding_model,
+            batch_size=settings.kb_embedding_batch_size,
+        ),
     )
     recorder = KnowledgeCrawlRecorder(
         store=store,
