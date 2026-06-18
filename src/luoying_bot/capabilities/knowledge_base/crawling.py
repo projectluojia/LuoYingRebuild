@@ -4,27 +4,17 @@ import re
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
-from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
-import httpx
-
-from luoying_bot.capabilities.knowledge_base.artifacts import MarkdownArtifactStore
+from luoying_bot.capabilities.knowledge_base.artifacts import MarkdownArtifactStore, stable_document_id
 from luoying_bot.capabilities.knowledge_base.extraction import (
-    DEFAULT_PRUNE_XPATH,
-    TrafilaturaExtractor,
-    normalize_space,
+    Crawl4AIExtractor,
+    is_asset_url,
     normalize_url,
 )
 from luoying_bot.capabilities.knowledge_base.local_store import IndexedDocument, LocalKnowledgeStore
 from luoying_bot.capabilities.knowledge_base.quality import MarkdownQualityChecker
-
-ASSET_SUFFIXES = {
-    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-    ".zip", ".rar", ".7z", ".png", ".jpg", ".jpeg", ".webp",
-}
-DEFAULT_USER_AGENT = "Mozilla/5.0 (compatible; LuoYingKnowledgeBot/1.0; +https://sai.whu.edu.cn/)"
 
 
 @dataclass(slots=True)
@@ -37,12 +27,9 @@ class SiteCrawlConfig:
     entry_urls: list[str]
     max_pages: int = 100
     max_depth: int = 2
-    request_timeout_sec: float = 20.0
-    user_agent: str = DEFAULT_USER_AGENT
     include_url_patterns: list[str] = field(default_factory=list)
     exclude_url_patterns: list[str] = field(default_factory=list)
     blocked_page_patterns: list[str] = field(default_factory=list)
-    prune_xpath: list[str] = field(default_factory=lambda: list(DEFAULT_PRUNE_XPATH))
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SiteCrawlConfig":
@@ -55,12 +42,9 @@ class SiteCrawlConfig:
             entry_urls=[str(x) for x in data.get("entry_urls", [])],
             max_pages=int(data.get("max_pages") or 100),
             max_depth=int(data.get("max_depth") or 2),
-            request_timeout_sec=float(data.get("request_timeout_sec") or 20.0),
-            user_agent=str(data.get("user_agent") or DEFAULT_USER_AGENT),
             include_url_patterns=[str(x) for x in data.get("include_url_patterns", [])],
             exclude_url_patterns=[str(x) for x in data.get("exclude_url_patterns", [])],
             blocked_page_patterns=[str(x) for x in data.get("blocked_page_patterns", [])],
-            prune_xpath=[str(x) for x in data.get("prune_xpath", DEFAULT_PRUNE_XPATH)],
         )
 
     @classmethod
@@ -89,30 +73,20 @@ class SiteCrawlConfig:
             "crawl_config": {
                 "max_pages": self.max_pages,
                 "max_depth": self.max_depth,
-                "request_timeout_sec": self.request_timeout_sec,
-                "user_agent": self.user_agent,
                 "include_url_patterns": self.include_url_patterns,
                 "exclude_url_patterns": self.exclude_url_patterns,
                 "blocked_page_patterns": self.blocked_page_patterns,
-                "prune_xpath": self.prune_xpath,
             },
             "enabled": True,
         }
 
 
 @dataclass(slots=True)
-class Link:
-    text: str
-    url: str
-    is_asset: bool = False
-
-
-@dataclass(slots=True)
 class ParsedPage:
     url: str
     title: str
-    text: str
-    links: list[Link]
+    markdown: str
+    links: list[dict[str, Any]]
     published_at: str | None = None
     content_hash: str = ""
     raw_html: str = ""
@@ -140,65 +114,7 @@ class CrawlResult:
     results: list[CrawlPageResult]
 
 
-class _LinkExtractor(HTMLParser):
-    def __init__(self, base_url: str):
-        super().__init__(convert_charrefs=True)
-        self.base_url = base_url
-        self.links: list[Link] = []
-        self._skip_depth = 0
-        self._active_href: str | None = None
-        self._active_text: list[str] = []
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        attr = {k: v for k, v in attrs}
-        if tag in {"script", "style", "noscript"}:
-            self._skip_depth += 1
-            return
-        if tag == "a":
-            self._active_href = attr.get("href")
-            self._active_text = []
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag in {"script", "style", "noscript"} and self._skip_depth:
-            self._skip_depth -= 1
-            return
-        if tag == "a" and self._active_href:
-            url = normalize_url(urljoin(self.base_url, self._active_href))
-            text = normalize_space(" ".join(self._active_text))
-            self.links.append(Link(text=text, url=url, is_asset=is_asset_url(url)))
-            self._active_href = None
-            self._active_text = []
-
-    def handle_data(self, data: str) -> None:
-        if self._skip_depth:
-            return
-        text = normalize_space(data)
-        if not text:
-            return
-        if self._active_href is not None:
-            self._active_text.append(text)
-
-
-class HttpPageFetcher:
-    async def fetch(self, url: str, config: SiteCrawlConfig) -> tuple[int, str, str]:
-        headers = {
-            "User-Agent": config.user_agent,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.5",
-        }
-        async with httpx.AsyncClient(
-            timeout=config.request_timeout_sec,
-            follow_redirects=True,
-            headers=headers,
-        ) as client:
-            response = await client.get(url)
-        return response.status_code, response.headers.get("content-type", ""), response.text
-
-
 class KnowledgeSiteCrawler:
-    def __init__(self, fetcher: HttpPageFetcher | None = None):
-        self.fetcher = fetcher or HttpPageFetcher()
-
     async def crawl(self, config: SiteCrawlConfig) -> CrawlResult:
         started = now_iso()
         queue: deque[tuple[str, int]] = deque(
@@ -209,46 +125,56 @@ class KnowledgeSiteCrawler:
         results: list[CrawlPageResult] = []
         assets: set[str] = set()
 
-        while queue and len(seen) < config.max_pages:
-            url, depth = queue.popleft()
-            if url in seen or not self._allowed(url, config):
-                continue
-            seen.add(url)
-            if is_asset_url(url):
-                assets.add(url)
-                continue
-            try:
-                status, content_type, body = await self.fetcher.fetch(url, config)
-                parsed = parse_html(url, body, config) if status < 400 and "html" in content_type.lower() else None
-                if parsed and self._blocked_page(parsed, config):
+        async with Crawl4AIExtractor() as extractor:
+            while queue and len(seen) < config.max_pages:
+                url, depth = queue.popleft()
+                if url in seen or not self._allowed(url, config):
+                    continue
+                seen.add(url)
+                if is_asset_url(url):
+                    assets.add(url)
+                    continue
+                try:
+                    content = await extractor.extract(url=url)
+                    parsed = ParsedPage(
+                        url=content.url,
+                        title=content.title,
+                        markdown=content.markdown,
+                        links=content.links,
+                        published_at=content.published_at,
+                        content_hash=content.content_hash,
+                        raw_html=content.raw_html,
+                    )
+                    if self._blocked_page(parsed, config):
+                        results.append(
+                            CrawlPageResult(
+                                url=url,
+                                status_code=200,
+                                content_type="text/html",
+                                depth=depth,
+                                error="blocked_page_detected",
+                            )
+                        )
+                        continue
                     results.append(
                         CrawlPageResult(
                             url=url,
-                            status_code=status,
-                            content_type=content_type,
+                            status_code=200,
+                            content_type="text/html",
                             depth=depth,
-                            error="blocked_page_detected",
+                            parsed=parsed,
                         )
                     )
-                    continue
-                results.append(
-                    CrawlPageResult(
-                        url=url,
-                        status_code=status,
-                        content_type=content_type,
-                        depth=depth,
-                        parsed=parsed,
-                    )
-                )
-                if parsed and depth < config.max_depth:
-                    for link in parsed.links:
-                        if link.is_asset:
-                            assets.add(link.url)
-                            continue
-                        if link.url not in seen and self._allowed(link.url, config):
-                            queue.append((link.url, depth + 1))
-            except Exception as exc:
-                results.append(CrawlPageResult(url=url, status_code=0, content_type="", depth=depth, error=f"{type(exc).__name__}: {exc}"))
+                    if depth < config.max_depth:
+                        for link in parsed.links:
+                            link_url = str(link.get("url") or "")
+                            if link.get("is_asset"):
+                                assets.add(link_url)
+                                continue
+                            if link_url not in seen and self._allowed(link_url, config):
+                                queue.append((link_url, depth + 1))
+                except Exception as exc:
+                    results.append(CrawlPageResult(url=url, status_code=0, content_type="", depth=depth, error=f"{type(exc).__name__}: {exc}"))
 
         finished = now_iso()
         return CrawlResult(
@@ -281,7 +207,7 @@ class KnowledgeSiteCrawler:
     def _blocked_page(self, page: ParsedPage, config: SiteCrawlConfig) -> bool:
         if not config.blocked_page_patterns:
             return False
-        target = f"{page.title}\n{page.text}"
+        target = f"{page.title}\n{page.markdown}"
         return any(re.search(pattern, target) for pattern in config.blocked_page_patterns)
 
 
@@ -313,14 +239,41 @@ class KnowledgeCrawlRecorder:
         )
         created = 0
         updated = 0
+        graph_edges: list[dict[str, Any]] = []
+        active_document_ids: list[str] = []
+        self.artifact_store.write_source(
+            {
+                "site_id": config.site_id,
+                "name": config.name,
+                "base_url": config.base_url,
+                "space_id": config.space_id,
+                "allowed_domains": config.allowed_domains,
+                "entry_urls": config.entry_urls,
+                "max_pages": config.max_pages,
+                "max_depth": config.max_depth,
+                "updated_at": result.finished_at,
+            }
+        )
         for page_result in result.results:
             if not page_result.parsed:
                 continue
-            change = await self._upsert_page(config, page_result.parsed, run.get("id"))
+            change, edges = await self._upsert_page(
+                config,
+                page_result.parsed,
+                run.get("id"),
+                depth=page_result.depth,
+            )
+            graph_edges.extend(edges)
+            active_document_ids.append(stable_document_id(page_result.parsed.url))
             if change == "created":
                 created += 1
             elif change == "updated":
                 updated += 1
+        self.artifact_store.write_graph(site_id=config.site_id, edges=graph_edges)
+        await self.store.replace_site_documents(
+            site_id=config.site_id,
+            active_document_ids=active_document_ids,
+        )
         if run.get("id"):
             run = await self.store.update_item(
                 "kb_crawl_runs",
@@ -329,7 +282,15 @@ class KnowledgeCrawlRecorder:
             )
         return run
 
-    async def _upsert_page(self, config: SiteCrawlConfig, page: ParsedPage, run_id: Any) -> str:
+    async def _upsert_page(
+        self,
+        config: SiteCrawlConfig,
+        page: ParsedPage,
+        run_id: Any,
+        *,
+        depth: int,
+    ) -> tuple[str, list[dict[str, Any]]]:
+        del run_id
         existing = await self.store.list_items(
             "kb_pages",
             filters={
@@ -342,17 +303,24 @@ class KnowledgeCrawlRecorder:
             limit=10000,
         )
         current = next((item for item in existing if item.get("canonical_url") == page.url), None)
-        markdown_body = text_to_markdown_body(page.title, page.text)
-        quality = self.quality_checker.check(markdown_body).to_dict()
+        quality = self.quality_checker.check(page.markdown).to_dict()
         artifact = self.artifact_store.write_document(
             site_id=config.site_id,
             space_id=config.space_id,
             url=page.url,
             title=page.title,
             published_at=page.published_at,
-            markdown_body=markdown_body,
+            markdown_body=page.markdown,
             raw_html=page.raw_html,
             quality=quality,
+            depth=depth,
+            links=page.links,
+        )
+        graph_edges = self.artifact_store.graph_edges_for_page(
+            site_id=config.site_id,
+            from_url=page.url,
+            from_document_id=artifact.document_id,
+            links=page.links,
         )
         await self.store.upsert_document(
             IndexedDocument(
@@ -370,99 +338,10 @@ class KnowledgeCrawlRecorder:
             )
         )
         if current is None:
-            return "created"
+            return "created", graph_edges
         if current.get("content_hash") == artifact.metadata["content_hash"]:
-            return "unchanged"
-        return "updated"
-
-
-def parse_html(url: str, html: str, config: SiteCrawlConfig) -> ParsedPage:
-    links = _LinkExtractor(url)
-    links.feed(html)
-    content = TrafilaturaExtractor(prune_xpath=config.prune_xpath).extract(url=url, html=html)
-    return ParsedPage(
-        url=content.url,
-        title=content.title,
-        text=content.text,
-        links=dedupe_links(links.links),
-        published_at=content.published_at,
-        content_hash=content.content_hash,
-        raw_html=html,
-    )
-
-
-def dedupe_links(links: list[Link]) -> list[Link]:
-    seen: set[str] = set()
-    result: list[Link] = []
-    for link in links:
-        if link.url in seen:
-            continue
-        seen.add(link.url)
-        result.append(link)
-    return result
-
-
-def is_asset_url(url: str) -> bool:
-    path = urlparse(url).path.lower()
-    return any(path.endswith(suffix) for suffix in ASSET_SUFFIXES)
-
-
-def text_to_markdown_body(title: str, text: str) -> str:
-    lines = [line.strip() for line in text.splitlines()]
-    output: list[str] = [f"# {title.strip() or '未命名文档'}"]
-    content_lines = [
-        line
-        for line in lines
-        if line and line != title and line not in {"首页", "上页", "下页", "尾页", "TOP"}
-        and not re.fullmatch(r"\d+", line)
-    ]
-    list_like = sum(1 for line in content_lines if is_date_line(line)) >= 2
-    for line in content_lines:
-        if is_section_heading(line):
-            output.extend(["", f"## {line}"])
-            continue
-        if list_like:
-            if is_date_line(line) and output[-1].startswith("- "):
-                output.append(f"  - 日期：{line}")
-            elif line.startswith("- "):
-                output.append(line)
-            else:
-                output.append(f"- {line}")
-            continue
-        if not line or line == title:
-            continue
-        if line.startswith("- "):
-            output.append(line)
-        elif is_date_line(line):
-            output.append(f"- {line}")
-        else:
-            output.append(line)
-    return "\n".join(output).strip()
-
-
-SECTION_HEADINGS = {
-    "招生咨讯",
-    "培养方案",
-    "通知公告",
-    "本科专业",
-    "硕士学位点",
-    "博士学位点",
-    "规章制度",
-    "办事流程",
-    "常用下载",
-    "平台基地",
-    "师资招聘",
-    "博士后招聘",
-    "非编人员招聘",
-}
-
-
-def is_section_heading(line: str) -> bool:
-    return line in SECTION_HEADINGS
-
-
-def is_date_line(line: str) -> bool:
-    return bool(re.fullmatch(r"20\d{2}[-./年]\d{1,2}[-./月]\d{1,2}日?", line))
+            return "unchanged", graph_edges
+        return "updated", graph_edges
 
 
 def now_iso() -> str:

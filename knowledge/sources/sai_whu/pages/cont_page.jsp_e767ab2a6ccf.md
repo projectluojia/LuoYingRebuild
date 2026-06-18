@@ -1,0 +1,17 @@
+---
+id: "cont_page.jsp_e767ab2a6ccf"
+site_id: "sai_whu"
+space_id: "sai"
+title: "珞珈AI论坛第24期——Towards Trustworthy and Efficient Continual Learning for Large Language Models"
+url: "https://sai.whu.edu.cn/cont_page.jsp?urltype=news.NewsContentUrl&wbnewsid=13521&wbtreeid=1401"
+published_at: "2026-03-05"
+content_hash: "5fa57fca35e12b6639ff936e08789f06e30e7fa1a89518f40d9733abc3628955"
+content_type: "page"
+fetched_at: "2026-06-18T18:42:22"
+depth: 1
+link_count: 2
+raw_path: "raw/cont_page.jsp_e767ab2a6ccf.html"
+quality: {"ok": true, "score": 1.0, "warnings": [], "metrics": {"chars": 92, "lines": 1, "main_nav_hits": 0, "footer_hits": 0, "breadcrumb_hits": 0, "script_hits": 0, "pagination_hits": 0, "duplicate_line_ratio": 0.0}}
+---
+
+# 珞珈AI论坛第24期——Towards Trustworthy and Efficient Continual Learning for Large Language Models

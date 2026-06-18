@@ -1,38 +1,38 @@
 # Knowledge Base Integration
 
-LuoYing 的知识库现在以 Git 管理的 Markdown artifact 作为内容源，不再依赖 Directus 或 RAGFlow。
+LuoYing 的知识库以 Git 管理的网页知识 artifact 作为内容源。运行时数据库和索引都是派生物，可以随时从 `knowledge/` 重建。
 
 ## Architecture
 
 ```text
-Web crawler
--> raw artifact
--> markdown extractor
+Crawl4AI web crawler
+-> raw HTML snapshot
+-> clean Markdown with frontmatter
 -> quality checker
--> Git-managed Markdown
+-> Git commit
 -> SQLite metadata DB
 -> hybrid index
    -> SQLite FTS5 keyword index
-   -> local hash-vector index
+   -> local vector index
 -> KB API
 -> Agent
 ```
 
 Core rules:
 
-- Markdown is the canonical cleaned content.
-- Git is the version system for Markdown and metadata artifacts.
-- SQLite stores runtime metadata, logs, chunks, keyword index, and vector index.
-- Agent and Web API call `KnowledgeBaseService`; they do not know about crawler details.
-- Directus and RAGFlow are not part of the active path.
+- `knowledge/` 是知识资产，必须可 review、可 diff、可提交。
+- `var/kb/metadata.sqlite3` 是运行时派生库，不提交。
+- Markdown 文件是单页事实源；frontmatter 保存该页核心元数据和质量结果。
+- `graph.jsonl` 保存网页之间的链接关系；索引可以用它扩展上下文。
+- crawler/extractor 使用 Crawl4AI；没有旧抽取器和降级路径。
 
 ## Code Layout
 
 ```text
 src/luoying_bot/capabilities/knowledge_base/
-├── artifacts.py      # write raw.html/current.md/metadata.json
+├── artifacts.py      # write source.yaml, pages/*.md, raw/*.html, graph.jsonl
 ├── crawling.py       # crawl site and record artifacts/index
-├── extraction.py     # HTML extraction with Trafilatura
+├── extraction.py     # Crawl4AI extraction
 ├── local_store.py    # SQLite metadata, FTS5, vector search
 ├── quality.py        # markdown quality checks
 ├── service.py        # answer/search orchestration
@@ -65,51 +65,64 @@ KB_REQUIRE_CITATION=true
 KB_VECTOR_DIMENSIONS=384
 ```
 
-`knowledge/` should be committed. `var/` is runtime state and is ignored.
-
 ## Artifact Layout
-
-Each crawled page writes a stable document directory:
 
 ```text
 knowledge/
 └── sources/
     └── sai_whu/
-        └── documents/
-            └── <stable_document_id>/
-                ├── current.md
-                ├── raw.html
-                └── metadata.json
+        ├── source.yaml
+        ├── graph.jsonl
+        ├── pages/
+        │   └── rencaipy_bkspy_cf495a68c45f.md
+        └── raw/
+            └── rencaipy_bkspy_cf495a68c45f.html
 ```
 
-`current.md` is the content source for review and retrieval.
+Markdown page example:
 
-`metadata.json` stores source URL, title, content hash, quality report, and file paths.
+```md
+---
+id: "rencaipy_bkspy.htm_cf495a68c45f"
+site_id: "sai_whu"
+space_id: "sai"
+title: "本科生培养"
+url: "https://sai.whu.edu.cn/rencaipy/bkspy.htm"
+published_at: null
+content_hash: "..."
+content_type: "listing"
+fetched_at: "2026-06-18T18:00:00"
+depth: 0
+link_count: 12
+raw_path: "raw/rencaipy_bkspy.htm_cf495a68c45f.html"
+quality: {"ok": true, "warnings": []}
+---
+
+# 本科生培养
+```
+
+`graph.jsonl` is an edge table:
+
+```json
+{"from":"https://sai.whu.edu.cn/rencaipy/bkspy.htm","from_id":"rencaipy_bkspy.htm_cf495a68c45f","to":"https://sai.whu.edu.cn/info/xxx.htm","to_id":"info_xxx","site_id":"sai_whu","type":"content_link","text":"2025级人工智能专业培养方案"}
+```
 
 ## Commands
 
-Preview crawl without writing:
-
-```bash
-PYTHONPATH=src python scripts/crawl_site_preview.py \
-  --config docs/site_configs/sai_whu.json \
-  --output /tmp/sai_crawl_preview.json
-```
-
-Crawl into Markdown artifacts and local index:
+Crawl into Git artifacts and local index:
 
 ```bash
 PYTHONPATH=src python scripts/crawl_site_to_kb.py \
   --config docs/site_configs/sai_whu.json
 ```
 
-Rebuild metadata DB and hybrid index from committed Markdown artifacts:
+Rebuild metadata DB and hybrid index from committed artifacts:
 
 ```bash
 PYTHONPATH=src python scripts/rebuild_kb_index.py
 ```
 
-Test retrieval:
+Run retrieval tests:
 
 ```bash
 PYTHONPATH=src python test/kb/run_kb_harness.py smoke
@@ -117,14 +130,3 @@ PYTHONPATH=src python test/kb/run_kb_harness.py smoke
 PYTHONPATH=src python test/kb/run_kb_harness.py eval \
   --cases test/kb/cases/sai_whu_core.json
 ```
-
-## Data Ownership
-
-- `raw.html`: debugging and future extractor improvements.
-- `current.md`: canonical cleaned document.
-- `metadata.json`: machine metadata and quality report.
-- `var/kb/metadata.sqlite3`: rebuildable runtime DB and index.
-
-If Markdown changes in Git, run `scripts/rebuild_kb_index.py`.
-
-If crawler or extractor improves, run `scripts/crawl_site_to_kb.py`, review Markdown diffs, then commit.

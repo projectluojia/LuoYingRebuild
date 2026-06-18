@@ -6,17 +6,20 @@
   "allowed_domains": ["sai.whu.edu.cn"],
   "entry_urls": [
     "https://sai.whu.edu.cn/",
+    "https://sai.whu.edu.cn/about/xyjj.htm",
+    "https://sai.whu.edu.cn/about/xkzy.htm",
     "https://sai.whu.edu.cn/xwzx/tzgg.htm",
+    "https://sai.whu.edu.cn/xwzx/xyxw.htm",
+    "https://sai.whu.edu.cn/kxyj/kyjz.htm",
+    "https://sai.whu.edu.cn/kxyj/xsdt.htm",
     "https://sai.whu.edu.cn/recruit/szzp.htm",
     "https://sai.whu.edu.cn/rencaipy/bkspy.htm",
     "https://sai.whu.edu.cn/rencaipy/yjspy.htm",
     "https://sai.whu.edu.cn/xxgk/bslc.htm",
     "https://sai.whu.edu.cn/xxgk/cyxz.htm"
   ],
-  "max_pages": 80,
+  "max_pages": 120,
   "max_depth": 2,
-  "request_timeout_sec": 20,
-  "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
   "include_url_patterns": [
     "^https://sai\\.whu\\.edu\\.cn/"
   ],
@@ -28,17 +31,5 @@
     "用户验证",
     "访问太过频繁",
     "请输入验证码"
-  ],
-  "prune_xpath": [
-    "//header",
-    "//nav",
-    "//footer",
-    "//*[contains(@class, 'footer')]",
-    "//*[contains(@class, 'pc_h')]",
-    "//*[@id='m_n_nav']",
-    "//*[contains(@class, 'nLeft')]",
-    "//*[contains(@class, 'mianbao')]",
-    "//*[contains(@class, 'nav_mask')]",
-    "//*[contains(@class, 'search')]"
   ]
 }

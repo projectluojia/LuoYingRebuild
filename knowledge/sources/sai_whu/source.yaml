@@ -1,0 +1,9 @@
+site_id: "sai_whu"
+name: "武汉大学人工智能学院官网"
+base_url: "https://sai.whu.edu.cn/"
+space_id: "sai"
+allowed_domains: ["sai.whu.edu.cn"]
+entry_urls: ["https://sai.whu.edu.cn/", "https://sai.whu.edu.cn/about/xyjj.htm", "https://sai.whu.edu.cn/about/xkzy.htm", "https://sai.whu.edu.cn/xwzx/tzgg.htm", "https://sai.whu.edu.cn/xwzx/xyxw.htm", "https://sai.whu.edu.cn/kxyj/kyjz.htm", "https://sai.whu.edu.cn/kxyj/xsdt.htm", "https://sai.whu.edu.cn/recruit/szzp.htm", "https://sai.whu.edu.cn/rencaipy/bkspy.htm", "https://sai.whu.edu.cn/rencaipy/yjspy.htm", "https://sai.whu.edu.cn/xxgk/bslc.htm", "https://sai.whu.edu.cn/xxgk/cyxz.htm"]
+max_pages: 120
+max_depth: 2
+updated_at: "2026-06-18T18:42:21"

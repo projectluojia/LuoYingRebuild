@@ -105,6 +105,40 @@ class LocalKnowledgeStore(RagBackend, StructuredBackend):
                     (chunk_id, document.document_id, document.title, document.source_url, text),
                 )
 
+    async def replace_site_documents(self, *, site_id: str, active_document_ids: list[str]) -> None:
+        with self._connect() as conn:
+            if active_document_ids:
+                placeholders = ",".join("?" for _ in active_document_ids)
+                stale_rows = conn.execute(
+                    f"""
+                    select document_id
+                    from kb_documents
+                    where site_id = ? and document_id not in ({placeholders})
+                    """,
+                    (site_id, *active_document_ids),
+                ).fetchall()
+            else:
+                stale_rows = conn.execute(
+                    "select document_id from kb_documents where site_id = ?",
+                    (site_id,),
+                ).fetchall()
+            stale_ids = [str(row["document_id"]) for row in stale_rows]
+            if not stale_ids:
+                return
+            stale_placeholders = ",".join("?" for _ in stale_ids)
+            conn.execute(
+                f"update kb_documents set status = 'inactive', updated_at = datetime('now') where document_id in ({stale_placeholders})",
+                tuple(stale_ids),
+            )
+            conn.execute(
+                f"delete from kb_chunks where document_id in ({stale_placeholders})",
+                tuple(stale_ids),
+            )
+            conn.execute(
+                f"delete from kb_chunks_fts where document_id in ({stale_placeholders})",
+                tuple(stale_ids),
+            )
+
     async def search(
         self,
         *,
@@ -117,9 +151,12 @@ class LocalKnowledgeStore(RagBackend, StructuredBackend):
         space_id = str(filters.get("space_id") or "")
         query_vector = hash_embedding(query, self.vector_dimensions)
         with self._connect() as conn:
+            title = self._title_candidates(conn, query=query, space_id=space_id, limit=max(30, top_k * 8))
             lexical = self._lexical_candidates(conn, query=query, space_id=space_id, limit=max(30, top_k * 8))
             vector = self._vector_candidates(conn, query_vector=query_vector, space_id=space_id, limit=max(30, top_k * 8))
         combined: dict[str, dict[str, Any]] = {}
+        for row in title:
+            combined.setdefault(row["chunk_id"], row)["title_score"] = row["title_score"]
         for row in lexical:
             combined.setdefault(row["chunk_id"], row)["lexical_score"] = row["lexical_score"]
         for row in vector:
@@ -127,9 +164,10 @@ class LocalKnowledgeStore(RagBackend, StructuredBackend):
             item["vector_score"] = row["vector_score"]
         scored = []
         for item in combined.values():
+            title_score = float(item.get("title_score") or 0.0)
             lexical_score = float(item.get("lexical_score") or 0.0)
             vector_score = float(item.get("vector_score") or 0.0)
-            item["score"] = 0.58 * lexical_score + 0.42 * vector_score
+            item["score"] = 3.0 * title_score + 0.8 * lexical_score + 0.25 * vector_score
             scored.append(item)
         scored.sort(key=lambda item: item["score"], reverse=True)
         chunks: list[RetrievedChunk] = []
@@ -143,6 +181,7 @@ class LocalKnowledgeStore(RagBackend, StructuredBackend):
                     "document_id": item["document_id"],
                     "chunk_id": item["chunk_id"],
                     "score": item["score"],
+                    "title_score": item.get("title_score", 0.0),
                     "lexical_score": item.get("lexical_score", 0.0),
                     "vector_score": item.get("vector_score", 0.0),
                 },
@@ -223,6 +262,31 @@ class LocalKnowledgeStore(RagBackend, StructuredBackend):
             ).fetchall()
             return [dict(row) for row in rows]
 
+    def _title_candidates(self, conn: sqlite3.Connection, *, query: str, space_id: str, limit: int) -> list[dict[str, Any]]:
+        query_compact = compact_text(query)
+        if not query_compact:
+            return []
+        rows = conn.execute(
+            """
+            select c.chunk_id, c.document_id, c.title, c.source_url, c.published_at, c.text
+            from kb_chunks c
+            join kb_documents d on d.document_id = c.document_id
+            where c.chunk_index = 0 and d.status = 'active' and (? = '' or d.space_id = ?)
+            """,
+            (space_id, space_id),
+        ).fetchall()
+        candidates: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            title = compact_text(str(item["title"]))
+            if not title or is_generic_title(title):
+                continue
+            if title in query_compact:
+                item["title_score"] = min(2.0, 0.8 + len(title) / 10)
+                candidates.append(item)
+        candidates.sort(key=lambda item: item["title_score"], reverse=True)
+        return candidates[:limit]
+
     def _lexical_candidates(self, conn: sqlite3.Connection, *, query: str, space_id: str, limit: int) -> list[dict[str, Any]]:
         fts_query = build_fts_query(query)
         if not fts_query:
@@ -235,7 +299,7 @@ class LocalKnowledgeStore(RagBackend, StructuredBackend):
         rows = conn.execute(
             f"""
             select c.chunk_id, c.document_id, c.title, c.source_url, c.published_at, c.text,
-                   1.0 / (1.0 + bm25(kb_chunks_fts)) as lexical_score
+                   max(0.0, -bm25(kb_chunks_fts)) as lexical_score
             from kb_chunks_fts
             join kb_chunks c on c.chunk_id = kb_chunks_fts.chunk_id
             join kb_documents d on d.document_id = c.document_id
@@ -379,8 +443,61 @@ def cosine(left: list[float], right: list[float]) -> float:
 
 
 def build_fts_query(query: str) -> str:
-    terms = [term for term in tokenize(query) if term.strip()]
-    return " OR ".join(terms[:24])
+    terms = extract_keyword_terms(query)
+    return " OR ".join(quote_fts_term(term) for term in terms[:8])
+
+
+def extract_keyword_terms(query: str) -> list[str]:
+    text = compact_text(query)
+    for generic in (
+        "武汉大学人工智能学院",
+        "武汉大学",
+        "人工智能学院",
+        "有哪些信息",
+        "有什么信息",
+        "在哪里看",
+        "有哪些",
+        "什么",
+        "信息",
+        "请问",
+    ):
+        text = text.replace(generic, " ")
+    known_terms = [
+        "本科生培养",
+        "研究生培养",
+        "师资招聘",
+        "学科专业",
+        "办事流程",
+        "常用下载",
+        "培养方案",
+        "招生资讯",
+        "招生咨讯",
+    ]
+    terms = [term for term in known_terms if term in query]
+    terms.extend(term for term in re.split(r"\s+", text) if len(term) >= 2)
+    seen: set[str] = set()
+    result: list[str] = []
+    for term in terms:
+        if term and term not in seen:
+            seen.add(term)
+            result.append(term)
+    return result
+
+
+def quote_fts_term(term: str) -> str:
+    return '"' + term.replace('"', '""') + '"'
+
+
+def compact_text(text: str) -> str:
+    return "".join(re.findall(r"[\u4e00-\u9fffA-Za-z0-9]+", text.lower()))
+
+
+def is_generic_title(title: str) -> bool:
+    return title in {
+        "武汉大学人工智能学院",
+        "人工智能学院",
+        "学院简介",
+    }
 
 
 def normalize_filter(filters: dict[str, Any]) -> dict[str, Any]:
