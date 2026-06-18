@@ -75,7 +75,7 @@ async def _render_transport_events(
         tui.error(f"{type(exc).__name__}: {exc}")
 
 
-async def main() -> None:
+async def run() -> None:
     args = _build_parser().parse_args()
     tui = CliTui()
     container = await build_cli_container()
@@ -120,5 +120,9 @@ async def main() -> None:
         await transport.close()
 
 
+def main() -> None:
+    asyncio.run(run())
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

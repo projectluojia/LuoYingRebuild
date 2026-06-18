@@ -55,6 +55,7 @@ LuoYing 的目标不是只做一个固定功能的聊天机器人，而是提供
 ## 环境要求
 
 - Python 3.11+
+- uv
 - 一个 OpenAI-compatible Chat Completions 服务
 - 可选：OneBot v11 兼容实现，用于 QQ 入口
 - 可选：Memobase，用于长期记忆
@@ -66,18 +67,8 @@ LuoYing 的目标不是只做一个固定功能的聊天机器人，而是提供
 git clone https://github.com/projectluojia/LuoYingRebuild.git
 cd LuoYingRebuild
 
-python -m venv .venv
-source .venv/bin/activate
-
-pip install -r requirements.txt
+uv sync
 cp .env.example .env
-export PYTHONPATH=src
-```
-
-Windows PowerShell：
-
-```powershell
-$env:PYTHONPATH = "src"
 ```
 
 ### 模型配置
@@ -105,7 +96,7 @@ CODER_TEMPERATURE=0.2
 ### 启动 Web 入口
 
 ```bash
-PYTHONPATH=src python -m luoying_bot.main_web
+uv run luoying-web
 ```
 
 打开：
@@ -117,19 +108,19 @@ http://127.0.0.1:8000
 也可以直接使用 Uvicorn：
 
 ```bash
-PYTHONPATH=src uvicorn luoying_bot.main_web:create_app --factory --host 127.0.0.1 --port 8000
+uv run uvicorn luoying_bot.main_web:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
 ### 启动 CLI 入口
 
 ```bash
-PYTHONPATH=src python -m luoying_bot.main_cli_stream
+uv run luoying-cli
 ```
 
 指定会话和用户信息：
 
 ```bash
-PYTHONPATH=src python -m luoying_bot.main_cli_stream \
+uv run luoying-cli \
   --session-id local-dev \
   --user-id cli-user \
   --user-name local-user
@@ -154,7 +145,7 @@ OPS=admin_user_id_1,admin_user_id_2
 启动：
 
 ```bash
-PYTHONPATH=src python -m luoying_bot.main_qq
+uv run luoying-qq
 ```
 
 QQ 群聊默认只处理被机器人提及的消息。QQ 私聊默认使用白名单；如果 `QQ_PRIVATE_USER_IDS` 为空，则不会回复 QQ 私聊。
@@ -175,7 +166,7 @@ docker run --rm --env-file .env \
   -e WEB_HOST=0.0.0.0 \
   -p 8000:8000 \
   -v "$PWD/data:/app/data" \
-  luoying python -m luoying_bot.main_web
+  luoying uv run --frozen luoying-web
 ```
 
 生产或准生产 QQ 部署建议使用 Docker Compose：OneBot 实现、LuoYing、可选 Memobase、可选 embedding 服务和持久化卷放在同一套编排里。
@@ -426,9 +417,9 @@ Memobase 的长期记忆由 Memobase 部署保存，不再由 `data/user_memory`
 提交前建议至少运行：
 
 ```bash
-PYTHONPATH=src python -m compileall src
-PYTHONPATH=src python -m luoying_bot.main_cli_stream
-PYTHONPATH=src python -m luoying_bot.main_web
+uv run python -m compileall src
+uv run luoying-cli
+uv run luoying-web
 curl http://127.0.0.1:8000/health
 ```
 
@@ -471,7 +462,6 @@ curl http://127.0.0.1:8000/health
 - 增加统一的非文本输出事件模型，覆盖文件、生成图片和任务状态。
 - 为提醒、备忘录、快捷回复和提示词偏好提供可选数据库实现。
 - 补充 pytest、类型检查和 GitHub Actions。
-- 增加标准 Python 包配置，取消手动 `PYTHONPATH=src`。
 - 完善 Memobase 部署文档，并提供示例 Compose 栈。
 
 ## 贡献

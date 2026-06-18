@@ -112,21 +112,21 @@ quality: {"ok": true, "warnings": []}
 Crawl into Git artifacts and local index:
 
 ```bash
-PYTHONPATH=src python scripts/crawl_site_to_kb.py \
+uv run python scripts/crawl_site_to_kb.py \
   --config docs/site_configs/sai_whu.json
 ```
 
 Rebuild metadata DB and hybrid index from committed artifacts:
 
 ```bash
-PYTHONPATH=src python scripts/rebuild_kb_index.py
+uv run python scripts/rebuild_kb_index.py
 ```
 
 Run retrieval tests:
 
 ```bash
-PYTHONPATH=src python test/kb/run_kb_harness.py smoke
+uv run python test/kb/run_kb_harness.py smoke
 
-PYTHONPATH=src python test/kb/run_kb_harness.py eval \
+uv run python test/kb/run_kb_harness.py eval \
   --cases test/kb/cases/sai_whu_core.json
 ```
