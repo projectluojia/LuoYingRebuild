@@ -1,17 +1,22 @@
 from __future__ import annotations
 
-import hashlib
 import re
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from html.parser import HTMLParser
 from typing import Any
-from urllib.parse import urldefrag, urljoin, urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
 from luoying_bot.capabilities.knowledge_base.ports import StructuredBackend
+from luoying_bot.capabilities.knowledge_base.extraction import (
+    DEFAULT_PRUNE_XPATH,
+    TrafilaturaExtractor,
+    normalize_space,
+    normalize_url,
+)
 from luoying_bot.capabilities.knowledge_base.ragflow_client import RagflowClient
 
 ASSET_SUFFIXES = {
@@ -37,6 +42,7 @@ class SiteCrawlConfig:
     include_url_patterns: list[str] = field(default_factory=list)
     exclude_url_patterns: list[str] = field(default_factory=list)
     blocked_page_patterns: list[str] = field(default_factory=list)
+    prune_xpath: list[str] = field(default_factory=lambda: list(DEFAULT_PRUNE_XPATH))
     sync_to_ragflow: bool = True
     extract_structured: bool = True
 
@@ -57,6 +63,7 @@ class SiteCrawlConfig:
             include_url_patterns=[str(x) for x in data.get("include_url_patterns", [])],
             exclude_url_patterns=[str(x) for x in data.get("exclude_url_patterns", [])],
             blocked_page_patterns=[str(x) for x in data.get("blocked_page_patterns", [])],
+            prune_xpath=[str(x) for x in data.get("prune_xpath", DEFAULT_PRUNE_XPATH)],
             sync_to_ragflow=bool(data.get("sync_to_ragflow", True)),
             extract_structured=bool(data.get("extract_structured", True)),
         )
@@ -94,6 +101,7 @@ class SiteCrawlConfig:
                 "include_url_patterns": self.include_url_patterns,
                 "exclude_url_patterns": self.exclude_url_patterns,
                 "blocked_page_patterns": self.blocked_page_patterns,
+                "prune_xpath": self.prune_xpath,
                 "sync_to_ragflow": self.sync_to_ragflow,
                 "extract_structured": self.extract_structured,
             },
@@ -141,14 +149,11 @@ class CrawlResult:
     results: list[CrawlPageResult]
 
 
-class _HtmlExtractor(HTMLParser):
+class _LinkExtractor(HTMLParser):
     def __init__(self, base_url: str):
         super().__init__(convert_charrefs=True)
         self.base_url = base_url
-        self.title_parts: list[str] = []
-        self.text_parts: list[str] = []
         self.links: list[Link] = []
-        self._in_title = False
         self._skip_depth = 0
         self._active_href: str | None = None
         self._active_text: list[str] = []
@@ -158,8 +163,6 @@ class _HtmlExtractor(HTMLParser):
         if tag in {"script", "style", "noscript"}:
             self._skip_depth += 1
             return
-        if tag == "title":
-            self._in_title = True
         if tag == "a":
             self._active_href = attr.get("href")
             self._active_text = []
@@ -168,8 +171,6 @@ class _HtmlExtractor(HTMLParser):
         if tag in {"script", "style", "noscript"} and self._skip_depth:
             self._skip_depth -= 1
             return
-        if tag == "title":
-            self._in_title = False
         if tag == "a" and self._active_href:
             url = normalize_url(urljoin(self.base_url, self._active_href))
             text = normalize_space(" ".join(self._active_text))
@@ -183,11 +184,8 @@ class _HtmlExtractor(HTMLParser):
         text = normalize_space(data)
         if not text:
             return
-        if self._in_title:
-            self.title_parts.append(text)
         if self._active_href is not None:
             self._active_text.append(text)
-        self.text_parts.append(text)
 
 
 class HttpPageFetcher:
@@ -230,7 +228,7 @@ class KnowledgeSiteCrawler:
                 continue
             try:
                 status, content_type, body = await self.fetcher.fetch(url, config)
-                parsed = parse_html(url, body) if status < 400 and "html" in content_type.lower() else None
+                parsed = parse_html(url, body, config) if status < 400 and "html" in content_type.lower() else None
                 if parsed and self._blocked_page(parsed, config):
                     results.append(
                         CrawlPageResult(
@@ -419,18 +417,17 @@ class DirectusCrawlRecorder:
         ).strip()
 
 
-def parse_html(url: str, html: str) -> ParsedPage:
-    parser = _HtmlExtractor(url)
-    parser.feed(html)
-    text = normalize_space("\n".join(parser.text_parts))
-    title = normalize_space(" ".join(parser.title_parts)) or infer_title_from_text(text)
+def parse_html(url: str, html: str, config: SiteCrawlConfig) -> ParsedPage:
+    links = _LinkExtractor(url)
+    links.feed(html)
+    content = TrafilaturaExtractor(prune_xpath=config.prune_xpath).extract(url=url, html=html)
     return ParsedPage(
-        url=normalize_url(url),
-        title=title,
-        text=text,
-        links=dedupe_links(parser.links),
-        published_at=infer_published_at(text),
-        content_hash=sha256_text(text),
+        url=content.url,
+        title=content.title,
+        text=content.text,
+        links=dedupe_links(links.links),
+        published_at=content.published_at,
+        content_hash=content.content_hash,
         raw_html=html,
     )
 
@@ -446,35 +443,9 @@ def dedupe_links(links: list[Link]) -> list[Link]:
     return result
 
 
-def normalize_url(url: str) -> str:
-    clean, _ = urldefrag(url.strip())
-    return clean
-
-
-def normalize_space(text: str) -> str:
-    return re.sub(r"\s+", " ", text or "").strip()
-
-
 def is_asset_url(url: str) -> bool:
     path = urlparse(url).path.lower()
     return any(path.endswith(suffix) for suffix in ASSET_SUFFIXES)
-
-
-def sha256_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()
-
-
-def infer_title_from_text(text: str) -> str:
-    return text[:80]
-
-
-def infer_published_at(text: str) -> str | None:
-    match = re.search(r"(20\d{2})[-./年](\d{1,2})[-./月](\d{1,2})", text)
-    if not match:
-        return None
-    year, month, day = match.groups()
-    return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
-
 
 def now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")

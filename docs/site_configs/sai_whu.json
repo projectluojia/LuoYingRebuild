@@ -30,6 +30,18 @@
     "访问太过频繁",
     "请输入验证码"
   ],
+  "prune_xpath": [
+    "//header",
+    "//nav",
+    "//footer",
+    "//*[contains(@class, 'footer')]",
+    "//*[contains(@class, 'pc_h')]",
+    "//*[@id='m_n_nav']",
+    "//*[contains(@class, 'nLeft')]",
+    "//*[contains(@class, 'mianbao')]",
+    "//*[contains(@class, 'nav_mask')]",
+    "//*[contains(@class, 'search')]"
+  ],
   "sync_to_ragflow": true,
   "extract_structured": true
 }

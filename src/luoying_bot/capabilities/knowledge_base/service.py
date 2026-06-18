@@ -5,10 +5,18 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlparse
 
 from luoying_bot.capabilities.knowledge_base.answering import KnowledgeAnswerGenerator
 from luoying_bot.capabilities.knowledge_base.errors import BackendUnavailable, KnowledgeBaseError
-from luoying_bot.capabilities.knowledge_base.models import KnowledgeAnswer, KnowledgeQuery, RetrievalResult
+from luoying_bot.capabilities.knowledge_base.models import (
+    Citation,
+    KnowledgeAnswer,
+    KnowledgeQuery,
+    RetrievalResult,
+    RetrievedChunk,
+    StructuredRecord,
+)
 from luoying_bot.capabilities.knowledge_base.policy import KnowledgeBasePolicy
 from luoying_bot.capabilities.knowledge_base.ports import KnowledgeDomain, RagBackend, StructuredBackend
 
@@ -171,6 +179,7 @@ class KnowledgeBaseService:
 
         try:
             structured_records = await domain.query_structured(self.structured_backend, hydrated)
+            structured_records.extend(await self._query_page_title_matches(hydrated))
         except BackendUnavailable as exc:
             logger.warning("结构化知识库不可用：%s", exc)
             errors.append(str(exc))
@@ -182,6 +191,7 @@ class KnowledgeBaseService:
                 filters=filters,
                 top_k=hydrated.top_k,
             )
+            await self._hydrate_chunk_citations(chunks)
         except BackendUnavailable as exc:
             logger.warning("RAGFlow 知识库不可用：%s", exc)
             errors.append(str(exc))
@@ -191,6 +201,96 @@ class KnowledgeBaseService:
             chunks=chunks,
             fallback_reason="; ".join(errors) if errors and not (structured_records or chunks) else None,
         )
+
+    async def _query_page_title_matches(self, query: KnowledgeQuery) -> list[StructuredRecord]:
+        pages = await self.structured_backend.list_items(
+            "kb_pages",
+            filters={
+                "_and": [
+                    {"space_id": {"_eq": query.space_id}},
+                    {"status": {"_eq": "active"}},
+                ]
+            },
+            fields=["id", "title", "canonical_url", "published_at", "content_hash"],
+            limit=300,
+        )
+        matched: list[StructuredRecord] = []
+        normalized_question = query.question.replace(" ", "")
+        for page in pages:
+            title = str(page.get("title") or "").strip()
+            source = str(page.get("canonical_url") or "").strip()
+            compact_title = title.replace(" ", "")
+            if (
+                len(compact_title) < 3
+                or compact_title not in normalized_question
+                or self._is_site_entry_url(source)
+            ):
+                continue
+            matched.append(
+                StructuredRecord(
+                    collection="kb_pages",
+                    data=page,
+                    citation=Citation(
+                        title=title,
+                        source=source,
+                        published_at=self._optional_text(page.get("published_at")),
+                        metadata={"collection": "kb_pages", "id": page.get("id")},
+                    ),
+                    score=1.0,
+                )
+            )
+        matched.sort(key=lambda record: len(str(record.data.get("title") or "")), reverse=True)
+        return matched[:5]
+
+    async def _hydrate_chunk_citations(self, chunks: list[RetrievedChunk]) -> None:
+        document_ids = sorted(
+            {
+                str(chunk.citation.metadata.get("document_id"))
+                for chunk in chunks
+                if chunk.citation is not None and chunk.citation.metadata.get("document_id")
+            }
+        )
+        if not document_ids:
+            return
+        versions = await self.structured_backend.list_items(
+            "kb_page_versions",
+            filters={"ragflow_document_id": {"_in": document_ids}},
+            fields=["page_id", "ragflow_document_id"],
+            limit=len(document_ids),
+        )
+        page_ids = sorted({str(item.get("page_id")) for item in versions if item.get("page_id")})
+        if not page_ids:
+            return
+        pages = await self.structured_backend.list_items(
+            "kb_pages",
+            filters={"id": {"_in": page_ids}},
+            fields=["id", "title", "canonical_url", "published_at"],
+            limit=len(page_ids),
+        )
+        pages_by_id = {str(item["id"]): item for item in pages if item.get("id")}
+        page_by_document_id: dict[str, dict[str, Any]] = {}
+        for version in versions:
+            document_id = str(version.get("ragflow_document_id") or "")
+            page = pages_by_id.get(str(version.get("page_id") or ""))
+            if document_id and page:
+                page_by_document_id[document_id] = page
+
+        for chunk in chunks:
+            if chunk.citation is None:
+                continue
+            document_id = str(chunk.citation.metadata.get("document_id") or "")
+            page = page_by_document_id.get(document_id)
+            if not page:
+                continue
+            chunk.citation = Citation(
+                title=str(page.get("title") or chunk.citation.title),
+                source=str(page.get("canonical_url") or chunk.citation.source),
+                snippet=chunk.citation.snippet,
+                published_at=self._optional_text(page.get("published_at"))
+                or chunk.citation.published_at,
+                department=chunk.citation.department,
+                metadata=chunk.citation.metadata,
+            )
 
     async def _record_answer_log(
         self,
@@ -258,3 +358,10 @@ class KnowledgeBaseService:
     def _now_iso(self) -> str:
         return datetime.now().isoformat(timespec="seconds")
 
+    def _optional_text(self, value: Any) -> str | None:
+        text = str(value or "").strip()
+        return text or None
+
+    def _is_site_entry_url(self, url: str) -> bool:
+        path = urlparse(url).path.rstrip("/")
+        return path in {"", "/index.htm", "/index.html"}
