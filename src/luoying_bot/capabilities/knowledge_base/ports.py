@@ -30,6 +30,26 @@ class AnalyticsBackend(ABC):
     ) -> list[dict[str, Any]]: ...
 
 
+class EntityBackend(ABC):
+    @abstractmethod
+    async def search_kb_items(
+        self,
+        *,
+        query: str,
+        space_id: str,
+        item_types: list[str] | None = None,
+        limit: int = 12,
+    ) -> list[dict[str, Any]]: ...
+
+    @abstractmethod
+    async def fetch_entity_relations(
+        self,
+        *,
+        space_id: str,
+        entity_ids: list[str],
+    ) -> list[dict[str, Any]]: ...
+
+
 class StructuredBackend(ABC):
     @abstractmethod
     async def list_items(

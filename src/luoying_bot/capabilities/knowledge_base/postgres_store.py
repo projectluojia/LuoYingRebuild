@@ -10,9 +10,10 @@ from typing import Any
 import asyncpg
 
 from luoying_bot.capabilities.knowledge_base.embeddings import EmbeddingProvider
+from luoying_bot.capabilities.knowledge_base.entities import normalize_entity_text
 from luoying_bot.capabilities.knowledge_base.errors import BackendUnavailable
 from luoying_bot.capabilities.knowledge_base.models import Citation, RetrievedChunk
-from luoying_bot.capabilities.knowledge_base.ports import AnalyticsBackend, RagBackend, StructuredBackend
+from luoying_bot.capabilities.knowledge_base.ports import AnalyticsBackend, EntityBackend, RagBackend, StructuredBackend
 
 
 @dataclass(slots=True)
@@ -30,7 +31,7 @@ class IndexedDocument:
     markdown: str
 
 
-class PostgresKnowledgeStore(AnalyticsBackend, RagBackend, StructuredBackend):
+class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, StructuredBackend):
     def __init__(
         self,
         database_url: str,
@@ -85,6 +86,68 @@ class PostgresKnowledgeStore(AnalyticsBackend, RagBackend, StructuredBackend):
                     collection text not null,
                     payload_json jsonb not null,
                     created_at timestamptz not null default now()
+                );
+
+                create table if not exists kb_entities (
+                    entity_id text primary key,
+                    space_id text not null,
+                    entity_type text not null,
+                    canonical_name text not null,
+                    description text not null default '',
+                    source_collection text not null default '',
+                    source_key text not null default '',
+                    metadata_json jsonb not null default '{{}}'::jsonb,
+                    review_status text not null default 'approved',
+                    updated_at timestamptz not null default now(),
+                    unique(space_id, entity_type, canonical_name)
+                );
+
+                create table if not exists kb_entity_aliases (
+                    id bigserial primary key,
+                    entity_id text not null references kb_entities(entity_id) on delete cascade,
+                    space_id text not null,
+                    alias text not null,
+                    normalized_alias text not null,
+                    alias_type text not null default 'alias',
+                    confidence numeric not null default 1,
+                    review_status text not null default 'approved',
+                    updated_at timestamptz not null default now(),
+                    unique(space_id, entity_id, normalized_alias)
+                );
+
+                create table if not exists kb_entity_relations (
+                    id bigserial primary key,
+                    space_id text not null,
+                    subject_entity_id text not null references kb_entities(entity_id) on delete cascade,
+                    predicate text not null,
+                    object_entity_id text not null references kb_entities(entity_id) on delete cascade,
+                    confidence numeric not null default 1,
+                    metadata_json jsonb not null default '{{}}'::jsonb,
+                    review_status text not null default 'approved',
+                    updated_at timestamptz not null default now(),
+                    unique(space_id, subject_entity_id, predicate, object_entity_id)
+                );
+
+                create table if not exists kb_search_items (
+                    item_id text primary key,
+                    space_id text not null,
+                    item_type text not null,
+                    entity_id text references kb_entities(entity_id) on delete cascade,
+                    fact_table text not null default '',
+                    fact_key text not null default '',
+                    document_id text,
+                    chunk_id text,
+                    title text not null,
+                    content_text text not null,
+                    search_text text not null,
+                    metadata_json jsonb not null default '{{}}'::jsonb,
+                    embedding vector({self.embedding_dimensions}) not null,
+                    embedding_provider text not null,
+                    embedding_model text not null,
+                    embedding_dimensions integer not null,
+                    review_status text not null default 'approved',
+                    updated_at timestamptz not null default now(),
+                    search_vector tsvector generated always as (to_tsvector('simple', search_text)) stored
                 );
 
                 create table if not exists admission_plans (
@@ -200,6 +263,24 @@ class PostgresKnowledgeStore(AnalyticsBackend, RagBackend, StructuredBackend):
             )
             await conn.execute(
                 "create index if not exists kb_chunks_embedding_idx on kb_chunks using hnsw (embedding vector_cosine_ops)"
+            )
+            await conn.execute(
+                "create index if not exists kb_entities_lookup_idx on kb_entities(space_id, entity_type, review_status)"
+            )
+            await conn.execute(
+                "create index if not exists kb_entity_aliases_lookup_idx on kb_entity_aliases(space_id, normalized_alias, review_status)"
+            )
+            await conn.execute(
+                "create index if not exists kb_entity_relations_lookup_idx on kb_entity_relations(space_id, subject_entity_id, predicate, review_status)"
+            )
+            await conn.execute(
+                "create index if not exists kb_search_items_lookup_idx on kb_search_items(space_id, item_type, review_status)"
+            )
+            await conn.execute(
+                "create index if not exists kb_search_items_search_idx on kb_search_items using gin(search_vector)"
+            )
+            await conn.execute(
+                "create index if not exists kb_search_items_embedding_idx on kb_search_items using hnsw (embedding vector_cosine_ops)"
             )
             await conn.execute(
                 "create index if not exists admission_plans_lookup_idx on admission_plans(space_id, year, province, subject_type)"
@@ -413,6 +494,9 @@ class PostgresKnowledgeStore(AnalyticsBackend, RagBackend, StructuredBackend):
         if collection in {"kb_pages", "kb_documents"}:
             rows = await self._list_documents(filters=filters, limit=limit, sort=sort)
         elif collection in {
+            "kb_entities",
+            "kb_entity_aliases",
+            "kb_entity_relations",
             "admission_plans",
             "admission_scores",
             "admission_strong_foundation_scores",
@@ -498,6 +582,261 @@ class PostgresKnowledgeStore(AnalyticsBackend, RagBackend, StructuredBackend):
         async with pool.acquire() as conn:
             rows = await conn.fetch(sql)
         return [record_to_dict(row) for row in rows[:limit]]
+
+    async def search_kb_items(
+        self,
+        *,
+        query: str,
+        space_id: str,
+        item_types: list[str] | None = None,
+        limit: int = 12,
+    ) -> list[dict[str, Any]]:
+        query_vector = (await self.embedding_provider.embed_texts([query]))[0]
+        self._validate_embeddings([query_vector])
+        ts_query = build_tsquery(query)
+        type_clause = "and (cardinality($2::text[]) = 0 or item_type = any($2::text[]))"
+        lexical_sql = ""
+        if ts_query:
+            lexical_sql = f"""
+                union all
+                (
+                    select *, ts_rank_cd(search_vector, to_tsquery('simple', $4)) * 4.0 as score
+                    from kb_search_items
+                    where review_status = 'approved'
+                      and ($1 = '' or space_id = $1)
+                      {type_clause}
+                      and search_vector @@ to_tsquery('simple', $4)
+                    limit $3
+                )
+            """
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                f"""
+                with candidates as (
+                    (
+                        select *, (1 - (embedding <=> $5::vector)) as score
+                        from kb_search_items
+                        where review_status = 'approved'
+                          and ($1 = '' or space_id = $1)
+                          {type_clause}
+                        order by embedding <=> $5::vector
+                        limit $3
+                    )
+                    {lexical_sql}
+                ),
+                ranked as (
+                    select distinct on (item_id) *
+                    from candidates
+                    order by item_id, score desc
+                )
+                select *
+                from ranked
+                order by score desc
+                limit $3
+                """,
+                space_id,
+                item_types or [],
+                limit,
+                ts_query or "",
+                vector_literal(query_vector),
+            )
+        return [record_to_dict(row) for row in rows]
+
+    async def fetch_entity_relations(self, *, space_id: str, entity_ids: list[str]) -> list[dict[str, Any]]:
+        if not entity_ids:
+            return []
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                select r.space_id, r.subject_entity_id, r.predicate, r.object_entity_id,
+                       r.confidence, r.metadata_json,
+                       s.entity_type as subject_type, s.canonical_name as subject_name, s.metadata_json as subject_metadata,
+                       o.entity_type as object_type, o.canonical_name as object_name, o.metadata_json as object_metadata
+                from kb_entity_relations r
+                join kb_entities s on s.entity_id = r.subject_entity_id
+                join kb_entities o on o.entity_id = r.object_entity_id
+                where r.review_status = 'approved'
+                  and s.review_status = 'approved'
+                  and o.review_status = 'approved'
+                  and ($1 = '' or r.space_id = $1)
+                  and (r.subject_entity_id = any($2::text[]) or r.object_entity_id = any($2::text[]))
+                """,
+                space_id,
+                entity_ids,
+            )
+        return [record_to_dict(row) for row in rows]
+
+    async def clear_kb_search_items(self, space_id: str) -> None:
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute("delete from kb_search_items where space_id = $1", space_id)
+
+    async def upsert_kb_search_items(self, rows: list[dict[str, Any]]) -> int:
+        if not rows:
+            return 0
+        embeddings = await self.embedding_provider.embed_texts([str(row["content_text"]) for row in rows])
+        self._validate_embeddings(embeddings)
+        pool = await self._get_pool()
+        count = 0
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                for item, embedding in zip(rows, embeddings, strict=True):
+                    await conn.execute(
+                        """
+                        insert into kb_search_items (
+                            item_id, space_id, item_type, entity_id, fact_table, fact_key,
+                            document_id, chunk_id, title, content_text, search_text,
+                            metadata_json, embedding, embedding_provider, embedding_model,
+                            embedding_dimensions, review_status, updated_at
+                        )
+                        values (
+                            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+                            $12::jsonb, $13::vector, $14, $15, $16, 'approved', now()
+                        )
+                        on conflict(item_id) do update set
+                            space_id=excluded.space_id,
+                            item_type=excluded.item_type,
+                            entity_id=excluded.entity_id,
+                            fact_table=excluded.fact_table,
+                            fact_key=excluded.fact_key,
+                            document_id=excluded.document_id,
+                            chunk_id=excluded.chunk_id,
+                            title=excluded.title,
+                            content_text=excluded.content_text,
+                            search_text=excluded.search_text,
+                            metadata_json=excluded.metadata_json,
+                            embedding=excluded.embedding,
+                            embedding_provider=excluded.embedding_provider,
+                            embedding_model=excluded.embedding_model,
+                            embedding_dimensions=excluded.embedding_dimensions,
+                            review_status='approved',
+                            updated_at=now()
+                        """,
+                        item["item_id"],
+                        item["space_id"],
+                        item["item_type"],
+                        item.get("entity_id"),
+                        item.get("fact_table") or "",
+                        item.get("fact_key") or "",
+                        item.get("document_id"),
+                        item.get("chunk_id"),
+                        item["title"],
+                        item["content_text"],
+                        searchable_text(str(item["content_text"])),
+                        json.dumps(item.get("metadata") or item.get("metadata_json") or {}, ensure_ascii=False),
+                        vector_literal(embedding),
+                        self.embedding_provider.provider_id,
+                        self.embedding_provider.model,
+                        len(embedding),
+                    )
+                    count += 1
+        return count
+
+    async def upsert_kb_entities(self, rows: list[dict[str, Any]]) -> int:
+        pool = await self._get_pool()
+        count = 0
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                for item in rows:
+                    await conn.execute(
+                        """
+                        insert into kb_entities (
+                            entity_id, space_id, entity_type, canonical_name, description,
+                            source_collection, source_key, metadata_json, review_status, updated_at
+                        )
+                        values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, 'approved', now())
+                        on conflict(entity_id) do update set
+                            space_id=excluded.space_id,
+                            entity_type=excluded.entity_type,
+                            canonical_name=excluded.canonical_name,
+                            description=excluded.description,
+                            source_collection=excluded.source_collection,
+                            source_key=excluded.source_key,
+                            metadata_json=excluded.metadata_json,
+                            review_status='approved',
+                            updated_at=now()
+                        """,
+                        item["entity_id"],
+                        item["space_id"],
+                        item["entity_type"],
+                        item["canonical_name"],
+                        item.get("description") or "",
+                        item.get("source_collection") or "",
+                        item.get("source_key") or "",
+                        json.dumps(item.get("metadata") or item.get("metadata_json") or {}, ensure_ascii=False),
+                    )
+                    count += 1
+        return count
+
+    async def clear_kb_entities(self, space_id: str) -> None:
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute("delete from kb_entities where space_id = $1", space_id)
+
+    async def upsert_kb_entity_aliases(self, rows: list[dict[str, Any]]) -> int:
+        pool = await self._get_pool()
+        count = 0
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                for item in rows:
+                    normalized_alias = item.get("normalized_alias") or normalize_entity_text(str(item["alias"]))
+                    if not normalized_alias:
+                        continue
+                    await conn.execute(
+                        """
+                        insert into kb_entity_aliases (
+                            entity_id, space_id, alias, normalized_alias, alias_type,
+                            confidence, review_status, updated_at
+                        )
+                        values ($1, $2, $3, $4, $5, $6, 'approved', now())
+                        on conflict(space_id, entity_id, normalized_alias) do update set
+                            alias=excluded.alias,
+                            alias_type=excluded.alias_type,
+                            confidence=excluded.confidence,
+                            review_status='approved',
+                            updated_at=now()
+                        """,
+                        item["entity_id"],
+                        item["space_id"],
+                        item["alias"],
+                        normalized_alias,
+                        item.get("alias_type") or "alias",
+                        float(item.get("confidence") or 1.0),
+                    )
+                    count += 1
+        return count
+
+    async def upsert_kb_entity_relations(self, rows: list[dict[str, Any]]) -> int:
+        pool = await self._get_pool()
+        count = 0
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                for item in rows:
+                    await conn.execute(
+                        """
+                        insert into kb_entity_relations (
+                            space_id, subject_entity_id, predicate, object_entity_id,
+                            confidence, metadata_json, review_status, updated_at
+                        )
+                        values ($1, $2, $3, $4, $5, $6::jsonb, 'approved', now())
+                        on conflict(space_id, subject_entity_id, predicate, object_entity_id)
+                        do update set
+                            confidence=excluded.confidence,
+                            metadata_json=excluded.metadata_json,
+                            review_status='approved',
+                            updated_at=now()
+                        """,
+                        item["space_id"],
+                        item["subject_entity_id"],
+                        item["predicate"],
+                        item["object_entity_id"],
+                        float(item.get("confidence") or 1.0),
+                        json.dumps(item.get("metadata") or item.get("metadata_json") or {}, ensure_ascii=False),
+                    )
+                    count += 1
+        return count
 
     async def upsert_admission_plans(self, rows: list[dict[str, Any]]) -> int:
         pool = await self._get_pool()
@@ -822,6 +1161,30 @@ class PostgresKnowledgeStore(AnalyticsBackend, RagBackend, StructuredBackend):
 
 
 STRUCTURED_FILTER_FIELDS: dict[str, set[str]] = {
+    "kb_entities": {
+        "entity_id",
+        "space_id",
+        "entity_type",
+        "canonical_name",
+        "source_collection",
+        "source_key",
+        "review_status",
+    },
+    "kb_entity_aliases": {
+        "entity_id",
+        "space_id",
+        "alias",
+        "normalized_alias",
+        "alias_type",
+        "review_status",
+    },
+    "kb_entity_relations": {
+        "space_id",
+        "subject_entity_id",
+        "predicate",
+        "object_entity_id",
+        "review_status",
+    },
     "admission_plans": {
         "space_id",
         "year",

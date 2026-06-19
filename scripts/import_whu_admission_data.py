@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
@@ -12,6 +13,7 @@ from openpyxl import load_workbook
 
 from luoying_bot.capabilities.knowledge_base.artifacts import MarkdownArtifactStore
 from luoying_bot.capabilities.knowledge_base.embeddings import OpenAICompatibleEmbeddingProvider
+from luoying_bot.capabilities.knowledge_base.entities import normalize_entity_text, stable_entity_id, stable_search_item_id
 from luoying_bot.capabilities.knowledge_base.postgres_store import IndexedDocument, PostgresKnowledgeStore
 from luoying_bot.capabilities.knowledge_base.quality import MarkdownQualityChecker
 from luoying_bot.config import settings
@@ -23,6 +25,7 @@ SITE_ID = "whu_admissions"
 SPACE_ID = "whu"
 STRONG_FOUNDATION_XLSX = Path("docs/2025分省（区）录取分数及位次 - 挂网 - 最新.xlsx")
 STRONG_FOUNDATION_PROGRAM = "数学与应用数学（智能科学）强基计划"
+ENTITY_SEED_PATH = Path("knowledge/seeds/whu_admissions_entities.json")
 
 
 async def main() -> None:
@@ -34,6 +37,11 @@ async def main() -> None:
         "--strong-foundation-xlsx",
         default=str(STRONG_FOUNDATION_XLSX),
         help="Excel source for strong foundation score data",
+    )
+    parser.add_argument(
+        "--entity-seed",
+        default=str(ENTITY_SEED_PATH),
+        help="Curated entity and alias seed file",
     )
     args = parser.parse_args()
 
@@ -78,6 +86,24 @@ async def main() -> None:
     imported_strong_foundation_scores = await store.upsert_admission_strong_foundation_scores(
         normalized_strong_foundation_scores
     )
+    entity_payload = build_admission_entities(
+        plans=normalized_plans,
+        scores=normalized_scores,
+        strong_foundation_scores=normalized_strong_foundation_scores,
+        seed_path=Path(args.entity_seed),
+    )
+    await store.clear_kb_entities(SPACE_ID)
+    imported_entities = await store.upsert_kb_entities(entity_payload["entities"])
+    imported_entity_aliases = await store.upsert_kb_entity_aliases(entity_payload["aliases"])
+    imported_entity_relations = await store.upsert_kb_entity_relations(entity_payload["relations"])
+    search_items = build_search_items(
+        entity_payload=entity_payload,
+        plans=normalized_plans,
+        scores=normalized_scores,
+        strong_foundation_scores=normalized_strong_foundation_scores,
+    )
+    await store.clear_kb_search_items(SPACE_ID)
+    imported_search_items = await store.upsert_kb_search_items(search_items)
 
     artifact_store = MarkdownArtifactStore(settings.kb_artifact_root)
     artifact_store.write_source(
@@ -134,6 +160,10 @@ async def main() -> None:
                 "plans_imported": imported_plans,
                 "scores_imported": imported_scores,
                 "strong_foundation_scores_imported": imported_strong_foundation_scores,
+                "entities_imported": imported_entities,
+                "entity_aliases_imported": imported_entity_aliases,
+                "entity_relations_imported": imported_entity_relations,
+                "search_items_imported": imported_search_items,
                 "plan_raw_requests": len(plan_raw),
                 "score_raw_requests": len(score_raw),
                 "artifact_root": str(settings.kb_artifact_root),
@@ -350,6 +380,259 @@ def normalize_strong_foundation_rows(
     return rows
 
 
+def build_admission_entities(
+    *,
+    plans: list[dict[str, Any]],
+    scores: list[dict[str, Any]],
+    strong_foundation_scores: list[dict[str, Any]],
+    seed_path: Path,
+) -> dict[str, list[dict[str, Any]]]:
+    entities: dict[str, dict[str, Any]] = {}
+    aliases: dict[tuple[str, str], dict[str, Any]] = {}
+    relations: dict[tuple[str, str, str], dict[str, Any]] = {}
+    seed_keys: dict[str, str] = {}
+
+    def add_entity(
+        *,
+        entity_type: str,
+        canonical_name: str,
+        description: str = "",
+        source_collection: str = "",
+        source_key: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
+        entity_id = stable_entity_id(SPACE_ID, entity_type, canonical_name)
+        entities[entity_id] = {
+            "entity_id": entity_id,
+            "space_id": SPACE_ID,
+            "entity_type": entity_type,
+            "canonical_name": canonical_name,
+            "description": description,
+            "source_collection": source_collection,
+            "source_key": source_key,
+            "metadata": metadata or {},
+        }
+        add_alias(entity_id, canonical_name, "official", 1.0)
+        return entity_id
+
+    def add_alias(entity_id: str, alias: str, alias_type: str, confidence: float) -> None:
+        normalized = normalize_entity_text(alias)
+        if not normalized:
+            return
+        aliases[(entity_id, normalized)] = {
+            "entity_id": entity_id,
+            "space_id": SPACE_ID,
+            "alias": alias,
+            "normalized_alias": normalized,
+            "alias_type": alias_type,
+            "confidence": confidence,
+        }
+
+    def add_relation(subject_id: str, predicate: str, object_id: str, confidence: float) -> None:
+        relations[(subject_id, predicate, object_id)] = {
+            "space_id": SPACE_ID,
+            "subject_entity_id": subject_id,
+            "predicate": predicate,
+            "object_entity_id": object_id,
+            "confidence": confidence,
+        }
+
+    seed_payload = load_entity_seed(seed_path)
+    for seed in seed_payload.get("entities", []):
+        if not isinstance(seed, dict):
+            continue
+        entity_id = add_entity(
+            entity_type=clean(seed.get("entity_type")),
+            canonical_name=clean(seed.get("canonical_name")),
+            description=clean(seed.get("description")),
+            source_collection=clean(seed.get("source_collection")),
+            source_key=clean(seed.get("source_key")),
+            metadata=dict(seed.get("metadata") or {}) if isinstance(seed.get("metadata"), dict) else {},
+        )
+        if seed.get("key"):
+            seed_keys[str(seed["key"])] = entity_id
+        for alias_item in seed.get("aliases") or []:
+            if not isinstance(alias_item, dict):
+                continue
+            add_alias(
+                entity_id,
+                clean(alias_item.get("alias")),
+                clean(alias_item.get("alias_type")) or "alias",
+                float(alias_item.get("confidence") or 1.0),
+            )
+    for relation in seed_payload.get("relations", []):
+        if not isinstance(relation, dict):
+            continue
+        subject_id = seed_keys.get(str(relation.get("subject_key") or ""))
+        object_id = seed_keys.get(str(relation.get("object_key") or ""))
+        predicate = clean(relation.get("predicate"))
+        if subject_id and object_id and predicate:
+            add_relation(subject_id, predicate, object_id, float(relation.get("confidence") or 1.0))
+
+    for row in plans + scores:
+        major_name = clean(row.get("major_name"))
+        if not major_name:
+            continue
+        major_id = add_entity(
+            entity_type="major",
+            canonical_name=major_name,
+            source_collection="admissions",
+            source_key=major_name,
+            metadata={
+                "fact_tables": ["admission_plans", "admission_scores"],
+                "fact_column": "major_name",
+            },
+        )
+        add_alias(major_id, major_name.replace("（", "(").replace("）", ")"), "display_variant", 0.96)
+        for group in re_parentheses(major_name):
+            add_alias(major_id, group, "short_name", 0.72)
+    for province in sorted({clean(row.get("province")) for row in plans + scores + strong_foundation_scores}):
+        if not province:
+            continue
+        province_id = add_entity(
+            entity_type="province",
+            canonical_name=province,
+            source_collection="admissions",
+            source_key=province,
+            metadata={"fact_column": "province"},
+        )
+        add_alias(province_id, province, "official", 1.0)
+
+    if strong_foundation_scores:
+        program_id = add_entity(
+            entity_type="program",
+            canonical_name=STRONG_FOUNDATION_PROGRAM,
+            description="武汉大学数学与应用数学（智能科学）强基计划录取分数",
+            source_collection="admission_strong_foundation_scores",
+            source_key=STRONG_FOUNDATION_PROGRAM,
+            metadata={
+                "fact_table": "admission_strong_foundation_scores",
+                "fact_column": "program_name",
+                "metric": "min_score",
+            },
+        )
+        for alias, confidence in (
+            ("数学与应用数学智能科学强基计划", 0.98),
+            ("智能科学强基计划", 0.95),
+            ("智能科学强基", 0.92),
+            ("数学智能科学强基", 0.9),
+        ):
+            add_alias(program_id, alias, "short_name", confidence)
+        if seed_keys.get("strong_foundation"):
+            add_relation(program_id, "is_a", seed_keys["strong_foundation"], 1.0)
+        if seed_keys.get("sai"):
+            add_relation(program_id, "related_to", seed_keys["sai"], 0.85)
+
+    return {
+        "entities": list(entities.values()),
+        "aliases": list(aliases.values()),
+        "relations": list(relations.values()),
+    }
+
+
+def build_search_items(
+    *,
+    entity_payload: dict[str, list[dict[str, Any]]],
+    plans: list[dict[str, Any]],
+    scores: list[dict[str, Any]],
+    strong_foundation_scores: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    aliases_by_entity: dict[str, list[dict[str, Any]]] = {}
+    for alias in entity_payload["aliases"]:
+        aliases_by_entity.setdefault(str(alias["entity_id"]), []).append(alias)
+    for entity in entity_payload["entities"]:
+        entity_aliases = sorted(
+            aliases_by_entity.get(str(entity["entity_id"]), []),
+            key=lambda item: float(item.get("confidence") or 0.0),
+            reverse=True,
+        )
+        alias_text = "，".join(str(alias["alias"]) for alias in entity_aliases[:20])
+        content = "\n".join(
+            part
+            for part in (
+                str(entity["canonical_name"]),
+                f"类型：{entity['entity_type']}",
+                f"别名：{alias_text}" if alias_text else "",
+                f"描述：{entity.get('description')}" if entity.get("description") else "",
+            )
+            if part
+        )
+        items.append(
+            {
+                "item_id": stable_search_item_id(SPACE_ID, "entity", str(entity["entity_id"])),
+                "space_id": SPACE_ID,
+                "item_type": "entity",
+                "entity_id": entity["entity_id"],
+                "title": str(entity["canonical_name"]),
+                "content_text": content,
+                "metadata": {
+                    "entity_type": entity["entity_type"],
+                    "canonical_name": entity["canonical_name"],
+                    "description": entity.get("description") or "",
+                    "entity_metadata": entity.get("metadata") or {},
+                    "aliases": [alias["alias"] for alias in entity_aliases],
+                },
+            }
+        )
+    for row in plans:
+        key = "|".join(
+            str(row.get(field) or "")
+            for field in ("year", "province", "subject_type", "batch", "major_name", "class_type")
+        )
+        items.append(
+            {
+                "item_id": stable_search_item_id(SPACE_ID, "fact", f"admission_plans:{key}"),
+                "space_id": SPACE_ID,
+                "item_type": "fact",
+                "fact_table": "admission_plans",
+                "fact_key": key,
+                "title": "武汉大学本科招生计划",
+                "content_text": plan_row_markdown(row),
+                "metadata": row,
+            }
+        )
+    for row in scores:
+        key = "|".join(
+            str(row.get(field) or "")
+            for field in ("year", "province", "subject_type", "batch", "major_name")
+        )
+        items.append(
+            {
+                "item_id": stable_search_item_id(SPACE_ID, "fact", f"admission_scores:{key}"),
+                "space_id": SPACE_ID,
+                "item_type": "fact",
+                "fact_table": "admission_scores",
+                "fact_key": key,
+                "title": "武汉大学历年录取分数",
+                "content_text": score_row_markdown(row),
+                "metadata": row,
+            }
+        )
+    for row in strong_foundation_scores:
+        key = "|".join(str(row.get(field) or "") for field in ("year", "province", "program_name"))
+        items.append(
+            {
+                "item_id": stable_search_item_id(SPACE_ID, "fact", f"admission_strong_foundation_scores:{key}"),
+                "space_id": SPACE_ID,
+                "item_type": "fact",
+                "fact_table": "admission_strong_foundation_scores",
+                "fact_key": key,
+                "title": "武汉大学强基计划录取分数",
+                "content_text": strong_foundation_row_markdown(row),
+                "metadata": row,
+            }
+        )
+    return items
+
+
+def load_entity_seed(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {"entities": [], "relations": []}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return data if isinstance(data, dict) else {"entities": [], "relations": []}
+
+
 def row_to_plan(*, normalized_source: dict[str, Any]) -> dict[str, Any]:
     return {
         "year": normalized_source.get("nf"),
@@ -530,6 +813,17 @@ def parse_score_rank_cell(value: Any) -> tuple[float | None, int | None]:
 
 def clean_header(value: Any) -> str:
     return "".join(str(value or "").split())
+
+
+def re_parentheses(value: str) -> list[str]:
+    groups = []
+    for group in re.findall(r"[（(]([^（）()]+)[）)]", value):
+        text = group.strip()
+        normalized = normalize_entity_text(text)
+        if len(normalized) < 3 or re.fullmatch(r"\d+年?", normalized):
+            continue
+        groups.append(text)
+    return groups
 
 
 def now_iso() -> str:

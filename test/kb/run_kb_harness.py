@@ -14,6 +14,7 @@ from luoying_bot.capabilities.knowledge_base import KnowledgeBaseConfig, Knowled
 from luoying_bot.capabilities.knowledge_base.analytics import KnowledgeAnalyticsEngine
 from luoying_bot.capabilities.knowledge_base.answering import KnowledgeAnswerGenerator
 from luoying_bot.capabilities.knowledge_base.embeddings import OpenAICompatibleEmbeddingProvider
+from luoying_bot.capabilities.knowledge_base.entity_resolver import EntityResolver
 from luoying_bot.capabilities.knowledge_base.policy import KnowledgeBasePolicy
 from luoying_bot.capabilities.knowledge_base.postgres_store import PostgresKnowledgeStore
 from luoying_bot.capabilities.knowledge_base.query_agent import KBQueryAgent, KBQueryAgentConfig
@@ -78,6 +79,7 @@ async def build_service(*, with_answer: bool) -> KnowledgeBaseService:
             model=query_model,
             semantic_layer=KnowledgeSemanticLayer(),
         ),
+        entity_resolver=EntityResolver(store),
         config=KBQueryAgentConfig(
             default_space_id=settings.kb_default_space_id,
         ),

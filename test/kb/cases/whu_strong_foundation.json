@@ -16,5 +16,14 @@
     "expected_any": ["四川", "664", "1383"],
     "expected_sources_any": ["2025分省（区）录取分数及位次 - 挂网 - 最新.xlsx"],
     "min_citations": 1
+  },
+  {
+    "id": "strong_foundation_alias_listing",
+    "question": "2025年人智强基计划哪个省分数线最高？然后把25年人工智能学院强基所有数据都列给我",
+    "space_id": "whu",
+    "top_k": 8,
+    "expected_any": ["四川", "664", "上海", "571", "数学与应用数学"],
+    "expected_sources_any": ["2025分省（区）录取分数及位次 - 挂网 - 最新.xlsx"],
+    "min_citations": 1
   }
 ]

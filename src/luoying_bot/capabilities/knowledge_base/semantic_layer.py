@@ -120,6 +120,12 @@ class KnowledgeSemanticLayer:
     def allowed_tables(self) -> set[str]:
         return {table.name for table in self._tables}
 
+    def table_columns(self, table_name: str) -> tuple[str, ...]:
+        for table in self._tables:
+            if table.name == table_name:
+                return table.columns
+        return ()
+
     def prompt_context(self) -> str:
         blocks: list[str] = []
         for table in self._tables:

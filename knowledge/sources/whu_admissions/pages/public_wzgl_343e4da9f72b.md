@@ -7,7 +7,7 @@ url: "https://zsdata.whu.edu.cn/public/wzgl/#/jhcx?dataset=strong_foundation"
 published_at: "2025"
 content_hash: "2fab3d0a2249c81541d34705688f7965a3db80f2b1d2c8a2f5d760c2458dfea1"
 content_type: "listing"
-fetched_at: "2026-06-19T16:36:03"
+fetched_at: "2026-06-19T17:59:50"
 depth: 0
 link_count: 1
 raw_path: "raw/public_wzgl_343e4da9f72b.html"

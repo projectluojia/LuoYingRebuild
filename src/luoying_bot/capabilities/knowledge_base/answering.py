@@ -12,7 +12,7 @@ class KnowledgeAnswerGenerator:
     async def generate(self, query: KnowledgeQuery, retrieval: RetrievalResult) -> KnowledgeAnswer:
         citations = retrieval.citations()
         structured_context = "\n".join(
-            f"- {record.text()}" for record in retrieval.structured_records[:12]
+            f"- {record.text()}" for record in retrieval.structured_records[:30]
         ) or "无"
         rag_context = "\n".join(
             f"- {chunk.text}" for chunk in retrieval.chunks[:8] if chunk.text.strip()

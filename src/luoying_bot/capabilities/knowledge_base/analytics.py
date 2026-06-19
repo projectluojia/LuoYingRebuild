@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from luoying_bot.capabilities.knowledge_base.entity_resolver import EntityResolution
 from luoying_bot.capabilities.knowledge_base.models import Citation, KnowledgeQuery, StructuredRecord
 from luoying_bot.capabilities.knowledge_base.ports import AnalyticsBackend, StructuredBackend
 from luoying_bot.capabilities.knowledge_base.semantic_layer import KnowledgeSemanticLayer
@@ -25,7 +26,7 @@ class KnowledgeAnalyticsEngine:
         value_backend: StructuredBackend,
         model: ChatModel,
         semantic_layer: KnowledgeSemanticLayer,
-        max_rows: int = 12,
+        max_rows: int = 50,
     ):
         self.backend = backend
         self.value_backend = value_backend
@@ -33,10 +34,12 @@ class KnowledgeAnalyticsEngine:
         self.semantic_layer = semantic_layer
         self.max_rows = max_rows
 
-    async def query(self, query: KnowledgeQuery) -> list[StructuredRecord]:
+    async def query(self, query: KnowledgeQuery, entities: EntityResolution | None = None) -> list[StructuredRecord]:
         if not self.semantic_layer.is_analytics_question(query.question):
             return []
-        plan = await self._plan(query)
+        plan = self._entity_plan(query, entities) if entities else None
+        if plan is None:
+            plan = await self._plan(query, entities)
         if not plan.sql:
             return []
         safe_sql = validate_select_sql(
@@ -55,12 +58,58 @@ class KnowledgeAnalyticsEngine:
             for row in rows
         ]
 
-    async def _plan(self, query: KnowledgeQuery) -> AnalyticsPlan:
+    def _entity_plan(self, query: KnowledgeQuery, entities: EntityResolution | None) -> AnalyticsPlan | None:
+        if entities is None:
+            return None
+        for entity in entities.fact_entities():
+            table = str(entity.metadata.get("fact_table") or "")
+            field = str(entity.metadata.get("fact_column") or "")
+            if table not in self.semantic_layer.allowed_tables or field not in self.semantic_layer.table_columns(table):
+                continue
+            columns = self.semantic_layer.table_columns(table)
+            select_columns = ", ".join(columns)
+            clauses = [
+                "review_status = 'approved'",
+                f"{field} = {sql_literal(entity.canonical_name)}",
+            ]
+            if query.space_id:
+                clauses.append(f"space_id = {sql_literal(query.space_id)}")
+            year = extract_year(query.question)
+            if year:
+                clauses.append(f"year = {year}")
+            question_norm = normalize_text(query.question)
+            for province in entities.by_type("province"):
+                province_norm = normalize_text(province.canonical_name)
+                alias_norm = normalize_text(province.matched_alias)
+                if province_norm not in question_norm and alias_norm not in question_norm:
+                    continue
+                clauses.append(f"province = {sql_literal(province.canonical_name)}")
+                break
+            order_by = "id asc"
+            limit = 1
+            if wants_highest(query.question):
+                order_by = "min_score desc nulls last, min_rank asc nulls last, province asc"
+            elif wants_lowest(query.question):
+                order_by = "min_score asc nulls last, min_rank asc nulls last, province asc"
+            if wants_listing(query.question):
+                limit = self.max_rows
+                if not (wants_highest(query.question) or wants_lowest(query.question)):
+                    order_by = "province asc"
+            sql = (
+                f"select {select_columns} from {table} "
+                f"where {' and '.join(clauses)} "
+                f"order by {order_by} limit {limit}"
+            )
+            return AnalyticsPlan(sql=sql, rationale="entity_grounded")
+        return None
+
+    async def _plan(self, query: KnowledgeQuery, entities: EntityResolution | None) -> AnalyticsPlan:
         candidate_values = await self._candidate_values(query.question)
         prompt = ANALYTICS_PROMPT.format(
             semantic_schema=self.semantic_layer.prompt_context(),
             semantic_rules=self.semantic_layer.semantic_rules(),
             candidate_values=candidate_values or "无",
+            resolved_entities=entities.prompt_context() if entities else "无",
             max_rows=self.max_rows,
             question=query.question,
             space_filter=f"space_id = '{query.space_id}'" if query.space_id else "按问题语义决定；不确定时不要强行限制 space_id",
@@ -100,6 +149,9 @@ ANALYTICS_PROMPT = """\
 从数据库真实值中检索到的候选字段值：
 {candidate_values}
 
+已解析实体：
+{resolved_entities}
+
 约束：
 - 只允许 SELECT。
 - 只允许查询上述表。
@@ -107,6 +159,7 @@ ANALYTICS_PROMPT = """\
 - 不要输出 Markdown。
 - 只输出 JSON：{{"sql":"...","rationale":"..."}}。
 - 如果问题不适合结构化查询，输出 {{"sql":"","rationale":"not_structured"}}。
+- 已解析实体优先于用户原始说法；实体含 fact_table/fact_column 时必须优先使用对应表和字段。
 - SQL 必须限制最多 {max_rows} 行。
 - 当前 space 过滤：{space_filter}。
 
@@ -199,6 +252,33 @@ def citation_from_row(row: dict[str, Any]) -> Citation:
 def optional_text(value: Any) -> str | None:
     text = str(value or "").strip()
     return text or None
+
+
+def extract_year(question: str) -> int | None:
+    match = re.search(r"(20\d{2})\s*年?", question)
+    if match:
+        return int(match.group(1))
+    short = re.search(r"(?<!\d)(\d{2})\s*年", question)
+    if not short:
+        return None
+    year = int(short.group(1))
+    return 2000 + year if year < 80 else 1900 + year
+
+
+def wants_listing(question: str) -> bool:
+    return any(marker in question for marker in ("所有", "全部", "列出", "列给", "列一下", "明细", "各省"))
+
+
+def wants_highest(question: str) -> bool:
+    return "最高" in question or "最高分" in question
+
+
+def wants_lowest(question: str) -> bool:
+    return "最低" in question or "最低分" in question
+
+
+def sql_literal(value: str) -> str:
+    return "'" + str(value).replace("'", "''") + "'"
 
 
 def rank_candidate_values(*, query_norm: str, values: list[str]) -> list[str]:
