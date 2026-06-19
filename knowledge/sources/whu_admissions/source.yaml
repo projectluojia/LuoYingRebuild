@@ -4,5 +4,6 @@ base_url: "https://zsdata.whu.edu.cn/public/wzgl/#/jhcx"
 space_id: "whu"
 allowed_domains: ["zsdata.whu.edu.cn"]
 entry_urls: ["https://zsdata.whu.edu.cn/public/wzgl/#/jhcx"]
-updated_at: "2026-06-19T17:59:50"
+updated_at: "2026-06-19T18:28:50"
 data_api: "https://zsdata.whu.edu.cn/wzgl/wxmini/api/front/lqxx/getList"
+content_api: "https://zsdata.whu.edu.cn/wzgl/wxmini/api/front/commcfg"

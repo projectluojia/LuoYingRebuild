@@ -29,6 +29,7 @@ class EntityResolution:
             match
             for match in self.matches
             if match.metadata.get("fact_table") and match.metadata.get("fact_column")
+            and (match.score >= 100.0 or match.alias_type == "relation_resolution")
         )
 
 
@@ -53,8 +54,10 @@ class EntityResolver:
         query: KnowledgeQuery,
         direct_matches: list[EntityMatch],
     ) -> list[EntityMatch]:
-        schools = [match for match in direct_matches if match.entity_type == "school"]
-        program_types = [match for match in direct_matches if match.entity_type == "program_type"]
+        schools = [match for match in direct_matches if match.entity_type == "school" and match.score >= 100.0]
+        program_types = [
+            match for match in direct_matches if match.entity_type == "program_type" and match.score >= 100.0
+        ]
         if not schools or not program_types:
             return []
         relations = await self.backend.fetch_entity_relations(

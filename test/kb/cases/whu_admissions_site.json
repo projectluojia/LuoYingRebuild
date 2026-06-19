@@ -1,0 +1,29 @@
+[
+  {
+    "id": "whu_admissions_experimental_classes",
+    "question": "武汉大学本科招生网有哪些试验班？",
+    "space_id": "whu",
+    "top_k": 8,
+    "expected_any": ["试验班", "弘毅学堂"],
+    "expected_sources_any": ["https://zsdata.whu.edu.cn/public/wzgl/#/yxnr"],
+    "min_citations": 1
+  },
+  {
+    "id": "whu_admissions_sai_school_unit",
+    "question": "人工智能学院属于哪个学部？",
+    "space_id": "whu",
+    "top_k": 8,
+    "expected_any": ["信息科学学部", "人工智能学院"],
+    "expected_sources_any": ["https://zsdata.whu.edu.cn/public/wzgl/#/xyzy"],
+    "min_citations": 1
+  },
+  {
+    "id": "whu_admissions_hot_articles",
+    "question": "招生网热点武大有哪些文章？",
+    "space_id": "whu",
+    "top_k": 8,
+    "expected_any": ["热点武大", "武大本科招生六大亮点"],
+    "expected_sources_any": ["https://zsdata.whu.edu.cn/public/wzgl/#/de/"],
+    "min_citations": 1
+  }
+]

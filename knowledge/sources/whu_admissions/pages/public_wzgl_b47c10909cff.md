@@ -1,0 +1,29 @@
+---
+id: "public_wzgl_b47c10909cff"
+site_id: "whu_admissions"
+space_id: "whu"
+title: "《资助专刊2022》"
+url: "https://zsdata.whu.edu.cn/public/wzgl/#/de/d090c4b4dbab4698ba5ff492fe82ca94/c044aa1a365e4c0c96dfb49b72e9055d"
+published_at: "2022-06-06"
+content_hash: "2aa50799763c6b404ac5e31942db58a8bedb5ae7940fc04861bbfdeeda6d6843"
+content_type: "page"
+fetched_at: "2026-06-19T18:29:53"
+depth: 1
+link_count: 1
+raw_path: "raw/public_wzgl_b47c10909cff.html"
+quality: {"ok": true, "score": 1.0, "warnings": [], "metrics": {"chars": 423, "lines": 13, "main_nav_hits": 0, "footer_hits": 0, "breadcrumb_hits": 0, "script_hits": 0, "pagination_hits": 0, "duplicate_line_ratio": 0.0}}
+---
+
+# 《资助专刊2022》
+
+栏目：奖助体系
+
+为了帮助家庭经济困难学子更快更好地适应大学学习生活、健康成长成才，校学生资助管理中心为新生编写了《资助专刊》。
+
+《资助专刊》是一份多方位了解我校资助工作政策与成效的刊物，它从第六届“自强之星”评选获奖者的成长故事、资助政策解读、校园环境三个方面为广大学子提供了最新的资助信息，分别对应目录中的自强之音、信息小站、珞珈印象三个栏目。
+
+“自强之音”分享家庭经济困难学生成长成才的故事，以榜样的力量激励学生奋发向上；“信息小站”解读我校的资助政策和项目，为新生答疑解惑；“珞珈印象”囊括武大最美角落，帮助新生迅速熟悉校园环境。
+
+希望莘莘学子能够从前人的优秀过往中汲取力量，在学校和社会的关怀和帮助下，书写属于自己的精彩和灿烂。
+
+《资助专刊》电子阅读版 http://zzgl.whu.edu.cn/UploadFile/asp/file/20210901/16304777136525266.pdf

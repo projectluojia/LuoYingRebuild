@@ -7,7 +7,7 @@ url: "https://zsdata.whu.edu.cn/public/wzgl/#/jhcx?dataset=lnfs"
 published_at: "2025"
 content_hash: "d03f24150b638830c055f0fd4941c69cff941e0d2b16826549fa74215f056694"
 content_type: "listing"
-fetched_at: "2026-06-19T17:59:50"
+fetched_at: "2026-06-19T18:28:50"
 depth: 0
 link_count: 1
 raw_path: "raw/public_wzgl_1960b7ad08e8.html"

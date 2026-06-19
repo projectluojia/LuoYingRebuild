@@ -7,8 +7,10 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import urljoin
 
 import httpx
+from bs4 import BeautifulSoup
 from openpyxl import load_workbook
 
 from luoying_bot.capabilities.knowledge_base.artifacts import MarkdownArtifactStore
@@ -21,6 +23,7 @@ from luoying_bot.config import settings
 
 BASE_URL = "https://zsdata.whu.edu.cn/wzgl/wxmini"
 SOURCE_URL = "https://zsdata.whu.edu.cn/public/wzgl/#/jhcx"
+SITE_URL = "https://zsdata.whu.edu.cn/public/wzgl/"
 SITE_ID = "whu_admissions"
 SPACE_ID = "whu"
 STRONG_FOUNDATION_XLSX = Path("docs/2025分省（区）录取分数及位次 - 挂网 - 最新.xlsx")
@@ -72,6 +75,7 @@ async def main() -> None:
             year=args.year,
             subject_type=args.subject_type,
         )
+        site_payload = await fetch_admission_site_payload(client)
 
     normalized_plans = normalize_plan_rows(plan_rows)
     normalized_scores = normalize_score_rows(score_rows)
@@ -86,10 +90,23 @@ async def main() -> None:
     imported_strong_foundation_scores = await store.upsert_admission_strong_foundation_scores(
         normalized_strong_foundation_scores
     )
+    content_categories = normalize_content_categories(site_payload["content_categories"])
+    content_articles = normalize_content_articles(site_payload["content_articles"])
+    academic_payload = normalize_academic_structure(site_payload["academic_units"])
+    media_categories = normalize_media_categories(site_payload["media_categories"])
+    media_items = normalize_media_items(site_payload["media_items"])
+    imported_content_categories = await store.upsert_admission_content_categories(content_categories)
+    imported_articles = await store.upsert_admission_articles(content_articles)
+    imported_academic_units = await store.upsert_academic_units(academic_payload["units"])
+    imported_schools = await store.upsert_admission_schools(academic_payload["schools"])
+    imported_majors = await store.upsert_majors(academic_payload["majors"])
+    imported_media_categories = await store.upsert_admission_content_categories(media_categories)
+    imported_media_items = await store.upsert_admission_media_items(media_items)
     entity_payload = build_admission_entities(
         plans=normalized_plans,
         scores=normalized_scores,
         strong_foundation_scores=normalized_strong_foundation_scores,
+        site_majors=academic_payload["majors"],
         seed_path=Path(args.entity_seed),
     )
     await store.clear_kb_entities(SPACE_ID)
@@ -116,6 +133,7 @@ async def main() -> None:
             "entry_urls": [SOURCE_URL],
             "updated_at": now_iso(),
             "data_api": f"{BASE_URL}/api/front/lqxx/getList",
+            "content_api": f"{BASE_URL}/api/front/commcfg",
         }
     )
     plan_artifact = write_dataset_artifact(
@@ -152,6 +170,11 @@ async def main() -> None:
     await index_artifact(store, score_artifact)
     if normalized_strong_foundation_scores:
         await index_artifact(store, strong_foundation_artifact)
+    article_artifacts = write_article_artifacts(artifact_store, content_articles)
+    media_artifact = write_media_catalog_artifact(artifact_store, media_items)
+    academic_artifact = write_academic_structure_artifact(artifact_store, academic_payload)
+    for artifact in [*article_artifacts, media_artifact, academic_artifact]:
+        await index_artifact(store, artifact)
 
     print(
         json.dumps(
@@ -160,12 +183,20 @@ async def main() -> None:
                 "plans_imported": imported_plans,
                 "scores_imported": imported_scores,
                 "strong_foundation_scores_imported": imported_strong_foundation_scores,
+                "content_categories_imported": imported_content_categories,
+                "articles_imported": imported_articles,
+                "academic_units_imported": imported_academic_units,
+                "schools_imported": imported_schools,
+                "majors_imported": imported_majors,
+                "media_categories_imported": imported_media_categories,
+                "media_items_imported": imported_media_items,
                 "entities_imported": imported_entities,
                 "entity_aliases_imported": imported_entity_aliases,
                 "entity_relations_imported": imported_entity_relations,
                 "search_items_imported": imported_search_items,
                 "plan_raw_requests": len(plan_raw),
                 "score_raw_requests": len(score_raw),
+                "article_artifacts_indexed": len(article_artifacts),
                 "artifact_root": str(settings.kb_artifact_root),
                 "database_url": settings.kb_database_url,
             },
@@ -217,6 +248,113 @@ async def post_api(client: httpx.AsyncClient, path: str, payload: dict[str, Any]
     if int(data.get("code") or 0) != 200:
         raise ValueError(f"{path} failed: {data}")
     return data
+
+
+async def post_form_api(client: httpx.AsyncClient, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    response = await client.post(
+        f"{BASE_URL}{path}",
+        data={key: value for key, value in payload.items() if value is not None},
+        headers={"Content-Type": "application/x-www-form-urlencoded;charset=utf-8"},
+    )
+    response.raise_for_status()
+    data = response.json()
+    if int(data.get("code") or 0) != 200:
+        raise ValueError(f"{path} failed: {data}")
+    if data.get("success") is False:
+        raise ValueError(f"{path} failed: {data}")
+    return data
+
+
+async def fetch_admission_site_payload(client: httpx.AsyncClient) -> dict[str, Any]:
+    content_categories_payload = await post_form_api(
+        client,
+        "/api/front/commcfg/getXwfl",
+        {"reqchannel": "site"},
+    )
+    content_categories = list_payload(content_categories_payload.get("data"))
+    articles: list[dict[str, Any]] = []
+    for category in content_categories:
+        category_id = clean(category.get("id"))
+        if not category_id:
+            continue
+        page_no = 1
+        page_size = 50
+        while True:
+            list_payload_data = await post_form_api(
+                client,
+                "/api/front/commcfg/getXwListByFl",
+                {
+                    "reqchannel": "site",
+                    "xwflid": category_id,
+                    "pageNo": page_no,
+                    "pageSize": page_size,
+                },
+            )
+            data = dict_payload(list_payload_data.get("data"))
+            article_list = list_payload(data.get("list"))
+            for article in article_list:
+                article_id = clean(article.get("id"))
+                if not article_id:
+                    continue
+                detail_payload = await post_form_api(
+                    client,
+                    "/api/front/commcfg/getXwnrById",
+                    {"reqchannel": "site", "id": article_id},
+                )
+                detail = dict_payload(detail_payload.get("data"))
+                merged = {**article, **detail}
+                merged["xwfl"] = article.get("xwfl") or detail.get("xwfl") or category
+                articles.append(merged)
+            count = as_int(data.get("count")) or len(article_list)
+            if page_no * page_size >= count or not article_list:
+                break
+            page_no += 1
+
+    academic_units_payload = await post_form_api(
+        client,
+        "/api/front/commcfg/getXuebuList",
+        {"reqchannel": "site"},
+    )
+    media_categories_payload = await post_form_api(
+        client,
+        "/api/front/commcfg/getYxfl",
+        {"reqchannel": "site"},
+    )
+    media_categories = list_payload(media_categories_payload.get("data"))
+    media_items: list[dict[str, Any]] = []
+    for category in media_categories:
+        category_id = clean(category.get("id"))
+        if not category_id:
+            continue
+        page_no = 1
+        page_size = 200
+        while True:
+            media_payload = await post_form_api(
+                client,
+                "/api/front/commcfg/getYxnrByFl",
+                {
+                    "reqchannel": "site",
+                    "yxflid": category_id,
+                    "pageNo": page_no,
+                    "pageSize": page_size,
+                },
+            )
+            data = dict_payload(media_payload.get("data"))
+            item_list = list_payload(data.get("list"))
+            for item in item_list:
+                media_items.append({**item, "category": category})
+            count = as_int(data.get("count")) or len(item_list)
+            if page_no * page_size >= count or not item_list:
+                break
+            page_no += 1
+
+    return {
+        "content_categories": content_categories,
+        "content_articles": articles,
+        "academic_units": list_payload(academic_units_payload.get("data")),
+        "media_categories": media_categories,
+        "media_items": media_items,
+    }
 
 
 def iter_queries(
@@ -380,11 +518,211 @@ def normalize_strong_foundation_rows(
     return rows
 
 
+def normalize_content_categories(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for row in rows:
+        category_id = clean(row.get("id"))
+        name = clean(row.get("name"))
+        if not category_id or not name:
+            continue
+        normalized.append(
+            {
+                "category_id": category_id,
+                "space_id": SPACE_ID,
+                "name": name,
+                "sort_order": as_int(row.get("sort")),
+                "source_url": f"{SITE_URL}#/news/{category_id}",
+                "source_document": "武汉大学本科招生网内容栏目",
+                "source_department": "武汉大学本科招生办公室",
+                "published_at": published_date(row.get("updateDate") or row.get("createDate")),
+                "raw_json": row,
+            }
+        )
+    return normalized
+
+
+def normalize_content_articles(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    unique: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        article_id = clean(row.get("id"))
+        title = clean(row.get("title"))
+        if not article_id or not title:
+            continue
+        category = dict_payload(row.get("xwfl"))
+        category_id = clean(category.get("id"))
+        category_name = clean(category.get("name"))
+        source_url = article_url(category_id=category_id, article_id=article_id)
+        markdown = html_to_markdown(clean(row.get("content")), base_url="https://zsdata.whu.edu.cn/")
+        if not markdown:
+            markdown = clean(row.get("description"))
+        unique[article_id] = {
+            "article_id": article_id,
+            "space_id": SPACE_ID,
+            "category_id": category_id or None,
+            "category_name": category_name,
+            "title": title,
+            "description": clean(row.get("description")),
+            "source_url": source_url,
+            "logo_url": absolute_site_url(row.get("logo")),
+            "content_type": clean(row.get("type")),
+            "published_at": published_date(row.get("fbsj") or row.get("updateDate") or row.get("createDate")),
+            "view_count": as_int(row.get("viewCount")),
+            "source_document": title,
+            "source_department": "武汉大学本科招生办公室",
+            "source_text": article_source_text(title=title, category=category_name, markdown=markdown),
+            "markdown": markdown,
+            "raw_json": row,
+        }
+    return list(unique.values())
+
+
+def normalize_academic_structure(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    units: list[dict[str, Any]] = []
+    schools: list[dict[str, Any]] = []
+    majors: dict[str, dict[str, Any]] = {}
+    source_url = f"{SITE_URL}#/xyzy"
+    for unit in rows:
+        unit_id = clean(unit.get("id"))
+        unit_name = clean(unit.get("name"))
+        if not unit_id or not unit_name:
+            continue
+        units.append(
+            {
+                "unit_id": unit_id,
+                "space_id": SPACE_ID,
+                "name": unit_name,
+                "sort_order": as_int(unit.get("sort")),
+                "source_url": source_url,
+                "source_document": "武汉大学本科招生网学院专业",
+                "source_department": "武汉大学本科招生办公室",
+                "published_at": published_date(unit.get("updateDate") or unit.get("createDate")),
+                "raw_json": unit,
+            }
+        )
+        for school in list_payload(unit.get("xyList")):
+            school_id = clean(school.get("id"))
+            school_name = clean(school.get("name"))
+            if not school_id or not school_name:
+                continue
+            schools.append(
+                {
+                    "school_id": school_id,
+                    "space_id": SPACE_ID,
+                    "unit_id": unit_id,
+                    "unit_name": unit_name,
+                    "name": school_name,
+                    "official_url": clean(school.get("url")),
+                    "logo_url": absolute_site_url(school.get("logo")),
+                    "sort_order": as_int(school.get("sort")),
+                    "source_url": source_url,
+                    "source_document": "武汉大学本科招生网学院专业",
+                    "source_department": "武汉大学本科招生办公室",
+                    "published_at": published_date(school.get("updateDate") or school.get("createDate")),
+                    "raw_json": school,
+                }
+            )
+            for major in list_payload(school.get("zyList")):
+                major_id = clean(major.get("id"))
+                major_name = clean(major.get("name"))
+                if not major_name:
+                    continue
+                source_text = f"{major_name} 属于 {school_name}，所在学部为 {unit_name}。"
+                majors[major_name] = {
+                    "space_id": SPACE_ID,
+                    "name": major_name,
+                    "school_name": school_name,
+                    "degree": None,
+                    "category": unit_name,
+                    "source_url": source_url,
+                    "source_document": "武汉大学本科招生网学院专业",
+                    "source_text": source_text,
+                    "source_department": "武汉大学本科招生办公室",
+                    "published_at": published_date(major.get("updateDate") or major.get("createDate")),
+                    "raw_json": {
+                        **major,
+                        "id": major_id,
+                        "school_id": school_id,
+                        "school_name": school_name,
+                        "unit_id": unit_id,
+                        "unit_name": unit_name,
+                    },
+                }
+    return {"units": units, "schools": schools, "majors": list(majors.values())}
+
+
+def normalize_media_categories(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for row in rows:
+        category_id = clean(row.get("id"))
+        name = clean(row.get("name"))
+        if not category_id or not name:
+            continue
+        normalized.append(
+            {
+                "category_id": category_id,
+                "space_id": SPACE_ID,
+                "name": name,
+                "sort_order": as_int(row.get("sort")),
+                "source_url": f"{SITE_URL}#/yxnr/{category_id}",
+                "source_document": "武汉大学本科招生网影像栏目",
+                "source_department": "武汉大学本科招生办公室",
+                "published_at": None,
+                "raw_json": row,
+            }
+        )
+    return normalized
+
+
+def normalize_media_items(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    unique: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        item_id = clean(row.get("id"))
+        title = clean(row.get("title") or row.get("name"))
+        if not item_id or not title:
+            continue
+        category = dict_payload(row.get("category"))
+        category_id = clean(category.get("id"))
+        category_name = clean(category.get("name"))
+        media_url = absolute_site_url(row.get("url") or row.get("path") or row.get("video"))
+        source_url = f"{SITE_URL}#/yxnr?flid={category_id}&id={item_id}"
+        description = html_to_markdown(clean(row.get("content")), base_url="https://zsdata.whu.edu.cn/")
+        if not description:
+            description = clean(row.get("description"))
+        source_text = "，".join(
+            part
+            for part in (
+                f"{category_name}：{title}" if category_name else title,
+                description,
+                f"媒体地址：{media_url}" if media_url else "",
+            )
+            if part
+        )
+        unique[item_id] = {
+            "item_id": item_id,
+            "space_id": SPACE_ID,
+            "category_id": category_id,
+            "category_name": category_name,
+            "title": title,
+            "item_type": clean(row.get("type")),
+            "source_url": source_url,
+            "media_url": media_url,
+            "logo_url": absolute_site_url(row.get("logo")),
+            "description": description,
+            "published_at": published_date(row.get("fbsj") or row.get("updateDate") or row.get("createDate")),
+            "source_document": title,
+            "source_department": "武汉大学本科招生办公室",
+            "source_text": source_text,
+            "raw_json": row,
+        }
+    return list(unique.values())
+
+
 def build_admission_entities(
     *,
     plans: list[dict[str, Any]],
     scores: list[dict[str, Any]],
     strong_foundation_scores: list[dict[str, Any]],
+    site_majors: list[dict[str, Any]],
     seed_path: Path,
 ) -> dict[str, list[dict[str, Any]]]:
     entities: dict[str, dict[str, Any]] = {}
@@ -469,7 +807,11 @@ def build_admission_entities(
         if subject_id and object_id and predicate:
             add_relation(subject_id, predicate, object_id, float(relation.get("confidence") or 1.0))
 
-    for row in plans + scores:
+    major_rows: list[dict[str, Any]] = [
+        *({"major_name": row.get("major_name")} for row in plans + scores),
+        *({"major_name": row.get("name"), "school_name": row.get("school_name")} for row in site_majors),
+    ]
+    for row in major_rows:
         major_name = clean(row.get("major_name"))
         if not major_name:
             continue
@@ -481,6 +823,7 @@ def build_admission_entities(
             metadata={
                 "fact_tables": ["admission_plans", "admission_scores"],
                 "fact_column": "major_name",
+                **({"school_name": clean(row.get("school_name"))} if clean(row.get("school_name")) else {}),
             },
         )
         add_alias(major_id, major_name.replace("（", "(").replace("）", ")"), "display_variant", 0.96)
@@ -686,6 +1029,113 @@ def write_dataset_artifact(
     )
 
 
+def write_article_artifacts(
+    artifact_store: MarkdownArtifactStore,
+    rows: list[dict[str, Any]],
+):
+    artifacts = []
+    checker = MarkdownQualityChecker()
+    for row in rows:
+        markdown = clean(row.get("markdown")) or clean(row.get("source_text"))
+        if not markdown:
+            continue
+        title = clean(row.get("title")) or "武汉大学本科招生网文章"
+        body = "\n\n".join(
+            part
+            for part in (
+                f"# {title}",
+                f"栏目：{row.get('category_name')}" if row.get("category_name") else "",
+                markdown,
+            )
+            if part
+        )
+        quality = checker.check(body).to_dict()
+        artifact = artifact_store.write_document(
+            site_id=SITE_ID,
+            space_id=SPACE_ID,
+            url=str(row["source_url"]),
+            title=title,
+            published_at=row.get("published_at"),
+            markdown_body=body,
+            raw_html=json.dumps(row.get("raw_json") or {}, ensure_ascii=False, indent=2),
+            quality=quality,
+            depth=1,
+            links=article_links(row),
+        )
+        artifacts.append(artifact)
+    return artifacts
+
+
+def write_media_catalog_artifact(
+    artifact_store: MarkdownArtifactStore,
+    rows: list[dict[str, Any]],
+):
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault(clean(row.get("category_name")) or "未分类", []).append(row)
+    lines = ["# 武汉大学本科招生网影像与专题内容", "", f"数据来源：[{SITE_URL}]({SITE_URL})", ""]
+    for category, group in sorted(grouped.items()):
+        lines.extend([f"## {category}", ""])
+        for row in sorted(group, key=lambda item: clean(item.get("title"))):
+            line = f"- {row.get('title')}"
+            if row.get("description"):
+                line += f"：{row.get('description')}"
+            if row.get("media_url"):
+                line += f"。媒体地址：{row.get('media_url')}"
+            lines.append(line)
+        lines.append("")
+    body = "\n".join(lines).strip()
+    return artifact_store.write_document(
+        site_id=SITE_ID,
+        space_id=SPACE_ID,
+        url=f"{SITE_URL}#/yxnr",
+        title="武汉大学本科招生网影像与专题内容",
+        published_at=None,
+        markdown_body=body,
+        raw_html=json.dumps(rows, ensure_ascii=False, indent=2),
+        quality=MarkdownQualityChecker().check(body).to_dict(),
+        depth=0,
+        links=[{"url": str(row.get("source_url") or ""), "text": str(row.get("title") or ""), "is_asset": False} for row in rows],
+    )
+
+
+def write_academic_structure_artifact(
+    artifact_store: MarkdownArtifactStore,
+    payload: dict[str, list[dict[str, Any]]],
+):
+    schools_by_unit: dict[str, list[dict[str, Any]]] = {}
+    majors_by_school: dict[str, list[dict[str, Any]]] = {}
+    for school in payload["schools"]:
+        schools_by_unit.setdefault(clean(school.get("unit_name")), []).append(school)
+    for major in payload["majors"]:
+        majors_by_school.setdefault(clean(major.get("school_name")), []).append(major)
+    lines = ["# 武汉大学本科招生网学院专业", "", f"数据来源：[{SITE_URL}#/xyzy]({SITE_URL}#/xyzy)", ""]
+    for unit in sorted(payload["units"], key=lambda item: (as_int(item.get("sort_order")) or 9999, clean(item.get("name")))):
+        unit_name = clean(unit.get("name"))
+        lines.extend([f"## {unit_name}", ""])
+        for school in sorted(schools_by_unit.get(unit_name, []), key=lambda item: clean(item.get("name"))):
+            school_name = clean(school.get("name"))
+            lines.append(f"### {school_name}")
+            if school.get("official_url"):
+                lines.append(f"学院官网：{school.get('official_url')}")
+            for major in sorted(majors_by_school.get(school_name, []), key=lambda item: clean(item.get("name"))):
+                lines.append(f"- {major.get('name')}")
+            lines.append("")
+    body = "\n".join(lines).strip()
+    return artifact_store.write_document(
+        site_id=SITE_ID,
+        space_id=SPACE_ID,
+        url=f"{SITE_URL}#/xyzy",
+        title="武汉大学本科招生网学院专业",
+        published_at=None,
+        markdown_body=body,
+        raw_html=json.dumps(payload, ensure_ascii=False, indent=2),
+        quality=MarkdownQualityChecker().check(body).to_dict(),
+        depth=0,
+        links=[{"url": str(school.get("official_url") or ""), "text": str(school.get("name") or ""), "is_asset": False} for school in payload["schools"]],
+    )
+
+
 async def index_artifact(store: PostgresKnowledgeStore, artifact) -> None:
     await store.upsert_document(
         IndexedDocument(
@@ -770,6 +1220,110 @@ def plan_remarks(row: dict[str, Any]) -> str:
     if clean(row.get("zygroup")):
         remarks.append(f"专业组：{clean(row.get('zygroup'))}")
     return "；".join(remarks)
+
+
+def html_to_markdown(html: str, *, base_url: str) -> str:
+    if not html:
+        return ""
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+    lines: list[str] = []
+    for element in soup.find_all(["h1", "h2", "h3", "h4", "p", "li", "tr", "img"]):
+        name = element.name.lower()
+        if name == "img":
+            src = absolute_site_url(element.get("src"), base_url=base_url)
+            alt = clean(element.get("alt")) or "图片"
+            if src:
+                lines.append(f"![{alt}]({src})")
+            continue
+        if name == "tr":
+            cells = [normalize_spaces(cell.get_text(" ", strip=True)) for cell in element.find_all(["th", "td"])]
+            if cells:
+                lines.append(" | ".join(cell for cell in cells if cell))
+            continue
+        text = normalize_spaces(element.get_text(" ", strip=True))
+        if not text:
+            continue
+        if name in {"h1", "h2"}:
+            lines.append(f"## {text}")
+        elif name in {"h3", "h4"}:
+            lines.append(f"### {text}")
+        elif name == "li":
+            lines.append(f"- {text}")
+        else:
+            lines.append(text)
+    if not lines:
+        text = normalize_spaces(soup.get_text(" ", strip=True))
+        return text
+    return "\n\n".join(dedupe_keep_order(lines)).strip()
+
+
+def article_source_text(*, title: str, category: str, markdown: str) -> str:
+    parts = [title]
+    if category:
+        parts.append(f"栏目：{category}")
+    if markdown:
+        parts.append(markdown[:2000])
+    return "\n".join(parts)
+
+
+def article_links(row: dict[str, Any]) -> list[dict[str, Any]]:
+    links = [{"url": SITE_URL, "text": "武汉大学本科招生网", "is_asset": False}]
+    if row.get("logo_url"):
+        links.append({"url": str(row["logo_url"]), "text": "封面图", "is_asset": True})
+    raw = dict_payload(row.get("raw_json"))
+    for key in ("url", "video"):
+        url = absolute_site_url(raw.get(key))
+        if url:
+            links.append({"url": url, "text": key, "is_asset": True})
+    return links
+
+
+def article_url(*, category_id: str, article_id: str) -> str:
+    if category_id:
+        return f"{SITE_URL}#/de/{category_id}/{article_id}"
+    return f"{SITE_URL}#/de/{article_id}"
+
+
+def absolute_site_url(value: Any, *, base_url: str = "https://zsdata.whu.edu.cn/") -> str:
+    text = clean(value)
+    if not text:
+        return ""
+    return urljoin(base_url, text)
+
+
+def published_date(value: Any) -> str | None:
+    text = clean(value)
+    match = re.search(r"(20\d{2})[-/年.](\d{1,2})[-/月.](\d{1,2})", text)
+    if match:
+        year, month, day = match.groups()
+        return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
+    year = re.search(r"(20\d{2})", text)
+    return year.group(1) if year else None
+
+
+def normalize_spaces(value: str) -> str:
+    return re.sub(r"\s+", " ", value or "").strip()
+
+
+def dedupe_keep_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def dict_payload(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def list_payload(value: Any) -> list[dict[str, Any]]:
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
 
 
 def current_year(rows: list[dict[str, Any]]) -> str | None:

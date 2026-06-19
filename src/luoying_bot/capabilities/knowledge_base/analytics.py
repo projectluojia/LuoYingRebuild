@@ -37,7 +37,9 @@ class KnowledgeAnalyticsEngine:
     async def query(self, query: KnowledgeQuery, entities: EntityResolution | None = None) -> list[StructuredRecord]:
         if not self.semantic_layer.is_analytics_question(query.question):
             return []
-        plan = self._entity_plan(query, entities) if entities else None
+        plan = self._site_content_plan(query, entities)
+        if plan is None:
+            plan = self._entity_plan(query, entities) if entities else None
         if plan is None:
             plan = await self._plan(query, entities)
         if not plan.sql:
@@ -61,9 +63,12 @@ class KnowledgeAnalyticsEngine:
     def _entity_plan(self, query: KnowledgeQuery, entities: EntityResolution | None) -> AnalyticsPlan | None:
         if entities is None:
             return None
-        for entity in entities.fact_entities():
+        for entity in entities.matches:
             table = str(entity.metadata.get("fact_table") or "")
+            fact_tables = [str(item) for item in entity.metadata.get("fact_tables") or []]
             field = str(entity.metadata.get("fact_column") or "")
+            if not table and fact_tables and entity.score >= 100.0:
+                table = choose_fact_table(query.question, fact_tables)
             if table not in self.semantic_layer.allowed_tables or field not in self.semantic_layer.table_columns(table):
                 continue
             columns = self.semantic_layer.table_columns(table)
@@ -77,6 +82,9 @@ class KnowledgeAnalyticsEngine:
             year = extract_year(query.question)
             if year:
                 clauses.append(f"year = {year}")
+            subject_type = extract_subject_type(query.question)
+            if subject_type and "subject_type" in columns:
+                clauses.append(f"subject_type = {sql_literal(subject_type)}")
             question_norm = normalize_text(query.question)
             for province in entities.by_type("province"):
                 province_norm = normalize_text(province.canonical_name)
@@ -87,9 +95,9 @@ class KnowledgeAnalyticsEngine:
                 break
             order_by = "id asc"
             limit = 1
-            if wants_highest(query.question):
+            if wants_highest(query.question) and "min_score" in columns:
                 order_by = "min_score desc nulls last, min_rank asc nulls last, province asc"
-            elif wants_lowest(query.question):
+            elif wants_lowest(query.question) and "min_score" in columns:
                 order_by = "min_score asc nulls last, min_rank asc nulls last, province asc"
             if wants_listing(query.question):
                 limit = self.max_rows
@@ -101,6 +109,69 @@ class KnowledgeAnalyticsEngine:
                 f"order by {order_by} limit {limit}"
             )
             return AnalyticsPlan(sql=sql, rationale="entity_grounded")
+        return None
+
+    def _site_content_plan(self, query: KnowledgeQuery, entities: EntityResolution | None) -> AnalyticsPlan | None:
+        question = query.question
+        if is_fact_metric_question(question):
+            return None
+        clauses = ["review_status = 'approved'"]
+        if query.space_id:
+            clauses.append(f"space_id = {sql_literal(query.space_id)}")
+        if "试验班" in question:
+            where = " and ".join([*clauses, "category_name = '试验班'"])
+            sql = (
+                "select space_id, category_name, title, item_type, source_url, media_url, description, "
+                "published_at, source_document, source_department, review_status "
+                "from admission_media_items "
+                f"where {where} "
+                "order by title asc "
+                f"limit {self.max_rows}"
+            )
+            return AnalyticsPlan(sql=sql, rationale="site_media_category")
+        if "热点武大" in question:
+            where = " and ".join([*clauses, "category_name = '热点武大'"])
+            sql = (
+                "select space_id, category_name, title, description, source_url, published_at, "
+                "view_count, source_document, source_department, review_status "
+                "from admission_articles "
+                f"where {where} "
+                "order by published_at desc nulls last, title asc "
+                f"limit {self.max_rows}"
+            )
+            return AnalyticsPlan(sql=sql, rationale="site_article_category")
+        if "学部" in question and entities:
+            for school in entities.by_type("school"):
+                where = " and ".join([*clauses, f"name = {sql_literal(school.canonical_name)}"])
+                sql = (
+                    "select space_id, unit_name, name, official_url, source_url, source_document, "
+                    "source_department, review_status "
+                    "from admission_schools "
+                    f"where {where} "
+                    "order by name asc "
+                    "limit 1"
+                )
+                return AnalyticsPlan(sql=sql, rationale="site_school_unit")
+        if "学院" in question and ("哪些" in question or "有哪些" in question or "列" in question):
+            sql = (
+                "select space_id, unit_name, name, official_url, source_url, source_document, "
+                "source_department, review_status "
+                "from admission_schools "
+                f"where {' and '.join(clauses)} "
+                "order by unit_name asc, name asc "
+                f"limit {self.max_rows}"
+            )
+            return AnalyticsPlan(sql=sql, rationale="site_school_listing")
+        if "专业" in question and ("哪些" in question or "有哪些" in question or "列" in question):
+            sql = (
+                "select space_id, name, school_name, category, source_url, source_document, "
+                "source_department, review_status "
+                "from majors "
+                f"where {' and '.join(clauses)} "
+                "order by school_name asc, name asc "
+                f"limit {self.max_rows}"
+            )
+            return AnalyticsPlan(sql=sql, rationale="site_major_listing")
         return None
 
     async def _plan(self, query: KnowledgeQuery, entities: EntityResolution | None) -> AnalyticsPlan:
@@ -267,6 +338,44 @@ def extract_year(question: str) -> int | None:
 
 def wants_listing(question: str) -> bool:
     return any(marker in question for marker in ("所有", "全部", "列出", "列给", "列一下", "明细", "各省"))
+
+
+def choose_fact_table(question: str, fact_tables: list[str]) -> str:
+    if any(marker in question for marker in ("招生计划", "招生人数", "计划人数", "招多少", "多少人")):
+        if "admission_plans" in fact_tables:
+            return "admission_plans"
+    if any(marker in question for marker in ("分数", "分数线", "最低分", "最高分", "平均分", "位次", "录取")):
+        if "admission_scores" in fact_tables:
+            return "admission_scores"
+    return fact_tables[0] if fact_tables else ""
+
+
+def extract_subject_type(question: str) -> str:
+    for subject_type in ("物理类", "历史类", "综合改革", "文史", "理工", "艺术类"):
+        if subject_type in question:
+            return subject_type
+    return ""
+
+
+def is_fact_metric_question(question: str) -> bool:
+    return any(
+        marker in question
+        for marker in (
+            "分数",
+            "分数线",
+            "最低分",
+            "最高分",
+            "平均分",
+            "位次",
+            "录取",
+            "强基",
+            "招生计划",
+            "招生人数",
+            "计划人数",
+            "招多少",
+            "多少人",
+        )
+    )
 
 
 def wants_highest(question: str) -> bool:

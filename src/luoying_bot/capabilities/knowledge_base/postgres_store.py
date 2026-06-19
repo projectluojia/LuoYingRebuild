@@ -250,6 +250,95 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
                     updated_at timestamptz not null default now(),
                     unique(space_id, name)
                 );
+
+                create table if not exists admission_content_categories (
+                    category_id text primary key,
+                    space_id text not null,
+                    name text not null,
+                    sort_order integer,
+                    source_url text,
+                    source_document text,
+                    source_department text,
+                    published_at text,
+                    review_status text not null default 'approved',
+                    raw_json jsonb not null default '{{}}'::jsonb,
+                    updated_at timestamptz not null default now(),
+                    unique(space_id, name)
+                );
+
+                create table if not exists admission_articles (
+                    article_id text primary key,
+                    space_id text not null,
+                    category_id text references admission_content_categories(category_id) on delete set null,
+                    category_name text not null default '',
+                    title text not null,
+                    description text not null default '',
+                    source_url text,
+                    logo_url text,
+                    content_type text not null default '',
+                    published_at text,
+                    view_count integer,
+                    source_document text,
+                    source_department text,
+                    source_text text,
+                    review_status text not null default 'approved',
+                    raw_json jsonb not null default '{{}}'::jsonb,
+                    updated_at timestamptz not null default now()
+                );
+
+                create table if not exists academic_units (
+                    unit_id text primary key,
+                    space_id text not null,
+                    name text not null,
+                    sort_order integer,
+                    source_url text,
+                    source_document text,
+                    source_department text,
+                    published_at text,
+                    review_status text not null default 'approved',
+                    raw_json jsonb not null default '{{}}'::jsonb,
+                    updated_at timestamptz not null default now(),
+                    unique(space_id, name)
+                );
+
+                create table if not exists admission_schools (
+                    school_id text primary key,
+                    space_id text not null,
+                    unit_id text references academic_units(unit_id) on delete set null,
+                    unit_name text not null default '',
+                    name text not null,
+                    official_url text not null default '',
+                    logo_url text not null default '',
+                    sort_order integer,
+                    source_url text,
+                    source_document text,
+                    source_department text,
+                    published_at text,
+                    review_status text not null default 'approved',
+                    raw_json jsonb not null default '{{}}'::jsonb,
+                    updated_at timestamptz not null default now(),
+                    unique(space_id, name)
+                );
+
+                create table if not exists admission_media_items (
+                    item_id text primary key,
+                    space_id text not null,
+                    category_id text not null default '',
+                    category_name text not null default '',
+                    title text not null,
+                    item_type text not null default '',
+                    source_url text,
+                    media_url text not null default '',
+                    logo_url text not null default '',
+                    description text not null default '',
+                    published_at text,
+                    source_document text,
+                    source_department text,
+                    source_text text,
+                    review_status text not null default 'approved',
+                    raw_json jsonb not null default '{{}}'::jsonb,
+                    updated_at timestamptz not null default now()
+                );
                 """
             )
             await conn.execute(
@@ -290,6 +379,15 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
             )
             await conn.execute(
                 "create index if not exists admission_strong_foundation_lookup_idx on admission_strong_foundation_scores(space_id, year, province)"
+            )
+            await conn.execute(
+                "create index if not exists admission_articles_lookup_idx on admission_articles(space_id, category_name, review_status)"
+            )
+            await conn.execute(
+                "create index if not exists admission_schools_lookup_idx on admission_schools(space_id, unit_name, review_status)"
+            )
+            await conn.execute(
+                "create index if not exists admission_media_items_lookup_idx on admission_media_items(space_id, category_name, review_status)"
             )
 
     async def upsert_document(self, document: IndexedDocument) -> None:
@@ -502,6 +600,11 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
             "admission_strong_foundation_scores",
             "majors",
             "class_types",
+            "admission_content_categories",
+            "admission_articles",
+            "academic_units",
+            "admission_schools",
+            "admission_media_items",
         }:
             rows = await self._list_structured(collection, filters=filters, limit=limit, sort=sort)
         else:
@@ -993,6 +1096,287 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
                     count += 1
         return count
 
+    async def upsert_admission_content_categories(self, rows: list[dict[str, Any]]) -> int:
+        pool = await self._get_pool()
+        count = 0
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                for item in rows:
+                    await conn.execute(
+                        """
+                        insert into admission_content_categories (
+                            category_id, space_id, name, sort_order, source_url, source_document,
+                            source_department, published_at, review_status, raw_json, updated_at
+                        )
+                        values ($1, $2, $3, $4, $5, $6, $7, $8, 'approved', $9::jsonb, now())
+                        on conflict(category_id) do update set
+                            space_id=excluded.space_id,
+                            name=excluded.name,
+                            sort_order=excluded.sort_order,
+                            source_url=excluded.source_url,
+                            source_document=excluded.source_document,
+                            source_department=excluded.source_department,
+                            published_at=excluded.published_at,
+                            review_status='approved',
+                            raw_json=excluded.raw_json,
+                            updated_at=now()
+                        """,
+                        item["category_id"],
+                        item["space_id"],
+                        item["name"],
+                        item.get("sort_order"),
+                        item.get("source_url"),
+                        item.get("source_document"),
+                        item.get("source_department"),
+                        item.get("published_at"),
+                        json.dumps(item.get("raw_json") or {}, ensure_ascii=False),
+                    )
+                    count += 1
+        return count
+
+    async def upsert_admission_articles(self, rows: list[dict[str, Any]]) -> int:
+        pool = await self._get_pool()
+        count = 0
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                for item in rows:
+                    await conn.execute(
+                        """
+                        insert into admission_articles (
+                            article_id, space_id, category_id, category_name, title, description,
+                            source_url, logo_url, content_type, published_at, view_count,
+                            source_document, source_department, source_text,
+                            review_status, raw_json, updated_at
+                        )
+                        values (
+                            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+                            $12, $13, $14, 'approved', $15::jsonb, now()
+                        )
+                        on conflict(article_id) do update set
+                            space_id=excluded.space_id,
+                            category_id=excluded.category_id,
+                            category_name=excluded.category_name,
+                            title=excluded.title,
+                            description=excluded.description,
+                            source_url=excluded.source_url,
+                            logo_url=excluded.logo_url,
+                            content_type=excluded.content_type,
+                            published_at=excluded.published_at,
+                            view_count=excluded.view_count,
+                            source_document=excluded.source_document,
+                            source_department=excluded.source_department,
+                            source_text=excluded.source_text,
+                            review_status='approved',
+                            raw_json=excluded.raw_json,
+                            updated_at=now()
+                        """,
+                        item["article_id"],
+                        item["space_id"],
+                        item.get("category_id"),
+                        item.get("category_name") or "",
+                        item["title"],
+                        item.get("description") or "",
+                        item.get("source_url"),
+                        item.get("logo_url"),
+                        item.get("content_type") or "",
+                        item.get("published_at"),
+                        item.get("view_count"),
+                        item.get("source_document"),
+                        item.get("source_department"),
+                        item.get("source_text"),
+                        json.dumps(item.get("raw_json") or {}, ensure_ascii=False),
+                    )
+                    count += 1
+        return count
+
+    async def upsert_academic_units(self, rows: list[dict[str, Any]]) -> int:
+        pool = await self._get_pool()
+        count = 0
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                for item in rows:
+                    await conn.execute(
+                        """
+                        insert into academic_units (
+                            unit_id, space_id, name, sort_order, source_url, source_document,
+                            source_department, published_at, review_status, raw_json, updated_at
+                        )
+                        values ($1, $2, $3, $4, $5, $6, $7, $8, 'approved', $9::jsonb, now())
+                        on conflict(unit_id) do update set
+                            space_id=excluded.space_id,
+                            name=excluded.name,
+                            sort_order=excluded.sort_order,
+                            source_url=excluded.source_url,
+                            source_document=excluded.source_document,
+                            source_department=excluded.source_department,
+                            published_at=excluded.published_at,
+                            review_status='approved',
+                            raw_json=excluded.raw_json,
+                            updated_at=now()
+                        """,
+                        item["unit_id"],
+                        item["space_id"],
+                        item["name"],
+                        item.get("sort_order"),
+                        item.get("source_url"),
+                        item.get("source_document"),
+                        item.get("source_department"),
+                        item.get("published_at"),
+                        json.dumps(item.get("raw_json") or {}, ensure_ascii=False),
+                    )
+                    count += 1
+        return count
+
+    async def upsert_admission_schools(self, rows: list[dict[str, Any]]) -> int:
+        pool = await self._get_pool()
+        count = 0
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                for item in rows:
+                    await conn.execute(
+                        """
+                        insert into admission_schools (
+                            school_id, space_id, unit_id, unit_name, name, official_url, logo_url,
+                            sort_order, source_url, source_document, source_department,
+                            published_at, review_status, raw_json, updated_at
+                        )
+                        values (
+                            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                            $11, $12, 'approved', $13::jsonb, now()
+                        )
+                        on conflict(school_id) do update set
+                            space_id=excluded.space_id,
+                            unit_id=excluded.unit_id,
+                            unit_name=excluded.unit_name,
+                            name=excluded.name,
+                            official_url=excluded.official_url,
+                            logo_url=excluded.logo_url,
+                            sort_order=excluded.sort_order,
+                            source_url=excluded.source_url,
+                            source_document=excluded.source_document,
+                            source_department=excluded.source_department,
+                            published_at=excluded.published_at,
+                            review_status='approved',
+                            raw_json=excluded.raw_json,
+                            updated_at=now()
+                        """,
+                        item["school_id"],
+                        item["space_id"],
+                        item.get("unit_id"),
+                        item.get("unit_name") or "",
+                        item["name"],
+                        item.get("official_url") or "",
+                        item.get("logo_url") or "",
+                        item.get("sort_order"),
+                        item.get("source_url"),
+                        item.get("source_document"),
+                        item.get("source_department"),
+                        item.get("published_at"),
+                        json.dumps(item.get("raw_json") or {}, ensure_ascii=False),
+                    )
+                    count += 1
+        return count
+
+    async def upsert_admission_media_items(self, rows: list[dict[str, Any]]) -> int:
+        pool = await self._get_pool()
+        count = 0
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                for item in rows:
+                    await conn.execute(
+                        """
+                        insert into admission_media_items (
+                            item_id, space_id, category_id, category_name, title, item_type,
+                            source_url, media_url, logo_url, description, published_at,
+                            source_document, source_department, source_text,
+                            review_status, raw_json, updated_at
+                        )
+                        values (
+                            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                            $11, $12, $13, $14, 'approved', $15::jsonb, now()
+                        )
+                        on conflict(item_id) do update set
+                            space_id=excluded.space_id,
+                            category_id=excluded.category_id,
+                            category_name=excluded.category_name,
+                            title=excluded.title,
+                            item_type=excluded.item_type,
+                            source_url=excluded.source_url,
+                            media_url=excluded.media_url,
+                            logo_url=excluded.logo_url,
+                            description=excluded.description,
+                            published_at=excluded.published_at,
+                            source_document=excluded.source_document,
+                            source_department=excluded.source_department,
+                            source_text=excluded.source_text,
+                            review_status='approved',
+                            raw_json=excluded.raw_json,
+                            updated_at=now()
+                        """,
+                        item["item_id"],
+                        item["space_id"],
+                        item.get("category_id") or "",
+                        item.get("category_name") or "",
+                        item["title"],
+                        item.get("item_type") or "",
+                        item.get("source_url"),
+                        item.get("media_url") or "",
+                        item.get("logo_url") or "",
+                        item.get("description") or "",
+                        item.get("published_at"),
+                        item.get("source_document"),
+                        item.get("source_department"),
+                        item.get("source_text"),
+                        json.dumps(item.get("raw_json") or {}, ensure_ascii=False),
+                    )
+                    count += 1
+        return count
+
+    async def upsert_majors(self, rows: list[dict[str, Any]]) -> int:
+        pool = await self._get_pool()
+        count = 0
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                for item in rows:
+                    await conn.execute(
+                        """
+                        insert into majors (
+                            space_id, name, school_name, degree, category, source_url,
+                            source_document, source_text, source_department, published_at,
+                            review_status, raw_json, updated_at
+                        )
+                        values (
+                            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                            'approved', $11::jsonb, now()
+                        )
+                        on conflict(space_id, name) do update set
+                            school_name=excluded.school_name,
+                            degree=excluded.degree,
+                            category=excluded.category,
+                            source_url=excluded.source_url,
+                            source_document=excluded.source_document,
+                            source_text=excluded.source_text,
+                            source_department=excluded.source_department,
+                            published_at=excluded.published_at,
+                            review_status='approved',
+                            raw_json=excluded.raw_json,
+                            updated_at=now()
+                        """,
+                        item["space_id"],
+                        item["name"],
+                        item.get("school_name"),
+                        item.get("degree"),
+                        item.get("category"),
+                        item.get("source_url"),
+                        item.get("source_document"),
+                        item.get("source_text"),
+                        item.get("source_department"),
+                        item.get("published_at"),
+                        json.dumps(item.get("raw_json") or {}, ensure_ascii=False),
+                    )
+                    count += 1
+        return count
+
     async def _list_documents(self, *, filters: dict[str, Any], limit: int, sort: list[str] | None) -> list[dict[str, Any]]:
         del sort
         normalized = normalize_filter(filters)
@@ -1214,6 +1598,26 @@ STRUCTURED_FILTER_FIELDS: dict[str, set[str]] = {
     },
     "majors": {"space_id", "name", "review_status"},
     "class_types": {"space_id", "name", "review_status"},
+    "admission_content_categories": {"space_id", "category_id", "name", "review_status"},
+    "admission_articles": {
+        "space_id",
+        "article_id",
+        "category_id",
+        "category_name",
+        "title",
+        "review_status",
+    },
+    "academic_units": {"space_id", "unit_id", "name", "review_status"},
+    "admission_schools": {"space_id", "school_id", "unit_id", "unit_name", "name", "review_status"},
+    "admission_media_items": {
+        "space_id",
+        "item_id",
+        "category_id",
+        "category_name",
+        "title",
+        "item_type",
+        "review_status",
+    },
 }
 
 
