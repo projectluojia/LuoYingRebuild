@@ -43,7 +43,6 @@ def create_knowledge_base_router(
             result = await container_provider().services.knowledge_base_service.answer(
                 question=req.question,
                 space_id=req.space_id,
-                domain=req.domain,
                 platform=req.platform or "web",
                 conversation_id=req.conversation_id or "web-knowledge",
                 user_id=req.user_id or user.user_id,
@@ -63,7 +62,6 @@ def create_knowledge_base_router(
             result = await container_provider().services.knowledge_base_service.search(
                 query_text=req.query,
                 space_id=req.space_id,
-                domain=req.domain,
                 filters=req.filters,
                 top_k=req.top_k,
             )

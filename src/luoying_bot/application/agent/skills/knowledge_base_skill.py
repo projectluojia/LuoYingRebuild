@@ -16,8 +16,8 @@ class KnowledgeBaseSkill(BaseSkill):
         "本技能使用 Git 管理的网页 Markdown artifact 和本地混合索引。"
         "回答会附带来源；没有可靠来源时会拒绝给出确定结论。"
         "payload 示例："
-        '{"question":"去年河北物理类人工智能最低多少分？","domain":"admissions","space_id":"admissions"} '
-        '{"question":"软件工程和人工智能专业有什么区别？","domain":"admissions"}'
+        '{"question":"去年河北物理类人工智能最低多少分？"} '
+        '{"question":"软件工程和人工智能专业有什么区别？"}'
     )
 
     async def run(self, req: SkillRequest) -> SkillResult:
@@ -34,7 +34,6 @@ class KnowledgeBaseSkill(BaseSkill):
         answer = await self.services.knowledge_base_service.answer(
             question=question,
             space_id=self._optional_text(req.payload.get("space_id")),
-            domain=self._optional_text(req.payload.get("domain")),
             platform=context.target.platform.value,
             conversation_id=context.target.conversation_id,
             user_id=context.user.user_id,

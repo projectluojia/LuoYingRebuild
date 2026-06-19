@@ -4,10 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from luoying_bot.capabilities.knowledge_base.models import (
-    KnowledgeAnswer,
-    KnowledgeQuery,
     RetrievedChunk,
-    StructuredRecord,
 )
 
 
@@ -21,6 +18,16 @@ class RagBackend(ABC):
         filters: dict[str, Any],
         top_k: int,
     ) -> list[RetrievedChunk]: ...
+
+
+class AnalyticsBackend(ABC):
+    @abstractmethod
+    async def execute_select(
+        self,
+        sql: str,
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
 
 
 class StructuredBackend(ABC):
@@ -50,25 +57,12 @@ class StructuredBackend(ABC):
         payload: dict[str, Any],
     ) -> dict[str, Any]: ...
 
-
-class KnowledgeDomain(ABC):
-    name: str
-
     @abstractmethod
-    def dataset_id_for_space(self, space_id: str) -> str: ...
-
-    @abstractmethod
-    def extract_filters(self, question: str, provided: dict[str, Any]) -> dict[str, Any]: ...
-
-    @abstractmethod
-    async def query_structured(
+    async def distinct_values(
         self,
-        backend: StructuredBackend,
-        query: KnowledgeQuery,
-    ) -> list[StructuredRecord]: ...
-
-    @abstractmethod
-    def build_system_instruction(self, query: KnowledgeQuery) -> str: ...
-
-    @abstractmethod
-    def validate_answer(self, answer: KnowledgeAnswer) -> KnowledgeAnswer: ...
+        collection: str,
+        field: str,
+        *,
+        filters: dict[str, Any] | None = None,
+        limit: int = 10000,
+    ) -> list[str]: ...

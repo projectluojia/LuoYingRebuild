@@ -13,7 +13,7 @@ from luoying_bot.capabilities.knowledge_base.extraction import (
     is_asset_url,
     normalize_url,
 )
-from luoying_bot.capabilities.knowledge_base.local_store import IndexedDocument, LocalKnowledgeStore
+from luoying_bot.capabilities.knowledge_base.postgres_store import IndexedDocument, PostgresKnowledgeStore
 from luoying_bot.capabilities.knowledge_base.quality import MarkdownQualityChecker
 
 
@@ -215,7 +215,7 @@ class KnowledgeCrawlRecorder:
     def __init__(
         self,
         *,
-        store: LocalKnowledgeStore,
+        store: PostgresKnowledgeStore,
         artifact_store: MarkdownArtifactStore,
     ):
         self.store = store

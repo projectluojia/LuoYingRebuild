@@ -11,12 +11,13 @@ from pathlib import Path
 from typing import Any
 
 from luoying_bot.capabilities.knowledge_base import KnowledgeBaseConfig, KnowledgeBaseService
+from luoying_bot.capabilities.knowledge_base.analytics import KnowledgeAnalyticsEngine
 from luoying_bot.capabilities.knowledge_base.answering import KnowledgeAnswerGenerator
-from luoying_bot.capabilities.knowledge_base.domains.admissions import AdmissionsKnowledgeDomain
-from luoying_bot.capabilities.knowledge_base.domains.general import GeneralKnowledgeDomain
 from luoying_bot.capabilities.knowledge_base.embeddings import OpenAICompatibleEmbeddingProvider
-from luoying_bot.capabilities.knowledge_base.local_store import LocalKnowledgeStore
 from luoying_bot.capabilities.knowledge_base.policy import KnowledgeBasePolicy
+from luoying_bot.capabilities.knowledge_base.postgres_store import PostgresKnowledgeStore
+from luoying_bot.capabilities.knowledge_base.query_agent import KBQueryAgent, KBQueryAgentConfig
+from luoying_bot.capabilities.knowledge_base.semantic_layer import KnowledgeSemanticLayer
 from luoying_bot.config import settings
 from luoying_bot.infra.llm.openai_chat import OpenAICompatibleChatModel
 
@@ -28,8 +29,7 @@ DEFAULT_REPORT_DIR = Path("test/kb/reports")
 class QueryCase:
     id: str
     question: str
-    domain: str
-    space_id: str
+    space_id: str | None
     top_k: int
     expected_any: list[str]
     expected_sources_any: list[str]
@@ -40,8 +40,9 @@ class QueryCase:
         return cls(
             id=str(data["id"]),
             question=str(data["question"]),
-            domain=str(data.get("domain") or settings.kb_default_domain),
-            space_id=str(data.get("space_id") or settings.kb_default_space_id),
+            space_id=(None if data.get("space_id") in (None, "") else str(data["space_id"]))
+            if "space_id" in data
+            else settings.kb_default_space_id,
             top_k=int(data.get("top_k") or 5),
             expected_any=[str(item) for item in data.get("expected_any", [])],
             expected_sources_any=[str(item) for item in data.get("expected_sources_any", [])],
@@ -49,40 +50,44 @@ class QueryCase:
         )
 
 
-def build_service(*, with_answer: bool) -> KnowledgeBaseService:
-    model = None
-    if with_answer:
-        model = OpenAICompatibleChatModel(
-            settings.openai_base_url,
-            settings.openai_api_key,
-            settings.openai_model,
-            settings.llm_temperature,
-            settings.openai_enable_thinking,
-        )
-    store = LocalKnowledgeStore(
-        settings.kb_metadata_db,
+async def build_service(*, with_answer: bool) -> KnowledgeBaseService:
+    query_model = OpenAICompatibleChatModel(
+        settings.openai_base_url,
+        settings.openai_api_key,
+        settings.openai_model,
+        settings.llm_temperature,
+        settings.openai_enable_thinking,
+    )
+    store = PostgresKnowledgeStore(
+        settings.kb_database_url,
         embedding_provider=OpenAICompatibleEmbeddingProvider(
             base_url=settings.kb_embedding_base_url,
             api_key=settings.kb_embedding_api_key,
             model=settings.kb_embedding_model,
             batch_size=settings.kb_embedding_batch_size,
         ),
+        embedding_dimensions=settings.kb_embedding_dimensions,
     )
-    return KnowledgeBaseService(
+    await store.ensure_schema()
+    query_agent = KBQueryAgent(
         rag_backend=store,
         structured_backend=store,
-        domains={
-            "general": GeneralKnowledgeDomain(
-                default_dataset_id=settings.kb_default_space_id,
-            ),
-            "admissions": AdmissionsKnowledgeDomain(
-                dataset_id=settings.kb_default_space_id,
-            ),
-        },
-        answer_generator=KnowledgeAnswerGenerator(model),
+        analytics_engine=KnowledgeAnalyticsEngine(
+            backend=store,
+            value_backend=store,
+            model=query_model,
+            semantic_layer=KnowledgeSemanticLayer(),
+        ),
+        config=KBQueryAgentConfig(
+            default_space_id=settings.kb_default_space_id,
+        ),
+    )
+    return KnowledgeBaseService(
+        structured_backend=store,
+        query_agent=query_agent,
+        answer_generator=KnowledgeAnswerGenerator(query_model if with_answer else None),
         config=KnowledgeBaseConfig(
             default_space_id=settings.kb_default_space_id,
-            default_domain=settings.kb_default_domain,
             require_citation=settings.kb_require_citation,
         ),
         policy=KnowledgeBasePolicy(require_citation=settings.kb_require_citation),
@@ -100,7 +105,6 @@ async def run_case(
         answer = await service.answer(
             question=case.question,
             space_id=case.space_id,
-            domain=case.domain,
             platform="harness",
             conversation_id="kb-harness",
             user_id="kb-harness",
@@ -124,7 +128,6 @@ async def run_case(
         retrieval = await service.search(
             query_text=case.question,
             space_id=case.space_id,
-            domain=case.domain,
             top_k=case.top_k,
         )
         elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
@@ -180,11 +183,10 @@ async def run_case(
 
 
 async def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
-    service = build_service(with_answer=args.with_answer)
+    service = await build_service(with_answer=args.with_answer)
     case = QueryCase(
         id="smoke_undergraduate_training",
         question=args.question,
-        domain=args.domain,
         space_id=args.space_id,
         top_k=args.top_k,
         expected_any=["本科生培养", "人工智能"],
@@ -202,7 +204,7 @@ async def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
 
 async def run_eval(args: argparse.Namespace) -> dict[str, Any]:
     cases = load_cases(Path(args.cases))
-    service = build_service(with_answer=args.with_answer)
+    service = await build_service(with_answer=args.with_answer)
     results = []
     for case in cases:
         results.append(await run_case(service, case, with_answer=args.with_answer))
@@ -217,7 +219,7 @@ async def run_eval(args: argparse.Namespace) -> dict[str, Any]:
 
 async def run_perf(args: argparse.Namespace) -> dict[str, Any]:
     cases = load_cases(Path(args.cases))
-    service = build_service(with_answer=False)
+    service = await build_service(with_answer=False)
     semaphore = asyncio.Semaphore(args.concurrency)
     latencies: list[float] = []
     request_failures: list[dict[str, Any]] = []
@@ -309,13 +311,13 @@ def percentile(ordered: list[float], ratio: float) -> float:
 def safe_settings_snapshot() -> dict[str, Any]:
     return {
         "kb_artifact_root": str(settings.kb_artifact_root),
-        "kb_metadata_db": str(settings.kb_metadata_db),
+        "kb_database_url": settings.kb_database_url,
         "kb_default_space_id": settings.kb_default_space_id,
-        "kb_default_domain": settings.kb_default_domain,
         "kb_require_citation": settings.kb_require_citation,
         "kb_embedding_base_url": settings.kb_embedding_base_url,
         "kb_embedding_model": settings.kb_embedding_model,
         "kb_embedding_batch_size": settings.kb_embedding_batch_size,
+        "kb_embedding_dimensions": settings.kb_embedding_dimensions,
     }
 
 
@@ -337,7 +339,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     smoke = subparsers.add_parser("smoke")
     smoke.add_argument("--question", default="武汉大学人工智能学院本科生培养有哪些信息？")
-    smoke.add_argument("--domain", default="admissions")
     smoke.add_argument("--space-id", default="sai")
     smoke.add_argument("--top-k", type=int, default=5)
     smoke.add_argument("--with-answer", action="store_true")

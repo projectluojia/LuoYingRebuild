@@ -71,14 +71,17 @@ class Settings:
     memobase_write_sync: bool = _env_bool('MEMOBASE_WRITE_SYNC', False)
 
     kb_artifact_root: Path = _env_path('KB_ARTIFACT_ROOT', './knowledge')
-    kb_metadata_db: Path = _env_path('KB_METADATA_DB', './var/kb/metadata.sqlite3')
+    kb_database_url: str = os.getenv(
+        'KB_DATABASE_URL',
+        'postgresql://luoying_kb:luoying_kb@127.0.0.1:15432/luoying_kb',
+    )
     kb_default_space_id: str = os.getenv('KB_DEFAULT_SPACE_ID', 'sai')
-    kb_default_domain: str = os.getenv('KB_DEFAULT_DOMAIN', 'admissions')
     kb_require_citation: bool = _env_bool('KB_REQUIRE_CITATION', True)
     kb_embedding_base_url: str = os.getenv('KB_EMBEDDING_BASE_URL', 'http://127.0.0.1:8080/v1')
     kb_embedding_api_key: str = os.getenv('KB_EMBEDDING_API_KEY', '')
     kb_embedding_model: str = os.getenv('KB_EMBEDDING_MODEL', 'text-embeddings-inference')
     kb_embedding_batch_size: int = int(os.getenv('KB_EMBEDDING_BATCH_SIZE', '32'))
+    kb_embedding_dimensions: int = int(os.getenv('KB_EMBEDDING_DIMENSIONS', '512'))
 
     memory_max_messages_per_thread: int = int(os.getenv('MEMORY_MAX_MESSAGES_PER_THREAD', '80'))
     agent_skill_timeout_sec: float = float(os.getenv('AGENT_SKILL_TIMEOUT_SEC', '30'))

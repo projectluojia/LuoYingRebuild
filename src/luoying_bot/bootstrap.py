@@ -19,12 +19,13 @@ from luoying_bot.application.services.user_prompt_settings_service import UserPr
 from luoying_bot.application.services.user_service import UserService
 from luoying_bot.application.services.user_memory_service import UserMemoryService
 from luoying_bot.capabilities.knowledge_base import KnowledgeBaseConfig, KnowledgeBaseService
+from luoying_bot.capabilities.knowledge_base.analytics import KnowledgeAnalyticsEngine
 from luoying_bot.capabilities.knowledge_base.answering import KnowledgeAnswerGenerator
-from luoying_bot.capabilities.knowledge_base.domains.admissions import AdmissionsKnowledgeDomain
-from luoying_bot.capabilities.knowledge_base.domains.general import GeneralKnowledgeDomain
 from luoying_bot.capabilities.knowledge_base.embeddings import OpenAICompatibleEmbeddingProvider
-from luoying_bot.capabilities.knowledge_base.local_store import LocalKnowledgeStore
 from luoying_bot.capabilities.knowledge_base.policy import KnowledgeBasePolicy
+from luoying_bot.capabilities.knowledge_base.postgres_store import PostgresKnowledgeStore
+from luoying_bot.capabilities.knowledge_base.query_agent import KBQueryAgent, KBQueryAgentConfig
+from luoying_bot.capabilities.knowledge_base.semantic_layer import KnowledgeSemanticLayer
 from luoying_bot.config import settings
 from luoying_bot.infra.llm.openai_chat import OpenAICompatibleChatModel
 from luoying_bot.infra.memory.in_memory import InMemoryConversationMemory
@@ -121,30 +122,36 @@ async def _build_container(
         settings.openai_enable_thinking,
     )
 
-    knowledge_store = LocalKnowledgeStore(
-        settings.kb_metadata_db,
+    knowledge_store = PostgresKnowledgeStore(
+        settings.kb_database_url,
         embedding_provider=OpenAICompatibleEmbeddingProvider(
             base_url=settings.kb_embedding_base_url,
             api_key=settings.kb_embedding_api_key,
             model=settings.kb_embedding_model,
             batch_size=settings.kb_embedding_batch_size,
         ),
+        embedding_dimensions=settings.kb_embedding_dimensions,
     )
-    knowledge_base_service = KnowledgeBaseService(
+    await knowledge_store.ensure_schema()
+    kb_query_agent = KBQueryAgent(
         rag_backend=knowledge_store,
         structured_backend=knowledge_store,
-        domains={
-            "general": GeneralKnowledgeDomain(
-                default_dataset_id=settings.kb_default_space_id,
-            ),
-            "admissions": AdmissionsKnowledgeDomain(
-                dataset_id=settings.kb_default_space_id,
-            ),
-        },
+        analytics_engine=KnowledgeAnalyticsEngine(
+            backend=knowledge_store,
+            value_backend=knowledge_store,
+            model=model,
+            semantic_layer=KnowledgeSemanticLayer(),
+        ),
+        config=KBQueryAgentConfig(
+            default_space_id=settings.kb_default_space_id,
+        ),
+    )
+    knowledge_base_service = KnowledgeBaseService(
+        structured_backend=knowledge_store,
+        query_agent=kb_query_agent,
         answer_generator=KnowledgeAnswerGenerator(model),
         config=KnowledgeBaseConfig(
             default_space_id=settings.kb_default_space_id,
-            default_domain=settings.kb_default_domain,
             require_citation=settings.kb_require_citation,
         ),
         policy=KnowledgeBasePolicy(require_citation=settings.kb_require_citation),

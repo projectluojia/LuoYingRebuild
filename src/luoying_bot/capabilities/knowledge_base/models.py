@@ -78,7 +78,6 @@ class StructuredRecord:
 class KnowledgeQuery:
     question: str
     space_id: str
-    domain: str = "general"
     platform: str = ""
     conversation_id: str = ""
     user_id: str = ""
@@ -145,4 +144,3 @@ class KnowledgeAnswer:
             "fallback_reason": self.fallback_reason,
             "data": self.data,
         }
-

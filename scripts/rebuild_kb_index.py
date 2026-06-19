@@ -7,25 +7,27 @@ from pathlib import Path
 
 from luoying_bot.capabilities.knowledge_base.artifacts import parse_markdown_artifact
 from luoying_bot.capabilities.knowledge_base.embeddings import OpenAICompatibleEmbeddingProvider
-from luoying_bot.capabilities.knowledge_base.local_store import IndexedDocument, LocalKnowledgeStore
+from luoying_bot.capabilities.knowledge_base.postgres_store import IndexedDocument, PostgresKnowledgeStore
 from luoying_bot.config import settings
 
 
 async def main() -> None:
-    parser = argparse.ArgumentParser(description="Rebuild local KB metadata and hybrid index from Markdown artifacts")
+    parser = argparse.ArgumentParser(description="Rebuild KB Postgres metadata and hybrid index from Markdown artifacts")
     parser.add_argument("--artifact-root", default=str(settings.kb_artifact_root))
     args = parser.parse_args()
 
     root = Path(args.artifact_root)
-    store = LocalKnowledgeStore(
-        settings.kb_metadata_db,
+    store = PostgresKnowledgeStore(
+        settings.kb_database_url,
         embedding_provider=OpenAICompatibleEmbeddingProvider(
             base_url=settings.kb_embedding_base_url,
             api_key=settings.kb_embedding_api_key,
             model=settings.kb_embedding_model,
             batch_size=settings.kb_embedding_batch_size,
         ),
+        embedding_dimensions=settings.kb_embedding_dimensions,
     )
+    await store.ensure_schema()
     count = 0
     for markdown_path in sorted(root.glob("sources/*/pages/*.md")):
         markdown = markdown_path.read_text(encoding="utf-8")
@@ -54,7 +56,7 @@ async def main() -> None:
                 "ok": True,
                 "documents_indexed": count,
                 "artifact_root": str(root),
-                "metadata_db": str(settings.kb_metadata_db),
+                "database_url": settings.kb_database_url,
             },
             ensure_ascii=False,
             indent=2,

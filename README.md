@@ -187,7 +187,7 @@ MEMOBASE_WRITE_SYNC=false
 自托管 Memobase 可以搭配本地 embedding 服务。仓库提供了一个诊断脚本，用来检查 Memobase 健康状态、embedding 维度、用户创建、聊天写入、flush 和 context 读取：
 
 ```bash
-python3 scripts/diagnose_memobase.py \
+uv run --frozen python scripts/diagnose_memobase.py \
   --memobase-url http://127.0.0.1:8019 \
   --memobase-key secret \
   --embedding-url http://127.0.0.1:8080/v1 \

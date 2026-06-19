@@ -2,7 +2,7 @@
 
 This directory contains repeatable tests for the LuoYing knowledge base.
 
-The harness reads the local SQLite metadata/index configured by `KB_METADATA_DB`.
+The harness reads the Postgres/pgvector metadata and hybrid index configured by `KB_DATABASE_URL`.
 Build it from committed Markdown artifacts with:
 
 ```bash

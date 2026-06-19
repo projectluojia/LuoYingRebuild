@@ -5,19 +5,17 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-from urllib.parse import urlparse
 
 from luoying_bot.capabilities.knowledge_base.answering import KnowledgeAnswerGenerator
 from luoying_bot.capabilities.knowledge_base.errors import BackendUnavailable, KnowledgeBaseError
 from luoying_bot.capabilities.knowledge_base.models import (
-    Citation,
     KnowledgeAnswer,
     KnowledgeQuery,
     RetrievalResult,
-    StructuredRecord,
 )
 from luoying_bot.capabilities.knowledge_base.policy import KnowledgeBasePolicy
-from luoying_bot.capabilities.knowledge_base.ports import KnowledgeDomain, RagBackend, StructuredBackend
+from luoying_bot.capabilities.knowledge_base.ports import StructuredBackend
+from luoying_bot.capabilities.knowledge_base.query_agent import KBQueryAgent
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +23,6 @@ logger = logging.getLogger(__name__)
 @dataclass(slots=True)
 class KnowledgeBaseConfig:
     default_space_id: str
-    default_domain: str
     require_citation: bool = True
 
 
@@ -33,16 +30,14 @@ class KnowledgeBaseService:
     def __init__(
         self,
         *,
-        rag_backend: RagBackend,
         structured_backend: StructuredBackend,
-        domains: dict[str, KnowledgeDomain],
+        query_agent: KBQueryAgent,
         answer_generator: KnowledgeAnswerGenerator,
         config: KnowledgeBaseConfig,
         policy: KnowledgeBasePolicy | None = None,
     ):
-        self.rag_backend = rag_backend
         self.structured_backend = structured_backend
-        self.domains = dict(domains)
+        self.query_agent = query_agent
         self.answer_generator = answer_generator
         self.config = config
         self.policy = policy or KnowledgeBasePolicy(require_citation=config.require_citation)
@@ -52,7 +47,6 @@ class KnowledgeBaseService:
         *,
         question: str,
         space_id: str | None = None,
-        domain: str | None = None,
         platform: str = "",
         conversation_id: str = "",
         user_id: str = "",
@@ -63,15 +57,13 @@ class KnowledgeBaseService:
         query = self._build_query(
             question=question,
             space_id=space_id,
-            domain=domain,
             platform=platform,
             conversation_id=conversation_id,
             user_id=user_id,
             filters=filters,
             top_k=top_k,
         )
-        domain_impl = self._domain(query.domain)
-        retrieval = await self._retrieve(query, domain_impl)
+        retrieval = await self._retrieve(query)
         policy_answer = self.policy.validate_retrieval(retrieval)
         if policy_answer is not None:
             await self._record_answer_log(
@@ -83,7 +75,6 @@ class KnowledgeBaseService:
             return policy_answer
 
         answer = await self.answer_generator.generate(query, retrieval)
-        answer = domain_impl.validate_answer(answer)
         answer = self.policy.validate_answer(answer)
         await self._record_answer_log(
             query=query,
@@ -98,18 +89,16 @@ class KnowledgeBaseService:
         *,
         query_text: str,
         space_id: str | None = None,
-        domain: str | None = None,
         filters: dict[str, Any] | None = None,
         top_k: int = 8,
     ) -> RetrievalResult:
         query = self._build_query(
             question=query_text,
             space_id=space_id,
-            domain=domain,
             filters=filters,
             top_k=top_k,
         )
-        return await self._retrieve(query, self._domain(query.domain))
+        return await self._retrieve(query)
 
     async def submit_dynamic_qa(
         self,
@@ -159,85 +148,12 @@ class KnowledgeBaseService:
         }
         return await self.structured_backend.create_item("kb_feedback", payload)
 
-    async def _retrieve(self, query: KnowledgeQuery, domain: KnowledgeDomain) -> RetrievalResult:
-        filters = domain.extract_filters(query.question, query.filters)
-        hydrated = KnowledgeQuery(
-            question=query.question,
-            space_id=query.space_id,
-            domain=query.domain,
-            platform=query.platform,
-            conversation_id=query.conversation_id,
-            user_id=query.user_id,
-            filters=filters,
-            top_k=query.top_k,
-        )
-        errors: list[str] = []
-        structured_records = []
-        chunks = []
-
+    async def _retrieve(self, query: KnowledgeQuery) -> RetrievalResult:
         try:
-            structured_records = await domain.query_structured(self.structured_backend, hydrated)
-            structured_records.extend(await self._query_page_title_matches(hydrated))
+            return await self.query_agent.retrieve(query)
         except BackendUnavailable as exc:
-            logger.warning("结构化知识库不可用：%s", exc)
-            errors.append(str(exc))
-
-        try:
-            chunks = await self.rag_backend.search(
-                query=hydrated.question,
-                dataset_id=domain.dataset_id_for_space(hydrated.space_id),
-                filters={**filters, "space_id": hydrated.space_id},
-                top_k=hydrated.top_k,
-            )
-        except BackendUnavailable as exc:
-            logger.warning("本地知识索引不可用：%s", exc)
-            errors.append(str(exc))
-
-        return RetrievalResult(
-            structured_records=structured_records,
-            chunks=chunks,
-            fallback_reason="; ".join(errors) if errors and not (structured_records or chunks) else None,
-        )
-
-    async def _query_page_title_matches(self, query: KnowledgeQuery) -> list[StructuredRecord]:
-        pages = await self.structured_backend.list_items(
-            "kb_pages",
-            filters={
-                "_and": [
-                    {"space_id": {"_eq": query.space_id}},
-                    {"status": {"_eq": "active"}},
-                ]
-            },
-            fields=["id", "title", "canonical_url", "published_at", "content_hash"],
-            limit=300,
-        )
-        matched: list[StructuredRecord] = []
-        normalized_question = query.question.replace(" ", "")
-        for page in pages:
-            title = str(page.get("title") or "").strip()
-            source = str(page.get("canonical_url") or "").strip()
-            compact_title = title.replace(" ", "")
-            if (
-                len(compact_title) < 3
-                or compact_title not in normalized_question
-                or self._is_site_entry_url(source)
-            ):
-                continue
-            matched.append(
-                StructuredRecord(
-                    collection="kb_pages",
-                    data=page,
-                    citation=Citation(
-                        title=title,
-                        source=source,
-                        published_at=self._optional_text(page.get("published_at")),
-                        metadata={"collection": "kb_pages", "id": page.get("id")},
-                    ),
-                    score=1.0,
-                )
-            )
-        matched.sort(key=lambda record: len(str(record.data.get("title") or "")), reverse=True)
-        return matched[:5]
+            logger.warning("知识库子 agent 查询失败：%s", exc)
+            return RetrievalResult(fallback_reason=str(exc))
 
     async def _record_answer_log(
         self,
@@ -254,7 +170,7 @@ class KnowledgeBaseService:
             "conversation_id": query.conversation_id,
             "user_id": query.user_id,
             "question": query.question,
-            "extracted_slots": query.filters,
+            "filters": query.filters,
             "structured_records": [record.to_dict() for record in retrieval.structured_records],
             "retrieved_chunks": [chunk.to_dict() for chunk in retrieval.chunks],
             "citations": [citation.to_dict() for citation in answer.citations],
@@ -273,7 +189,6 @@ class KnowledgeBaseService:
         *,
         question: str,
         space_id: str | None = None,
-        domain: str | None = None,
         platform: str = "",
         conversation_id: str = "",
         user_id: str = "",
@@ -285,8 +200,7 @@ class KnowledgeBaseService:
             raise KnowledgeBaseError("知识库问题不能为空")
         return KnowledgeQuery(
             question=clean_question,
-            space_id=space_id or self.config.default_space_id,
-            domain=domain or self.config.default_domain,
+            space_id=space_id or "",
             platform=platform,
             conversation_id=conversation_id,
             user_id=user_id,
@@ -294,21 +208,5 @@ class KnowledgeBaseService:
             top_k=top_k,
         )
 
-    def _domain(self, name: str) -> KnowledgeDomain:
-        domain = self.domains.get(name)
-        if domain is None:
-            domain = self.domains.get("general")
-        if domain is None:
-            raise KnowledgeBaseError(f"知识库领域未配置：{name}")
-        return domain
-
     def _now_iso(self) -> str:
         return datetime.now().isoformat(timespec="seconds")
-
-    def _optional_text(self, value: Any) -> str | None:
-        text = str(value or "").strip()
-        return text or None
-
-    def _is_site_entry_url(self, url: str) -> bool:
-        path = urlparse(url).path.rstrip("/")
-        return path in {"", "/index.htm", "/index.html"}

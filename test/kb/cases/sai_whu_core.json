@@ -2,7 +2,6 @@
   {
     "id": "sai_undergraduate_training",
     "question": "武汉大学人工智能学院本科生培养有哪些信息？",
-    "domain": "admissions",
     "space_id": "sai",
     "top_k": 5,
     "expected_any": ["本科生培养", "人工智能", "培养方案"],
@@ -12,7 +11,6 @@
   {
     "id": "sai_graduate_training",
     "question": "武汉大学人工智能学院研究生培养有哪些信息？",
-    "domain": "admissions",
     "space_id": "sai",
     "top_k": 5,
     "expected_any": ["研究生培养", "博士", "硕士"],
@@ -22,7 +20,6 @@
   {
     "id": "sai_faculty_recruitment",
     "question": "武汉大学人工智能学院师资招聘有什么信息？",
-    "domain": "admissions",
     "space_id": "sai",
     "top_k": 5,
     "expected_any": ["师资招聘", "招聘", "人才"],
@@ -32,7 +29,6 @@
   {
     "id": "sai_disciplines",
     "question": "武汉大学人工智能学院有哪些学科专业？",
-    "domain": "admissions",
     "space_id": "sai",
     "top_k": 5,
     "expected_any": ["学科专业", "智能科学与技术", "人工智能"],
@@ -42,7 +38,6 @@
   {
     "id": "sai_office_process",
     "question": "武汉大学人工智能学院办事流程在哪里看？",
-    "domain": "admissions",
     "space_id": "sai",
     "top_k": 5,
     "expected_any": ["办事流程", "学院概况"],
@@ -52,7 +47,6 @@
   {
     "id": "sai_common_downloads",
     "question": "武汉大学人工智能学院常用下载有哪些？",
-    "domain": "admissions",
     "space_id": "sai",
     "top_k": 5,
     "expected_any": ["常用下载", "下载"],
@@ -62,7 +56,6 @@
   {
     "id": "sai_self_strengthening_training_plan",
     "question": "自强班的完整培养计划文档在哪里？",
-    "domain": "admissions",
     "space_id": "sai",
     "top_k": 5,
     "expected_any": ["人工智能自强班", "培养方案", "151学分"],
@@ -72,7 +65,6 @@
   {
     "id": "sai_self_strengthening_courses_credits",
     "question": "自强班课程设置、学分要求和四年规划是什么？",
-    "domain": "admissions",
     "space_id": "sai",
     "top_k": 5,
     "expected_any": ["课程名称", "修读", "151学分"],

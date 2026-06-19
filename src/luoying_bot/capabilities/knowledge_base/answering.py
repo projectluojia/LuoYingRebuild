@@ -19,7 +19,7 @@ class KnowledgeAnswerGenerator:
         ) or "无"
 
         if self.model is None:
-            answer = self._fallback_answer(structured_context, rag_context)
+            answer = self._render_answer_without_model(structured_context, rag_context)
         else:
             prompt = ANSWER_PROMPT.format(
                 question=query.question,
@@ -48,7 +48,7 @@ class KnowledgeAnswerGenerator:
             },
         )
 
-    def _fallback_answer(self, structured_context: str, rag_context: str) -> str:
+    def _render_answer_without_model(self, structured_context: str, rag_context: str) -> str:
         if structured_context != "无":
             return f"根据当前结构化资料：\n{structured_context}"
         return f"根据当前文档资料：\n{rag_context}"
@@ -66,4 +66,3 @@ class KnowledgeAnswerGenerator:
             if isinstance(answer, str) and answer.strip():
                 return answer.strip()
         return raw
-

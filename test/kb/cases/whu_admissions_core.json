@@ -1,0 +1,29 @@
+[
+  {
+    "id": "whu_hubei_ai_plan_2025",
+    "question": "湖北2025年物理类人工智能招生计划是多少？",
+    "space_id": "",
+    "top_k": 5,
+    "expected_any": ["人工智能", "30", "招生计划"],
+    "expected_sources_any": ["zsdata.whu.edu.cn"],
+    "min_citations": 1
+  },
+  {
+    "id": "whu_hubei_ai_zq_plan_2025",
+    "question": "湖北2025年物理类人工智能自强班招多少人？",
+    "space_id": "",
+    "top_k": 5,
+    "expected_any": ["人工智能(自强班)", "5"],
+    "expected_sources_any": ["zsdata.whu.edu.cn"],
+    "min_citations": 1
+  },
+  {
+    "id": "whu_hubei_ai_score_2025",
+    "question": "湖北2025年物理类人工智能最低分是多少？",
+    "space_id": "",
+    "top_k": 5,
+    "expected_any": ["人工智能", "645"],
+    "expected_sources_any": ["zsdata.whu.edu.cn"],
+    "min_citations": 1
+  }
+]

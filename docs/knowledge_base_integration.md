@@ -10,10 +10,10 @@ Crawl4AI web crawler
 -> clean Markdown with frontmatter
 -> quality checker
 -> Git commit
--> SQLite metadata DB
+-> Postgres metadata DB
 -> hybrid index
-   -> SQLite FTS5 keyword index
-   -> local vector index
+   -> Postgres full-text keyword index
+   -> pgvector index
 -> KB API
 -> Agent
 ```
@@ -21,7 +21,7 @@ Crawl4AI web crawler
 Core rules:
 
 - `knowledge/` 是知识资产，必须可 review、可 diff、可提交。
-- `var/kb/metadata.sqlite3` 是运行时派生库，不提交。
+- Postgres/pgvector 是运行时派生库，可以从 `knowledge/` 重建。
 - Markdown 文件是单页事实源；frontmatter 保存该页核心元数据和质量结果。
 - `graph.jsonl` 保存网页之间的链接关系；索引可以用它扩展上下文。
 - crawler/extractor 使用 Crawl4AI；没有旧抽取器和降级路径。
@@ -33,13 +33,15 @@ src/luoying_bot/capabilities/knowledge_base/
 ├── artifacts.py      # write source.yaml, pages/*.md, raw/*.html, graph.jsonl
 ├── crawling.py       # crawl site and record artifacts/index
 ├── extraction.py     # Crawl4AI extraction
-├── local_store.py    # SQLite metadata, FTS5, vector search
+├── postgres_store.py # Postgres metadata, full-text search, pgvector search
 ├── quality.py        # markdown quality checks
-├── service.py        # answer/search orchestration
+├── query_agent.py    # KB query sub-agent orchestration
+├── analytics.py      # Text-to-SQL analytics engine
+├── semantic_layer.py # structured data semantic layer
+├── service.py        # answer/search API facade
 ├── answering.py
 ├── policy.py
-├── models.py
-└── domains/
+└── models.py
 ```
 
 Agent entry:
@@ -58,14 +60,14 @@ src/luoying_bot/infra/web/knowledge_base_api.py
 
 ```env
 KB_ARTIFACT_ROOT=./knowledge
-KB_METADATA_DB=./var/kb/metadata.sqlite3
+KB_DATABASE_URL=postgresql://luoying_kb:luoying_kb@127.0.0.1:15432/luoying_kb
 KB_DEFAULT_SPACE_ID=sai
-KB_DEFAULT_DOMAIN=admissions
 KB_REQUIRE_CITATION=true
 KB_EMBEDDING_BASE_URL=http://127.0.0.1:8080/v1
 KB_EMBEDDING_API_KEY=
 KB_EMBEDDING_MODEL=text-embeddings-inference
 KB_EMBEDDING_BATCH_SIZE=32
+KB_EMBEDDING_DIMENSIONS=512
 ```
 
 ## Artifact Layout
