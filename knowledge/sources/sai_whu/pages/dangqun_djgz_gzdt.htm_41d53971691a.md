@@ -7,8 +7,8 @@ url: "https://sai.whu.edu.cn/dangqun/djgz/gzdt.htm"
 published_at: null
 content_hash: "3dc154556b098ae33d108cb006bfc5762253ec9c309ce7fcb79982e9a2cc4dbe"
 content_type: "listing"
-fetched_at: "2026-06-19T22:21:25"
-depth: 1
+fetched_at: "2026-06-21T01:14:05"
+depth: 0
 link_count: 17
 raw_path: "raw/dangqun_djgz_gzdt.htm_41d53971691a.html"
 quality: {"ok": true, "score": 1.0, "warnings": [], "metrics": {"chars": 2079, "lines": 17, "main_nav_hits": 0, "footer_hits": 0, "breadcrumb_hits": 0, "script_hits": 0, "pagination_hits": 0, "duplicate_line_ratio": 0.0}}

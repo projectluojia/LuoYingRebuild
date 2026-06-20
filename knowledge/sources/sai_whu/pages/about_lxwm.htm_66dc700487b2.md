@@ -7,7 +7,7 @@ url: "https://sai.whu.edu.cn/about/lxwm.htm"
 published_at: null
 content_hash: "0a3ff355939a410b0f088eb065d38856e886361d3d8799b948253aabb51dad01"
 content_type: "listing"
-fetched_at: "2026-06-19T22:20:46"
+fetched_at: "2026-06-21T01:13:56"
 depth: 0
 link_count: 0
 raw_path: "raw/about_lxwm.htm_66dc700487b2.html"

@@ -5,9 +5,9 @@ space_id: "sai"
 title: "关于对部分学业先进本科生予以表扬的通报"
 url: "https://sai.whu.edu.cn/cont_page.jsp?urltype=news.NewsContentUrl&wbnewsid=13491&wbtreeid=1601"
 published_at: "2026-03-04"
-content_hash: "5fe69061092a1c15a3684a61394469ccc9585afcf29d64feb79b995b5d6b7806"
+content_hash: "10ab89dca55ba481298b74fb91676ab6cdd99a3bcf5b90531dafec69125f7dac"
 content_type: "page"
-fetched_at: "2026-06-19T22:22:07"
+fetched_at: "2026-06-21T01:16:07"
 depth: 2
 link_count: 3
 raw_path: "raw/cont_page.jsp_20ed8d5a0763.html"
@@ -24,4 +24,4 @@ quality: {"ok": true, "score": 1.0, "warnings": [], "metrics": {"chars": 550, "l
 武汉大学人工智能学院
 2026年3月4日
 
-附件【[2025-2026学年上学期学业先进本科生名单.docx](https://sai.whu.edu.cn/system/_content/download.jsp?urltype=news.DownloadAttachUrl&owner=2088762141&wbfileid=D9C16468FD6D912A03DF2DCD46DF25FA)】已下载368次
+附件【[2025-2026学年上学期学业先进本科生名单.docx](https://sai.whu.edu.cn/system/_content/download.jsp?urltype=news.DownloadAttachUrl&owner=2088762141&wbfileid=D9C16468FD6D912A03DF2DCD46DF25FA)】已下载371次

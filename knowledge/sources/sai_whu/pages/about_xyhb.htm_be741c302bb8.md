@@ -7,7 +7,7 @@ url: "https://sai.whu.edu.cn/about/xyhb.htm"
 published_at: null
 content_hash: "f0360ac14027cafde32c96edcaadbc5436ac84feb41ee76f57be7b0ad0c1f2a6"
 content_type: "page"
-fetched_at: "2026-06-19T22:20:46"
+fetched_at: "2026-06-21T01:13:56"
 depth: 0
 link_count: 1
 raw_path: "raw/about_xyhb.htm_be741c302bb8.html"

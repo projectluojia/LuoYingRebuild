@@ -7,7 +7,7 @@ url: "https://sai.whu.edu.cn/recruit/szzp.htm"
 published_at: null
 content_hash: "71cd2eaff71dba9192ebd6c0a84ef0625cbdf4fe51a62fdc12ad93211c0e940f"
 content_type: "listing"
-fetched_at: "2026-06-19T22:20:54"
+fetched_at: "2026-06-21T01:14:06"
 depth: 0
 link_count: 4
 raw_path: "raw/recruit_szzp.htm_e0654c04ad08.html"

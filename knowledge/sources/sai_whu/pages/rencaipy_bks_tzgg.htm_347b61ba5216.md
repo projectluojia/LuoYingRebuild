@@ -7,8 +7,8 @@ url: "https://sai.whu.edu.cn/rencaipy/bks/tzgg.htm"
 published_at: null
 content_hash: "87d120b3bc58023fad037e1010a853422c9315c323a65a3aff8e3695c0442bae"
 content_type: "listing"
-fetched_at: "2026-06-19T22:21:10"
-depth: 1
+fetched_at: "2026-06-21T01:14:00"
+depth: 0
 link_count: 18
 raw_path: "raw/rencaipy_bks_tzgg.htm_347b61ba5216.html"
 quality: {"ok": true, "score": 1.0, "warnings": [], "metrics": {"chars": 2522, "lines": 17, "main_nav_hits": 0, "footer_hits": 0, "breadcrumb_hits": 0, "script_hits": 0, "pagination_hits": 0, "duplicate_line_ratio": 0.0}}

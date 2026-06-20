@@ -7,7 +7,7 @@ url: "https://sai.whu.edu.cn/teacher/spjs.htm"
 published_at: null
 content_hash: "2a2017324238430469150ba80e0efbceb9632488c00fd5e7df684272e8b543a7"
 content_type: "listing"
-fetched_at: "2026-06-19T22:20:48"
+fetched_at: "2026-06-21T01:13:58"
 depth: 0
 link_count: 74
 raw_path: "raw/teacher_spjs.htm_3d4dd3fcb810.html"

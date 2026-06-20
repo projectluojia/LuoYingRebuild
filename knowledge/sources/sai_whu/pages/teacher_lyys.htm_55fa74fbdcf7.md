@@ -7,7 +7,7 @@ url: "https://sai.whu.edu.cn/teacher/lyys.htm"
 published_at: null
 content_hash: "2003685122ed44894906029ff484645752162b56b2d7a361a24e9a0584df4153"
 content_type: "listing"
-fetched_at: "2026-06-19T22:20:46"
+fetched_at: "2026-06-21T01:13:56"
 depth: 0
 link_count: 10
 raw_path: "raw/teacher_lyys.htm_55fa74fbdcf7.html"

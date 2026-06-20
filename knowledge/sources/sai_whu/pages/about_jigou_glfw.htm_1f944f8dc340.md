@@ -7,8 +7,8 @@ url: "https://sai.whu.edu.cn/about/jigou/glfw.htm"
 published_at: null
 content_hash: "d31446f45d5d798221108a10ddc6f22397d6c50eb417a1a9d2cbd468cb9e9387"
 content_type: "listing"
-fetched_at: "2026-06-19T22:21:04"
-depth: 1
+fetched_at: "2026-06-21T01:13:56"
+depth: 0
 link_count: 4
 raw_path: "raw/about_jigou_glfw.htm_1f944f8dc340.html"
 quality: {"ok": false, "score": 0.85, "warnings": ["high_duplicate_line_ratio"], "metrics": {"chars": 431, "lines": 51, "main_nav_hits": 0, "footer_hits": 0, "breadcrumb_hits": 0, "script_hits": 0, "pagination_hits": 0, "duplicate_line_ratio": 0.2188}}

@@ -7,7 +7,7 @@ url: "https://sai.whu.edu.cn/kxyj/jlhz/1.htm"
 published_at: null
 content_hash: "05ab891f06a8f6310630264368da869930dd45a09f73813a059468b068338c82"
 content_type: "listing"
-fetched_at: "2026-06-19T22:21:25"
+fetched_at: "2026-06-21T01:14:54"
 depth: 1
 link_count: 5
 raw_path: "raw/kxyj_jlhz_1.htm_23f1d5559bce.html"

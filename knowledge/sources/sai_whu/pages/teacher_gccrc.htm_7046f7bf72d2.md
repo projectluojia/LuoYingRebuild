@@ -7,7 +7,7 @@ url: "https://sai.whu.edu.cn/teacher/gccrc.htm"
 published_at: null
 content_hash: "fe9eb0dd9186631592c029b9580707db9eedafe4cc753d0ac7666a4a1bd4181b"
 content_type: "listing"
-fetched_at: "2026-06-19T22:20:47"
+fetched_at: "2026-06-21T01:13:56"
 depth: 0
 link_count: 55
 raw_path: "raw/teacher_gccrc.htm_7046f7bf72d2.html"

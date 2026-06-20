@@ -7,7 +7,7 @@ url: "https://sai.whu.edu.cn/kxyj/xmsb.htm"
 published_at: null
 content_hash: "db045beb75cdf3e2657545feedf28f9e154217cad7327ec165c60c368967f04f"
 content_type: "listing"
-fetched_at: "2026-06-19T22:20:52"
+fetched_at: "2026-06-21T01:14:04"
 depth: 0
 link_count: 12
 raw_path: "raw/kxyj_xmsb.htm_35434be767ac.html"

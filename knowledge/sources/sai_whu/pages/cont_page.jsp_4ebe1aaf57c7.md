@@ -7,7 +7,7 @@ url: "https://sai.whu.edu.cn/cont_page.jsp?urltype=news.NewsContentUrl&wbnewsid=
 published_at: "2026-05-13"
 content_hash: "8221b58777baa75425f71a07b2eec88299bb1e78b1a84f84a86d11f27f4081d7"
 content_type: "page"
-fetched_at: "2026-06-19T22:22:02"
+fetched_at: "2026-06-21T01:16:01"
 depth: 2
 link_count: 2
 raw_path: "raw/cont_page.jsp_4ebe1aaf57c7.html"
