@@ -7,7 +7,7 @@ from luoying_bot.infra.logging_setup import configure_logging
 configure_logging(logging.INFO)
 logger = logging.getLogger(__name__)
 
-async def main() -> None:
+async def run() -> None:
     while True:
 
         container = None
@@ -60,5 +60,9 @@ async def main() -> None:
         await asyncio.sleep(5)
 
 
+def main() -> None:
+    asyncio.run(run())
+
+
 if __name__ == '__main__':
-    asyncio.run(main())
+    main()

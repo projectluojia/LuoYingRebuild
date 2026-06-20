@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from luoying_bot.capabilities.knowledge_base import KnowledgeBaseService
     from luoying_bot.application.services.group_runtime import GroupRuntime
     from luoying_bot.application.services.memo_service import MemoService
     from luoying_bot.application.services.reminder_service import ReminderService
@@ -31,3 +32,4 @@ class ServiceHub:
     risk_control_service: 'RiskControlService'
     user_memory_service: 'UserMemoryService'
     user_prompt_settings_service: 'UserPromptSettingsService'
+    knowledge_base_service: 'KnowledgeBaseService'

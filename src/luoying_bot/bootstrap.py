@@ -18,6 +18,15 @@ from luoying_bot.application.services.script_workspace_service import ScriptWork
 from luoying_bot.application.services.user_prompt_settings_service import UserPromptSettingsService
 from luoying_bot.application.services.user_service import UserService
 from luoying_bot.application.services.user_memory_service import UserMemoryService
+from luoying_bot.capabilities.knowledge_base import KnowledgeBaseConfig, KnowledgeBaseService
+from luoying_bot.capabilities.knowledge_base.analytics import KnowledgeAnalyticsEngine
+from luoying_bot.capabilities.knowledge_base.answering import KnowledgeAnswerGenerator
+from luoying_bot.capabilities.knowledge_base.embeddings import OpenAICompatibleEmbeddingProvider
+from luoying_bot.capabilities.knowledge_base.entity_resolver import EntityResolver
+from luoying_bot.capabilities.knowledge_base.policy import KnowledgeBasePolicy
+from luoying_bot.capabilities.knowledge_base.postgres_store import PostgresKnowledgeStore
+from luoying_bot.capabilities.knowledge_base.query_agent import KBQueryAgent, KBQueryAgentConfig
+from luoying_bot.capabilities.knowledge_base.semantic_layer import KnowledgeSemanticLayer
 from luoying_bot.config import settings
 from luoying_bot.infra.llm.openai_chat import OpenAICompatibleChatModel
 from luoying_bot.infra.memory.in_memory import InMemoryConversationMemory
@@ -107,11 +116,46 @@ async def _build_container(
         max_messages_per_thread=settings.memory_max_messages_per_thread
     )
     model = OpenAICompatibleChatModel(
-        settings.openai_base_url, 
-        settings.openai_api_key, 
-        settings.openai_model, 
+        settings.openai_base_url,
+        settings.openai_api_key,
+        settings.openai_model,
         settings.llm_temperature,
         settings.openai_enable_thinking,
+    )
+
+    knowledge_store = PostgresKnowledgeStore(
+        settings.kb_database_url,
+        embedding_provider=OpenAICompatibleEmbeddingProvider(
+            base_url=settings.kb_embedding_base_url,
+            api_key=settings.kb_embedding_api_key,
+            model=settings.kb_embedding_model,
+            batch_size=settings.kb_embedding_batch_size,
+        ),
+        embedding_dimensions=settings.kb_embedding_dimensions,
+    )
+    await knowledge_store.ensure_schema()
+    kb_query_agent = KBQueryAgent(
+        rag_backend=knowledge_store,
+        analytics_engine=KnowledgeAnalyticsEngine(
+            backend=knowledge_store,
+            value_backend=knowledge_store,
+            model=model,
+            semantic_layer=KnowledgeSemanticLayer(),
+        ),
+        entity_resolver=EntityResolver(knowledge_store),
+        config=KBQueryAgentConfig(
+            default_space_id=settings.kb_default_space_id,
+        ),
+    )
+    knowledge_base_service = KnowledgeBaseService(
+        structured_backend=knowledge_store,
+        query_agent=kb_query_agent,
+        answer_generator=KnowledgeAnswerGenerator(model),
+        config=KnowledgeBaseConfig(
+            default_space_id=settings.kb_default_space_id,
+            require_citation=settings.kb_require_citation,
+        ),
+        policy=KnowledgeBasePolicy(require_citation=settings.kb_require_citation),
     )
     #把以上东西打个包
     services = ServiceHub(
@@ -128,6 +172,7 @@ async def _build_container(
         risk_control_service=risk_control_service,
         user_memory_service=user_memory_service,
         user_prompt_settings_service=user_prompt_settings_service,
+        knowledge_base_service=knowledge_base_service,
     )
 
     #指令

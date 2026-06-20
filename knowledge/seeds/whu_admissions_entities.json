@@ -1,0 +1,47 @@
+{
+  "entities": [
+    {
+      "key": "whu",
+      "entity_type": "school",
+      "canonical_name": "武汉大学",
+      "description": "武汉大学",
+      "source_collection": "admissions",
+      "source_key": "whu",
+      "aliases": [
+        {"alias": "武汉大学", "alias_type": "official", "confidence": 1.0},
+        {"alias": "武大", "alias_type": "short_name", "confidence": 0.95}
+      ]
+    },
+    {
+      "key": "sai",
+      "entity_type": "school",
+      "canonical_name": "人工智能学院",
+      "description": "武汉大学人工智能学院",
+      "source_collection": "admissions",
+      "source_key": "sai",
+      "aliases": [
+        {"alias": "人工智能学院", "alias_type": "official", "confidence": 1.0},
+        {"alias": "武汉大学人工智能学院", "alias_type": "official", "confidence": 1.0},
+        {"alias": "武大人工智能学院", "alias_type": "short_name", "confidence": 0.95},
+        {"alias": "人智", "alias_type": "abbreviation", "confidence": 0.9},
+        {"alias": "人智学院", "alias_type": "abbreviation", "confidence": 0.9}
+      ]
+    },
+    {
+      "key": "strong_foundation",
+      "entity_type": "program_type",
+      "canonical_name": "强基计划",
+      "description": "基础学科招生改革试点计划",
+      "source_collection": "admissions",
+      "source_key": "strong_foundation",
+      "aliases": [
+        {"alias": "强基计划", "alias_type": "official", "confidence": 1.0},
+        {"alias": "强基", "alias_type": "short_name", "confidence": 0.92},
+        {"alias": "基础学科招生改革试点", "alias_type": "official", "confidence": 0.9}
+      ]
+    }
+  ],
+  "relations": [
+    {"subject_key": "sai", "predicate": "belongs_to", "object_key": "whu", "confidence": 1.0}
+  ]
+}

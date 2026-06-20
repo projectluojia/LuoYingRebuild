@@ -1,0 +1,102 @@
+---
+id: "teacher_spjs.htm_3d4dd3fcb810"
+site_id: "sai_whu"
+space_id: "sai"
+title: "双聘教师"
+url: "https://sai.whu.edu.cn/teacher/spjs.htm"
+published_at: null
+content_hash: "2a2017324238430469150ba80e0efbceb9632488c00fd5e7df684272e8b543a7"
+content_type: "listing"
+fetched_at: "2026-06-19T22:20:48"
+depth: 0
+link_count: 74
+raw_path: "raw/teacher_spjs.htm_3d4dd3fcb810.html"
+quality: {"ok": true, "score": 1.0, "warnings": [], "metrics": {"chars": 4667, "lines": 86, "main_nav_hits": 0, "footer_hits": 0, "breadcrumb_hits": 0, "script_hits": 0, "pagination_hits": 0, "duplicate_line_ratio": 0.0}}
+---
+
+# 双聘教师
+## 数理基础（以姓名拼音排序）
+  * [康利灿](https://imai.whu.edu.cn/info/2101/5951.htm)
+  * [林华珍](https://imai.whu.edu.cn/info/1251/6091.htm)
+  * [吕锡亮](https://jszy.whu.edu.cn/lvxiliang/zh_CN/index/275065/list/index.htm)
+  * [杨志坚](https://imai.whu.edu.cn/info/1031/2141.htm)
+  * [赵晓飞 ](https://jszy.whu.edu.cn/zhaoxiaofei/zh_CN/index/1220200/list/index.htm)
+
+## 核心技术（以姓名拼音排序）
+  * [陈超锋](https://sai.whu.edu.cn/teacher/spjs.htm)
+  * [戴行](https://sai.whu.edu.cn/teacher/spjs.htm)
+  * [董性平](https://jszy.whu.edu.cn/dongxingping/en/more/1531369/jsjjgd/index.htm)
+  * [杜博](https://cs.whu.edu.cn/info/1019/2892.htm)
+  * [何德彪](https://jszy.whu.edu.cn/hedebiao/zh_CN/index.htm)
+  * [姬东鸿](https://cse.whu.edu.cn/info/3421/37581.htm)
+  * [江佳伟](https://cs.whu.edu.cn/info/1019/2501.htm)
+  * [金芝](http://jszy.whu.edu.cn/jinzhi/zh_CN/index.htm)
+  * [罗斌](http://www.lmars.whu.edu.cn/prof_web/luobin/%E7%BD%97%E6%96%8C.htm)
+  * [罗勇](https://jszy.whu.edu.cn/luoyong6/zh_CN/index.htm)
+  * [孟小亮](https://jszy.whu.edu.cn/mengxiaoliang/zh_CN/index.htm)
+  * [涂志刚](https://3s.whu.edu.cn/info/1025/1451.htm)
+  * [王皓](https://jszy.whu.edu.cn/wanghao6/zh_CN/index.htm)
+  * [王骞](https://imai.whu.edu.cn/info/1911/3711.htm)
+  * [王胜](https://jszy.whu.edu.cn/swang/)
+  * [王正](https://jszy.whu.edu.cn/zhengwang/zh_CN/index.htm)
+  * [魏子恒](https://sai.whu.edu.cn/teacher/spjs.htm)
+  * [武宇](https://jszy.whu.edu.cn/wuyu7/zh_CN/index.htm)
+  * [许永超](https://cs.whu.edu.cn/info/1019/2496.htm)
+  * [杨必胜](https://3s.whu.edu.cn/ybs/index.htm)
+  * [杨文](http://eis.whu.edu.cn/index/szdwDetail?rsh=00200590&newskind_id=20160320222131522vp3NTtfdn1oWM)
+  * [姚剑](https://cvrs.whu.edu.cn/jianyao/)
+  * [张海剑](http://eis.whu.edu.cn/index/szdwDetail?rsh=00031113&newskind_id=3a72c9c81a46439fa293b6a9403cc751)
+  * [张敬](https://jszy.whu.edu.cn/zhangjing123456/zh_CN/index.htm)
+  * [张乐飞](https://cs.whu.edu.cn/info/1019/2889.htm)
+  * [张永军](https://rsgis.whu.edu.cn/info/1004/7259.htm)
+
+## 科学智能（以姓名拼音排序）
+  * [陈璞](https://wbm.whu.edu.cn/info/1350/5924.htm)
+  * [龚健雅](https://www.whu.edu.cn/info/7231/202004.htm)
+  * [关伟](https://sai.whu.edu.cn/teacher/spjs.htm)
+  * [郭江](https://jszy.whu.edu.cn/guojiang/en/index.htm)
+  * [郭宇铮](https://jszy.whu.edu.cn/guoyuzheng/en/index.htm)
+  * [何光存](https://bio.whu.edu.cn/info/1500/9353.htm)
+  * [侯佑民](https://pmc.whu.edu.cn/info/1025/14561.htm)
+  * [黄先锋](https://jszy.whu.edu.cn/huangxf/zh_CN/index.htm)
+  * [贾鹏](https://jszy.whu.edu.cn/jp/zh_CN/index.htm)
+  * [姜卫平](https://www.whu.edu.cn/info/7241/260894.htm)
+  * [李德仁](https://www.whu.edu.cn/info/1184/3176.htm)
+  * [李倩倩](https://jszy.whu.edu.cn/qianqianli/zh_CN/more/410987/jsjjgd/index.htm)
+  * [李星星](https://jszy.whu.edu.cn/lixingxing/zh_CN/index.htm)
+  * [刘经南](https://www.whu.edu.cn/info/1184/3178.htm)
+  * [楼益栋](https://jszy.whu.edu.cn/ydlou_whu/zh_CN/more/250993/jsjjgd/index.htm)
+  * [倪彬彬](https://esst.whu.edu.cn/info/1531/1321.htm)
+  * [沈焕锋](https://jszy.whu.edu.cn/shenhuanfeng/zh_CN/index.htm)
+  * [史良胜](https://swrh.whu.edu.cn/info/1623/10138.htm)
+  * [舒红兵](https://www.whu.edu.cn/info/7231/202014.htm)
+  * [王密](http://www.lmars.whu.edu.cn/prof_web/wangmi/keyan.htm)
+  * [夏军](https://www.whu.edu.cn/info/1183/4854.htm)
+  * [殷昊](https://tkclms.whu.edu.cn/info/1178/1269.htm)
+  * [袁声军](https://jszy.whu.edu.cn/yuanshengjun/zh_CN/index/459845/list/index.htm)
+  * [张良培](http://www.lmars.whu.edu.cn/prof_web/zhangliangpei/rs/xiangmu.htm)
+  * [张小红](https://www.sgg.whu.edu.cn/info/1430/4325.htm)
+  * [张楹](https://tkclms.whu.edu.cn/info/1179/5676.htm)
+  * [张祖勋](https://www.whu.edu.cn/info/7241/202124.htm)
+  * [郑国兴](https://jszy.whu.edu.cn/zhengguoxing/zh_CN/)
+  * [周强辉](https://jszy.whu.edu.cn/zhouqianghui/zh_CN/)
+  * [周翔](https://chem.whu.edu.cn/info/1817/13794.htm)
+  * [朱玉贤](https://www.whu.edu.cn/info/7231/201994.htm)
+
+## 社会智能（以姓名拼音排序）
+  * [陈伟](https://www.whu.edu.cn/info/7331/202914.htm)
+  * [龚为纲](https://shxx.whu.edu.cn/info/1054/70322.htm)
+  * [黄敏学](https://ems.whu.edu.cn/info/1734/23395.htm)
+  * [李纲](https://sim.whu.edu.cn/info/1631/13989.htm)
+  * [李喆](https://sai.whu.edu.cn/teacher/spjs.htm)
+  * [陆伟](https://sim.whu.edu.cn/info/1560/13482.htm)
+  * [罗知](https://ems.whu.edu.cn/info/1680/10590.htm)
+  * [马费成](https://www.whu.edu.cn/info/7301/202834.htm)
+  * [冉从敬](https://jszy.whu.edu.cn/rancongjing/zh_CN/jsxx/248171/jsxx/jsxx.htm)
+  * [苏德超](https://philosophy.whu.edu.cn/info/1330/15149.htm)
+  * [王晓光](https://sim.whu.edu.cn/info/1645/14039.htm)
+  * [吴丹](https://sim.whu.edu.cn/info/1624/14047.htm)
+  * [吴世文](http://journal.whu.edu.cn/intro/faculty/wusw)
+  * [肖永平](https://www.whu.edu.cn/info/7341/202944.htm)
+  * [杨冕](https://ems.whu.edu.cn/info/1750/17256.htm)
+  * [喻丰](https://aais.whu.edu.cn/info/2041/3671.htm)
