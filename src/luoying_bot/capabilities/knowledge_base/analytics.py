@@ -69,10 +69,17 @@ class KnowledgeAnalyticsEngine:
         if entities is None:
             return None
         for entity in entities.matches:
+            # Only trust high-confidence entity matches to drive the SQL plan. Low-score
+            # matches (e.g. a 强基 program pulled in by fuzzy overlap for a non-强基 question)
+            # would otherwise pin the query to the wrong fact table, yield 0 rows, and
+            # silently shadow the LLM planner. Mirrors the EntityResolution.fact_entities()
+            # confidence bar.
+            if not (entity.score >= 100.0 or entity.alias_type == "relation_resolution"):
+                continue
             table = str(entity.metadata.get("fact_table") or "")
             fact_tables = [str(item) for item in entity.metadata.get("fact_tables") or []]
             field = str(entity.metadata.get("fact_column") or "")
-            if not table and fact_tables and entity.score >= 100.0:
+            if not table and fact_tables:
                 table = choose_fact_table(query.question, fact_tables)
             if table not in self.semantic_layer.allowed_tables or field not in self.semantic_layer.table_columns(table):
                 continue

@@ -1,6 +1,6 @@
 # 珞樱知识库架构报告
 
-更新时间：2026-06-19
+更新时间：2026-06-20
 
 ## 1. 总体定位
 
@@ -181,36 +181,38 @@ admission_strong_foundation_scores = 13
 
 ## 4. 查询逻辑
 
-### 4.1 Agent 调用路径
+### 4.1 整体编排（KnowledgeBaseService.answer）
+
+入口在 `service.py`。一次 `answer()` 的完整链路：
 
 ```text
-用户消息
-  -> AgentService
-  -> knowledge_base skill
-  -> KnowledgeBaseService.answer
-  -> KBQueryAgent.retrieve
-  -> KnowledgeAnswerGenerator
+answer(question, space_id, ...)
+  1. _build_query()              问题 strip（空 -> KnowledgeBaseError）；space_id 缺省 -> default
+  2. _retrieve()                 -> KBQueryAgent.retrieve()（见 4.2）
+  3. policy.validate_retrieval   命中回退 -> 记日志 + 直接返回 KnowledgeAnswer（跳过 LLM）（见 4.5）
+  4. answer_generator.generate   LLM 依据结构化资料 + 文档块生成答案
+  5. policy.validate_answer      require_citation 且无引用 -> 回退
+  6. _record_answer_log()        -> kb_answer_logs
 ```
 
-`KnowledgeBaseSkill` 支持 QQ / Web / CLI。主 Agent 判断需要知识库时调用该 skill。
+`search()` 是检索专用入口，只做 1+2，不生成答案、不走策略回退。`submit_dynamic_qa` / `submit_feedback` 走结构化写入。
+
+调用方接入：用户消息 -> AgentService -> knowledge_base skill -> `KnowledgeBaseService.answer`。`KnowledgeBaseSkill` 支持 QQ / Web / CLI，主 Agent 判断需要知识库时调用该 skill。
 
 ### 4.2 KBQueryAgent 查询路径
 
 ```text
 KnowledgeQuery
-  -> EntityResolver.resolve
-  -> KnowledgeAnalyticsEngine.query
-      -> entity-grounded SQL
-      -> fallback LLM text-to-SQL
-  -> if structured_records exists: return structured evidence
-  -> else page title matches + RAG chunks
+  -> EntityResolver.resolve        实体解析（kb_search_items + relations）
+  -> KnowledgeAnalyticsEngine.query 结构化 SQL（三级规划，见 4.4）
+  -> space_id 解析                  query.space_id -> 结构化结果里的 space_id -> default
+  -> RagBackend.search             文档混合检索（向量 + 词面 + 标题，见 4.6）
+  -> RetrievalResult(structured_records, chunks)
 ```
 
-优先级：
+注意：当前实现**不再**「有结构化结果就提前返回」，而是结构化证据与文档 RAG 并存于同一个 `RetrievalResult`，由后续 policy 与 AnswerGenerator 一起使用。文档标题匹配已并入 RAG 打分（见 4.6），`query_agent` 不再单独做 page title 匹配。
 
-1. 实体解析 + 结构化 SQL。
-2. LLM text-to-SQL fallback。
-3. 文档 title match + hybrid RAG chunk retrieval。
+space_id 解析顺序：`query.space_id` → 否则取结构化记录里的 `space_id` → 否则 `default_space_id`；RAG 的 filters 会并上 `space_id` 限定。
 
 ### 4.3 EntityResolver
 
@@ -249,9 +251,15 @@ seed 中不保存组合别名：
 强基计划: 强基、基础学科招生改革试点
 ```
 
-### 4.4 Analytics SQL
+### 4.4 Analytics SQL（三级规划）
 
-`KnowledgeAnalyticsEngine` 优先读取实体 metadata：
+`KnowledgeAnalyticsEngine.query` 先用 `is_analytics_question`（关键词：分数/录取/招生/专业/学院/学部/试验班/热点…）做守卫，非结构化问题直接返回 `[]`。然后按**三级优先级**生成 SQL，命中即停：
+
+1. `_site_content_plan`（纯规则，不调 LLM）：试验班→`admission_media_items`、热点武大→`admission_articles`、学部/学院列表/专业列表等，直接生成 SQL。
+2. `_entity_plan`（实体落地）：读取实体 metadata，取第一个有合法 `fact_table + fact_column` 的，按 province/year/subject_type 拼 `review_status='approved'` 的 SQL。
+3. `_plan`（LLM 兜底）：把语义层 schema + 候选值 + 实体喂 LLM 生成 SQL。
+
+`_entity_plan` 读取的实体 metadata 形如：
 
 ```json
 {
@@ -276,15 +284,17 @@ order by min_score desc nulls last, min_rank asc nulls last, province asc
 limit 1;
 ```
 
+**置信度门（`_entity_plan`）**：只有 `score >= 100` 或 `alias_type == 'relation_resolution'` 的高置信实体才能驱动 SQL。低置信噪声（如被模糊匹配进来的强基项目，而问题根本没提强基）会被跳过——否则会把查询钉到错误事实表、返回 0 行，并静默遮蔽 LLM planner（这是 fact_metric 类问题曾经的根因）。
+
 强约束规则：
 
 - 年份用正则提取：`2025年` / `25年`。
 - 省份必须字面出现在用户问题中才作为 SQL filter，避免向量召回噪声误过滤。
 - “最高”按 `min_score desc`。
 - “最低”按 `min_score asc`。
-- “所有/全部/列出/各省”放宽 `limit`，当前上限 50。
+- “所有/全部/列出/各省”放宽 `limit`，当前上限 `max_rows`（默认 50）。
 
-如果实体没有明确 fact mapping，则进入 LLM SQL planner。planner 只能查询 `KnowledgeSemanticLayer` 允许的表，并经过 `validate_select_sql`：
+若三级规划都没有产出可用 SQL（实体不满足置信度门、无 fact mapping），则该问题不返回结构化证据，交给文档 RAG。所有生成的 SQL 都必须经过 `validate_select_sql`：
 
 - 只允许 SELECT。
 - 禁止 insert/update/delete/drop 等操作。
@@ -292,7 +302,22 @@ limit 1;
 - 只允许查询白名单表。
 - 强制 limit。
 
-### 4.5 RAG 检索
+### 4.5 策略回退（KnowledgeBasePolicy）
+
+`validate_retrieval` 按顺序判定，任一命中即回退——回退的 `KnowledgeAnswer`（answer 为统一的"未收录可靠材料"提示）会**直接作为最终答案返回**，跳过 LLM 生成，并写入 `kb_answer_logs`：
+
+| 顺序 | 条件 | fallback_reason |
+|---|---|---|
+| 1 | `follow_up_question` 非空 | `missing_required_filters` |
+| 2 | 无任何证据（records + chunks 都空） | `no_reliable_source` |
+| 3 | `require_citation` 且无引用 | `no_reliable_source` |
+| 4 | 无结构化记录 且 `max(vector_score) < min_relevance` | `low_relevance` |
+
+第 4 条是**相关度阈值**（`min_relevance` 默认 0.5，`KB_MIN_RELEVANCE` 可调）：仅当只有文档块、没有可信结构化记录时，若返回结果里最高的余弦相似度仍低于阈值，判定为越界/低相关而拒答。结构化记录来自 filtered SQL，不受此门槛约束。这解决了"天气/订票"等越界问题被硬答的泄漏。
+
+`validate_answer` 在 LLM 生成后再做一次引用校验（`require_citation` 且无引用 → `no_reliable_source`）。
+
+### 4.6 文档 RAG 检索
 
 文档检索仍走 `kb_chunks`：
 
@@ -743,6 +768,28 @@ chunks_count = 0
 ```
 
 说明它走的是结构化事实，不是 RAG fallback。
+
+### 8.1 检索质量 / 效率评测（quality / perf）
+
+`run_kb_harness.py` 新增两个命令，针对多类型问题度量检索质量与效率（命中真实 Postgres + embedding + LLM）：
+
+```bash
+# 检索质量：按问题类型算 hit@k / MRR / precision@k / recall / 回退正确率
+uv run python test/kb/run_kb_harness.py quality \
+  --cases test/kb/cases/retrieval_quality.json
+
+# 检索效率：延迟 p50/p95/p99、并发吞吐、按类型延迟、embedding 调用数
+uv run python test/kb/run_kb_harness.py perf \
+  --cases test/kb/cases/retrieval_quality.json --concurrency 4 --iterations 40
+```
+
+用例集 `retrieval_quality.json` 覆盖 9 类检索路径：`fact_metric / ranking / listing / strong_foundation / entity / site_media / site_article / doc_rag / out_of_scope`，基于真实索引数据编写 ground truth。当前基线（含相关度阈值 + `_entity_plan` 置信度门修复后）：
+
+```text
+quality: overall pass 1.00（9 类全 100%，含 out_of_scope 越界回退）
+perf:    p50≈390ms p95≈1.7s，embedding 2 次/查询；
+         命中 LLM SQL 规划的类型（fact_metric/doc_rag）比规则型慢 2-4 倍
+```
 
 ## 9. 运行和维护命令
 
