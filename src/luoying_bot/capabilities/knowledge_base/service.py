@@ -126,7 +126,7 @@ class KnowledgeBaseService:
             "source_message_id": source_message_id,
             "review_status": "pending",
             "metadata": metadata or {},
-            "created_at": self._now_iso(),
+            "created_at": now_iso(),
         }
         if not payload["question"] or not payload["answer"]:
             raise KnowledgeBaseError("动态问答的问题和答案不能为空")
@@ -148,7 +148,7 @@ class KnowledgeBaseService:
             "comment": comment,
             "submitted_by": submitted_by,
             "status": "open",
-            "created_at": self._now_iso(),
+            "created_at": now_iso(),
         }
         return await self.structured_backend.create_item("kb_feedback", payload)
 
@@ -181,7 +181,7 @@ class KnowledgeBaseService:
             "answer": answer.answer,
             "confidence": answer.confidence,
             "fallback_reason": answer.fallback_reason or retrieval.fallback_reason,
-            "created_at": self._now_iso(),
+            "created_at": now_iso(),
         }
         try:
             await self.structured_backend.create_item("kb_answer_logs", payload)
@@ -212,6 +212,3 @@ class KnowledgeBaseService:
             filters=filters or {},
             top_k=top_k,
         )
-
-    def _now_iso(self) -> str:
-        return now_iso()
