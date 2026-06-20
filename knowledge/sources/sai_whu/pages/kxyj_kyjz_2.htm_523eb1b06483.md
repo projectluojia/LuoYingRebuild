@@ -7,7 +7,7 @@ url: "https://sai.whu.edu.cn/kxyj/kyjz/2.htm"
 published_at: null
 content_hash: "10767247053e13543fd7af495a13426b014398d0eaefc0c43894c85dfe6fc16e"
 content_type: "listing"
-fetched_at: "2026-06-18T18:42:22"
+fetched_at: "2026-06-19T22:21:20"
 depth: 1
 link_count: 15
 raw_path: "raw/kxyj_kyjz_2.htm_523eb1b06483.html"

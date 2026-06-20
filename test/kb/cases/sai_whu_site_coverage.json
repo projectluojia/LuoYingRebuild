@@ -1,0 +1,38 @@
+[
+  {
+    "id": "sai_contact_page",
+    "question": "武汉大学人工智能学院联系我们页面有哪些联系方式？",
+    "space_id": "sai",
+    "top_k": 8,
+    "expected_any": ["联系我们", "hanxiao2024@whu.edu.cn", "027-68763028"],
+    "expected_sources_any": ["https://sai.whu.edu.cn/about/lxwm.htm"],
+    "min_citations": 1
+  },
+  {
+    "id": "sai_dual_appointment_teachers",
+    "question": "武汉大学人工智能学院双聘教师有哪些？",
+    "space_id": "sai",
+    "top_k": 8,
+    "expected_any": ["双聘教师", "数理基础", "核心技术", "科学智能", "社会智能"],
+    "expected_sources_any": ["https://sai.whu.edu.cn/teacher/spjs.htm"],
+    "min_citations": 1
+  },
+  {
+    "id": "sai_contact_default_space",
+    "question": "人工智能学院的相关联系方式",
+    "space_id": null,
+    "top_k": 8,
+    "expected_any": ["联系我们", "hanxiao2024@whu.edu.cn", "027-68763028"],
+    "expected_sources_any": ["https://sai.whu.edu.cn/about/lxwm.htm"],
+    "min_citations": 1
+  },
+  {
+    "id": "sai_dual_appointment_default_space",
+    "question": "人工智能双聘教授",
+    "space_id": null,
+    "top_k": 8,
+    "expected_any": ["双聘教师", "数理基础", "核心技术", "科学智能", "社会智能"],
+    "expected_sources_any": ["https://sai.whu.edu.cn/teacher/spjs.htm"],
+    "min_citations": 1
+  }
+]

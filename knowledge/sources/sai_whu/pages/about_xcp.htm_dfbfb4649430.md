@@ -7,8 +7,8 @@ url: "https://sai.whu.edu.cn/about/xcp.htm"
 published_at: null
 content_hash: "bfb32fb9df6dd66ca0edf27b8fefb7bce47172b0eb0f46918281bbae86f44cfe"
 content_type: "page"
-fetched_at: "2026-06-18T18:42:22"
-depth: 1
+fetched_at: "2026-06-19T22:20:46"
+depth: 0
 link_count: 0
 raw_path: "raw/about_xcp.htm_dfbfb4649430.html"
 quality: {"ok": false, "score": 0.85, "warnings": ["too_short"], "metrics": {"chars": 5, "lines": 1, "main_nav_hits": 0, "footer_hits": 0, "breadcrumb_hits": 0, "script_hits": 0, "pagination_hits": 0, "duplicate_line_ratio": 0.0}}

@@ -7,7 +7,7 @@ url: "https://sai.whu.edu.cn/about/xyjj.htm"
 published_at: null
 content_hash: "cf95e3539b08849f8b60801ace2359578b3735297bd70d8d28a7ca73731f6e00"
 content_type: "listing"
-fetched_at: "2026-06-18T18:42:21"
+fetched_at: "2026-06-19T22:20:45"
 depth: 0
 link_count: 0
 raw_path: "raw/about_xyjj.htm_c53c1a8efa6c.html"
