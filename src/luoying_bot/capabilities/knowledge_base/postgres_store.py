@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
+from urllib.parse import urlparse
 
 import asyncpg
 
@@ -14,6 +16,7 @@ from luoying_bot.capabilities.knowledge_base.entities import normalize_entity_te
 from luoying_bot.capabilities.knowledge_base.errors import BackendUnavailable
 from luoying_bot.capabilities.knowledge_base.models import Citation, RetrievedChunk
 from luoying_bot.capabilities.knowledge_base.ports import AnalyticsBackend, EntityBackend, RagBackend, StructuredBackend
+from luoying_bot.capabilities.knowledge_base.semantic_layer import KnowledgeSemanticLayer
 
 
 @dataclass(slots=True)
@@ -591,21 +594,7 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
     ) -> list[dict[str, Any]]:
         if collection in {"kb_pages", "kb_documents"}:
             rows = await self._list_documents(filters=filters, limit=limit, sort=sort)
-        elif collection in {
-            "kb_entities",
-            "kb_entity_aliases",
-            "kb_entity_relations",
-            "admission_plans",
-            "admission_scores",
-            "admission_strong_foundation_scores",
-            "majors",
-            "class_types",
-            "admission_content_categories",
-            "admission_articles",
-            "academic_units",
-            "admission_schools",
-            "admission_media_items",
-        }:
+        elif collection in STRUCTURED_FILTER_FIELDS:
             rows = await self._list_structured(collection, filters=filters, limit=limit, sort=sort)
         else:
             rows = []
@@ -635,7 +624,7 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
             row = await conn.fetchrow("select payload_json from kb_events where id = $1", int(item_id))
             if row is None:
                 raise BackendUnavailable(f"Postgres 记录不存在：{collection}/{item_id}")
-            data = dict(row["payload_json"])
+            data = json_object(row["payload_json"])
             data.update(payload)
             await conn.execute(
                 "update kb_events set payload_json = $1::jsonb where id = $2",
@@ -1457,21 +1446,67 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
             """,
             space_id,
         )
+        items = [record_to_dict(row) for row in rows]
+        title_frequencies = title_term_frequencies(items, query_terms)
+        title_count = len(items)
         candidates: list[dict[str, Any]] = []
-        for row in rows:
-            item = record_to_dict(row)
+        for item in items:
             title = compact_text(str(item["title"]))
             if not title:
                 continue
-            overlap = title_overlap_score(query_compact=query_compact, query_terms=query_terms, title=title)
+            overlap = title_overlap_score(
+                query_compact=query_compact,
+                query_terms=query_terms,
+                title=title,
+                title_frequencies=title_frequencies,
+                title_count=title_count,
+            )
+            if is_site_entry_url(str(item.get("source_url") or "")) and title != query_compact:
+                overlap = min(overlap, 0.8)
             if title in query_compact:
-                item["title_score"] = min(2.0, 0.8 + len(title) / 10)
+                item["title_score"] = overlap
                 candidates.append(item)
             elif overlap > 0:
                 item["title_score"] = overlap
                 candidates.append(item)
         candidates.sort(key=lambda item: item["title_score"], reverse=True)
-        return candidates[:limit]
+        return await self._expand_strong_title_documents(conn, candidates[:limit], limit=limit)
+
+    async def _expand_strong_title_documents(
+        self,
+        conn: asyncpg.Connection,
+        candidates: list[dict[str, Any]],
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        strong_by_document = {
+            str(item["document_id"]): float(item.get("title_score") or 0.0)
+            for item in candidates
+            if float(item.get("title_score") or 0.0) >= 3.0
+        }
+        if not strong_by_document:
+            return candidates
+        rows = await conn.fetch(
+            """
+            select c.chunk_id, c.document_id, c.title, c.source_url, c.published_at, c.text,
+                   c.embedding_model
+            from kb_chunks c
+            where c.document_id = any($1::text[]) and c.chunk_index > 0
+            order by c.document_id, c.chunk_index
+            """,
+            list(strong_by_document),
+        )
+        seen = {str(item["chunk_id"]) for item in candidates}
+        expanded = list(candidates)
+        for row in rows:
+            item = record_to_dict(row)
+            if str(item["chunk_id"]) in seen:
+                continue
+            item["title_score"] = strong_by_document[str(item["document_id"])] * 0.96
+            expanded.append(item)
+            seen.add(str(item["chunk_id"]))
+        expanded.sort(key=lambda item: float(item.get("title_score") or 0.0), reverse=True)
+        return expanded[:limit]
 
     async def _lexical_candidates(
         self,
@@ -1544,7 +1579,7 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
                 )
 
 
-STRUCTURED_FILTER_FIELDS: dict[str, set[str]] = {
+EXTRA_STRUCTURED_FILTER_FIELDS: dict[str, set[str]] = {
     "kb_entities": {
         "entity_id",
         "space_id",
@@ -1569,55 +1604,12 @@ STRUCTURED_FILTER_FIELDS: dict[str, set[str]] = {
         "object_entity_id",
         "review_status",
     },
-    "admission_plans": {
-        "space_id",
-        "year",
-        "province",
-        "subject_type",
-        "batch",
-        "major_name",
-        "class_type",
-        "review_status",
-    },
-    "admission_scores": {
-        "space_id",
-        "year",
-        "province",
-        "subject_type",
-        "batch",
-        "major_name",
-        "review_status",
-    },
-    "admission_strong_foundation_scores": {
-        "space_id",
-        "year",
-        "province",
-        "program_name",
-        "subject_type",
-        "review_status",
-    },
-    "majors": {"space_id", "name", "review_status"},
-    "class_types": {"space_id", "name", "review_status"},
     "admission_content_categories": {"space_id", "category_id", "name", "review_status"},
-    "admission_articles": {
-        "space_id",
-        "article_id",
-        "category_id",
-        "category_name",
-        "title",
-        "review_status",
-    },
-    "academic_units": {"space_id", "unit_id", "name", "review_status"},
-    "admission_schools": {"space_id", "school_id", "unit_id", "unit_name", "name", "review_status"},
-    "admission_media_items": {
-        "space_id",
-        "item_id",
-        "category_id",
-        "category_name",
-        "title",
-        "item_type",
-        "review_status",
-    },
+}
+
+STRUCTURED_FILTER_FIELDS: dict[str, set[str]] = {
+    **KnowledgeSemanticLayer().filter_fields_by_table(),
+    **EXTRA_STRUCTURED_FILTER_FIELDS,
 }
 
 
@@ -1684,6 +1676,11 @@ def compact_text(text: str) -> str:
     return "".join(re.findall(r"[\u4e00-\u9fffA-Za-z0-9]+", text.lower()))
 
 
+def is_site_entry_url(url: str) -> bool:
+    path = urlparse(url).path.rstrip("/")
+    return path in {"", "/index.htm", "/index.html"}
+
+
 def searchable_text(text: str) -> str:
     compact = compact_text(text)
     return " ".join(
@@ -1708,13 +1705,43 @@ def chinese_ngrams(text: str, *, min_n: int, max_n: int, limit: int) -> list[str
     return grams
 
 
-def title_overlap_score(*, query_compact: str, query_terms: list[str], title: str) -> float:
+def title_term_frequencies(items: list[dict[str, Any]], query_terms: list[str]) -> dict[str, int]:
+    compact_terms = {compact_text(term) for term in query_terms if len(compact_text(term)) >= 2}
+    frequencies = dict.fromkeys(compact_terms, 0)
+    for item in items:
+        title = compact_text(str(item.get("title") or ""))
+        if not title:
+            continue
+        for term in compact_terms:
+            if term in title or title in term:
+                frequencies[term] += 1
+    return frequencies
+
+
+def title_overlap_score(
+    *,
+    query_compact: str,
+    query_terms: list[str],
+    title: str,
+    title_frequencies: dict[str, int],
+    title_count: int,
+) -> float:
     compact_terms = [compact_text(term) for term in query_terms if len(compact_text(term)) >= 2]
+    if title in query_compact:
+        frequency = max(title_frequencies.get(title, 0), 1)
+        idf = math.log((title_count + 1) / (frequency + 1)) + 1.0
+        query_coverage = len(title) / max(len(query_compact), 1)
+        return min(4.0, max(3.6, 2.4 + idf * math.sqrt(query_coverage)))
     matches = [term for term in compact_terms if term in title or title in term]
     if not matches:
         return 0.0
-    coverage = sum(min(len(term), len(title)) for term in matches) / max(len(title), 1)
-    return min(2.0, 0.35 + coverage)
+    best = 0.0
+    for term in matches:
+        frequency = max(title_frequencies.get(term, 0), 1)
+        idf = math.log((title_count + 1) / (frequency + 1)) + 1.0
+        coverage = min(len(term), len(title)) / max(len(title), 1)
+        best = max(best, idf * coverage)
+    return min(4.0, 0.8 + best)
 
 
 def phrase_overlap_score(*, query_terms: list[str], title: str, text: str) -> float:
@@ -1813,3 +1840,15 @@ def jsonable(value: Any) -> Any:
     if isinstance(value, Decimal):
         return float(value)
     return value
+
+
+def json_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return dict(value)
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return dict(parsed) if isinstance(parsed, dict) else {}
+    return {}

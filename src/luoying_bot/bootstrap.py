@@ -136,7 +136,6 @@ async def _build_container(
     await knowledge_store.ensure_schema()
     kb_query_agent = KBQueryAgent(
         rag_backend=knowledge_store,
-        structured_backend=knowledge_store,
         analytics_engine=KnowledgeAnalyticsEngine(
             backend=knowledge_store,
             value_backend=knowledge_store,

@@ -14,9 +14,7 @@ class KnowledgeAnswerGenerator:
         structured_context = "\n".join(
             f"- {record.text()}" for record in retrieval.structured_records[:30]
         ) or "无"
-        rag_context = "\n".join(
-            f"- {chunk.text}" for chunk in retrieval.chunks[:8] if chunk.text.strip()
-        ) or "无"
+        rag_context = "\n".join(f"- {chunk.text}" for chunk in retrieval.chunks if chunk.text.strip()) or "无"
 
         if self.model is None:
             answer = self._render_answer_without_model(structured_context, rag_context)

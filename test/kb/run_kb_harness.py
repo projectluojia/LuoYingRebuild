@@ -72,7 +72,6 @@ async def build_service(*, with_answer: bool) -> KnowledgeBaseService:
     await store.ensure_schema()
     query_agent = KBQueryAgent(
         rag_backend=store,
-        structured_backend=store,
         analytics_engine=KnowledgeAnalyticsEngine(
             backend=store,
             value_backend=store,

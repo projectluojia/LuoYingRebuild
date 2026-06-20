@@ -198,6 +198,9 @@ class KnowledgeSemanticLayer:
                 return table.columns
         return ()
 
+    def filter_fields_by_table(self) -> dict[str, set[str]]:
+        return {table.name: set(table.columns) for table in self._tables}
+
     def prompt_context(self) -> str:
         blocks: list[str] = []
         for table in self._tables:

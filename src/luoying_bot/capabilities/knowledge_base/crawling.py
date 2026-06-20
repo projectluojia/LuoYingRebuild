@@ -12,9 +12,16 @@ from luoying_bot.capabilities.knowledge_base.extraction import (
     Crawl4AIExtractor,
     is_asset_url,
     normalize_url,
+    sha256_text,
 )
 from luoying_bot.capabilities.knowledge_base.postgres_store import IndexedDocument, PostgresKnowledgeStore
 from luoying_bot.capabilities.knowledge_base.quality import MarkdownQualityChecker
+
+
+@dataclass(slots=True)
+class MarkdownReplacement:
+    pattern: str
+    replacement: str
 
 
 @dataclass(slots=True)
@@ -30,6 +37,7 @@ class SiteCrawlConfig:
     include_url_patterns: list[str] = field(default_factory=list)
     exclude_url_patterns: list[str] = field(default_factory=list)
     blocked_page_patterns: list[str] = field(default_factory=list)
+    markdown_replacements: list[MarkdownReplacement] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SiteCrawlConfig":
@@ -45,6 +53,14 @@ class SiteCrawlConfig:
             include_url_patterns=[str(x) for x in data.get("include_url_patterns", [])],
             exclude_url_patterns=[str(x) for x in data.get("exclude_url_patterns", [])],
             blocked_page_patterns=[str(x) for x in data.get("blocked_page_patterns", [])],
+            markdown_replacements=[
+                MarkdownReplacement(
+                    pattern=str(item["pattern"]),
+                    replacement=str(item.get("replacement") or ""),
+                )
+                for item in data.get("markdown_replacements", [])
+                if isinstance(item, dict) and item.get("pattern")
+            ],
         )
 
     @classmethod
@@ -76,6 +92,10 @@ class SiteCrawlConfig:
                 "include_url_patterns": self.include_url_patterns,
                 "exclude_url_patterns": self.exclude_url_patterns,
                 "blocked_page_patterns": self.blocked_page_patterns,
+                "markdown_replacements": [
+                    {"pattern": item.pattern, "replacement": item.replacement}
+                    for item in self.markdown_replacements
+                ],
             },
             "enabled": True,
         }
@@ -136,13 +156,14 @@ class KnowledgeSiteCrawler:
                     continue
                 try:
                     content = await extractor.extract(url=url)
+                    markdown = apply_markdown_replacements(content.markdown, config.markdown_replacements)
                     parsed = ParsedPage(
                         url=content.url,
                         title=content.title,
-                        markdown=content.markdown,
+                        markdown=markdown,
                         links=content.links,
                         published_at=content.published_at,
-                        content_hash=content.content_hash,
+                        content_hash=sha256_text(markdown),
                         raw_html=content.raw_html,
                     )
                     if self._blocked_page(parsed, config):
@@ -251,6 +272,10 @@ class KnowledgeCrawlRecorder:
                 "entry_urls": config.entry_urls,
                 "max_pages": config.max_pages,
                 "max_depth": config.max_depth,
+                "markdown_replacements": [
+                    {"pattern": item.pattern, "replacement": item.replacement}
+                    for item in config.markdown_replacements
+                ],
                 "updated_at": result.finished_at,
             }
         )
@@ -346,3 +371,10 @@ class KnowledgeCrawlRecorder:
 
 def now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
+
+
+def apply_markdown_replacements(text: str, replacements: list[MarkdownReplacement]) -> str:
+    clean = text
+    for replacement in replacements:
+        clean = re.sub(replacement.pattern, replacement.replacement, clean)
+    return clean

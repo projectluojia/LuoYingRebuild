@@ -198,9 +198,10 @@ class KnowledgeBaseService:
         clean_question = question.strip()
         if not clean_question:
             raise KnowledgeBaseError("知识库问题不能为空")
+        clean_space_id = str(space_id or "").strip() or self.config.default_space_id
         return KnowledgeQuery(
             question=clean_question,
-            space_id=space_id or "",
+            space_id=clean_space_id,
             platform=platform,
             conversation_id=conversation_id,
             user_id=user_id,
