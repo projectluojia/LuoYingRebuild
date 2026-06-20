@@ -5,7 +5,7 @@ import asyncio
 import json
 import statistics
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -15,8 +15,9 @@ from luoying_bot.capabilities.knowledge_base.analytics import KnowledgeAnalytics
 from luoying_bot.capabilities.knowledge_base.answering import KnowledgeAnswerGenerator
 from luoying_bot.capabilities.knowledge_base.embeddings import OpenAICompatibleEmbeddingProvider
 from luoying_bot.capabilities.knowledge_base.entity_resolver import EntityResolver
+from luoying_bot.capabilities.knowledge_base.models import RetrievalResult
 from luoying_bot.capabilities.knowledge_base.policy import KnowledgeBasePolicy
-from luoying_bot.capabilities.knowledge_base.postgres_store import PostgresKnowledgeStore
+from luoying_bot.capabilities.knowledge_base.postgres_store import PostgresKnowledgeStore, compact_text
 from luoying_bot.capabilities.knowledge_base.query_agent import KBQueryAgent, KBQueryAgentConfig
 from luoying_bot.capabilities.knowledge_base.semantic_layer import KnowledgeSemanticLayer
 from luoying_bot.config import settings
@@ -24,6 +25,28 @@ from luoying_bot.infra.llm.openai_chat import OpenAICompatibleChatModel
 
 
 DEFAULT_REPORT_DIR = Path("test/kb/reports")
+
+
+class CountingEmbeddingProvider:
+    """Wrap an embedding provider to count calls and texts (efficiency signal)."""
+
+    def __init__(self, inner):
+        self.inner = inner
+        self.calls = 0
+        self.texts = 0
+
+    @property
+    def provider_id(self) -> str:
+        return self.inner.provider_id
+
+    @property
+    def model(self) -> str:
+        return self.inner.model
+
+    async def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        self.calls += 1
+        self.texts += len(texts)
+        return await self.inner.embed_texts(texts)
 
 
 @dataclass(slots=True)
@@ -35,6 +58,11 @@ class QueryCase:
     expected_any: list[str]
     expected_sources_any: list[str]
     min_citations: int
+    # Retrieval-quality eval fields (optional; old case files keep working with defaults).
+    type: str = "untagged"
+    expected_match: list[str] = field(default_factory=list)
+    min_relevant: int = 1
+    expect_fallback: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "QueryCase":
@@ -48,6 +76,10 @@ class QueryCase:
             expected_any=[str(item) for item in data.get("expected_any", [])],
             expected_sources_any=[str(item) for item in data.get("expected_sources_any", [])],
             min_citations=int(data.get("min_citations") or 1),
+            type=str(data.get("type") or "untagged"),
+            expected_match=[str(item) for item in data.get("expected_match", [])],
+            min_relevant=int(data.get("min_relevant") or 1),
+            expect_fallback=bool(data.get("expect_fallback")),
         )
 
 
@@ -61,11 +93,13 @@ async def build_service(*, with_answer: bool) -> KnowledgeBaseService:
     )
     store = PostgresKnowledgeStore(
         settings.kb_database_url,
-        embedding_provider=OpenAICompatibleEmbeddingProvider(
-            base_url=settings.kb_embedding_base_url,
-            api_key=settings.kb_embedding_api_key,
-            model=settings.kb_embedding_model,
-            batch_size=settings.kb_embedding_batch_size,
+        embedding_provider=CountingEmbeddingProvider(
+            OpenAICompatibleEmbeddingProvider(
+                base_url=settings.kb_embedding_base_url,
+                api_key=settings.kb_embedding_api_key,
+                model=settings.kb_embedding_model,
+                batch_size=settings.kb_embedding_batch_size,
+            )
         ),
         embedding_dimensions=settings.kb_embedding_dimensions,
     )
@@ -221,8 +255,10 @@ async def run_eval(args: argparse.Namespace) -> dict[str, Any]:
 async def run_perf(args: argparse.Namespace) -> dict[str, Any]:
     cases = load_cases(Path(args.cases))
     service = await build_service(with_answer=False)
+    embedding_provider = service.structured_backend.embedding_provider
     semaphore = asyncio.Semaphore(args.concurrency)
     latencies: list[float] = []
+    latencies_by_type: dict[str, list[float]] = {}
     request_failures: list[dict[str, Any]] = []
     quality_failures: list[dict[str, Any]] = []
 
@@ -232,6 +268,7 @@ async def run_perf(args: argparse.Namespace) -> dict[str, Any]:
             try:
                 result = await run_case(service, case, with_answer=False)
                 latencies.append(float(result["latency_ms"]))
+                latencies_by_type.setdefault(case.type, []).append(float(result["latency_ms"]))
                 if not result["ok"]:
                     quality_failures.append(result)
             except Exception as exc:
@@ -244,9 +281,16 @@ async def run_perf(args: argparse.Namespace) -> dict[str, Any]:
                     }
                 )
 
+    embedding_before = (embedding_provider.calls, embedding_provider.texts)
     started = time.perf_counter()
     await asyncio.gather(*(worker(index) for index in range(args.iterations)))
     elapsed_sec = time.perf_counter() - started
+    embedding_calls = embedding_provider.calls - embedding_before[0]
+    embedding_texts = embedding_provider.texts - embedding_before[1]
+    latency_by_type = [
+        {"type": type_name, **summarize_latencies(bucket)}
+        for type_name, bucket in sorted(latencies_by_type.items())
+    ]
     return {
         "type": "perf",
         "ok": not request_failures,
@@ -256,10 +300,215 @@ async def run_perf(args: argparse.Namespace) -> dict[str, Any]:
         "elapsed_sec": round(elapsed_sec, 3),
         "throughput_qps": round(args.iterations / elapsed_sec, 3) if elapsed_sec else None,
         "latency": summarize_latencies(latencies),
+        "latency_by_type": latency_by_type,
+        "embedding_calls": embedding_calls,
+        "embedding_texts": embedding_texts,
+        "embedding_calls_per_query": round(embedding_calls / args.iterations, 3) if args.iterations else None,
         "request_failures": request_failures[:20],
         "request_failure_count": len(request_failures),
         "quality_failures": quality_failures[:20],
         "quality_failure_count": len(quality_failures),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Retrieval-quality evaluation (IR metrics over ranked retrieval results)
+# ---------------------------------------------------------------------------
+
+def retrieval_items(retrieval: RetrievalResult) -> list[dict[str, Any]]:
+    """Flatten a RetrievalResult into a ranked list of comparable items.
+
+    Structured (analytics) records come first, then RAG chunks. Each item carries a
+    normalized ``blob`` (title + source + value text) used for relevance matching, so a
+    relevant hit can be detected whether it surfaces as a structured row or a doc chunk.
+    """
+    items: list[dict[str, Any]] = []
+    for record in retrieval.structured_records:
+        title = record.citation.title if record.citation else record.collection
+        source = record.citation.source if record.citation else ""
+        items.append(
+            {
+                "kind": "structured",
+                "title": title,
+                "source": source,
+                "blob": compact_text(" ".join([record.collection, record.text(), title, source])),
+            }
+        )
+    for chunk in retrieval.chunks:
+        title = chunk.citation.title if chunk.citation else ""
+        source = chunk.citation.source if chunk.citation else ""
+        items.append(
+            {
+                "kind": "chunk",
+                "title": title,
+                "source": source,
+                "blob": compact_text(" ".join([title, source, chunk.text])),
+            }
+        )
+    return items
+
+
+def compute_quality_metrics(
+    case: QueryCase,
+    retrieval: RetrievalResult,
+    *,
+    system_fallback: bool,
+) -> dict[str, Any]:
+    """Compute IR metrics for one case against the live retrieval result.
+
+    Two relevance modes:
+
+    * **AND mode** (``expected_match`` present, used for fact/ranking/site/entity/doc):
+      an item is relevant when its blob contains *every* ``expected_match`` token. Hit@k,
+      precision@k, recall (vs ``min_relevant``) and MRR are computed over ranked items.
+    * **Coverage mode** (no ``expected_match`` but ``expected_any`` present, used for
+      listing questions): ``expected_any`` is the expected entity set; recall = found/total
+      over the whole result blob, hit@k = at least one found.
+
+    ``system_fallback`` reflects the policy decision. For ``expect_fallback`` cases,
+    success means the system actually refused to answer.
+    """
+    items = retrieval_items(retrieval)
+    k = case.top_k
+    match_tokens = [compact_text(token) for token in case.expected_match if str(token).strip()]
+    match_tokens = [token for token in match_tokens if token]
+    any_tokens = [compact_text(token) for token in case.expected_any if str(token).strip()]
+    any_tokens = [token for token in any_tokens if token]
+    full_blob = " ".join(item["blob"] for item in items)
+
+    if match_tokens:
+        relevant_ranks = [
+            index for index, item in enumerate(items) if all(token in item["blob"] for token in match_tokens)
+        ]
+        relevant_in_top = [rank for rank in relevant_ranks if rank < k]
+        hit_at_k = 1 if relevant_in_top else 0
+        first_rank = (relevant_ranks[0] + 1) if relevant_ranks else None
+        mrr = round(1.0 / first_rank, 4) if first_rank else 0.0
+        precision_at_k = round(len(relevant_in_top) / max(1, min(k, len(items))), 4)
+        if case.min_relevant:
+            recall = round(min(1.0, len(relevant_ranks) / case.min_relevant), 4)
+        else:
+            recall = 1.0 if relevant_ranks else 0.0
+        term_coverage = (not any_tokens) or any(token in full_blob for token in any_tokens)
+    else:
+        # Coverage mode for listing-style questions (rank-less).
+        found = [token for token in any_tokens if token in full_blob]
+        hit_at_k = 1 if found else 0
+        mrr = 1.0 if found else 0.0
+        precision_at_k = round(len(found) / max(1, min(k, len(items))), 4)
+        recall = round(len(found) / max(1, len(any_tokens)), 4)
+        term_coverage = bool(found)
+        first_rank = None
+        relevant_ranks = []
+
+    fallback_correct = case.expect_fallback == system_fallback
+    if case.expect_fallback:
+        ok = system_fallback
+    else:
+        ok = bool(hit_at_k) and term_coverage and fallback_correct and not system_fallback
+
+    return {
+        "hit_at_k": hit_at_k,
+        "mrr": mrr,
+        "precision_at_k": precision_at_k,
+        "recall": recall,
+        "first_rank": first_rank,
+        "relevant_count": len(relevant_ranks),
+        "items_returned": len(items),
+        "term_coverage": term_coverage,
+        "system_fallback": system_fallback,
+        "fallback_correct": fallback_correct,
+        "ok": ok,
+    }
+
+
+async def run_quality_case(service: KnowledgeBaseService, case: QueryCase) -> dict[str, Any]:
+    """Run one case through retrieval + policy (no LLM answer) and score it."""
+    started = time.perf_counter()
+    retrieval = await service.search(
+        query_text=case.question,
+        space_id=case.space_id,
+        top_k=case.top_k,
+    )
+    latency_ms = round((time.perf_counter() - started) * 1000, 2)
+    # What the user-facing pipeline would decide: does the policy force a fallback?
+    policy_answer = service.policy.validate_retrieval(retrieval)
+    system_fallback = policy_answer is not None
+    metrics = compute_quality_metrics(case, retrieval, system_fallback=system_fallback)
+    top_items = [
+        {"kind": item["kind"], "title": item["title"][:60], "source": item["source"][:80]}
+        for item in retrieval_items(retrieval)[:5]
+    ]
+    return {
+        "id": case.id,
+        "type": case.type,
+        "question": case.question,
+        "space_id": case.space_id,
+        "latency_ms": latency_ms,
+        "fallback_reason": policy_answer.fallback_reason if policy_answer else None,
+        **metrics,
+        "top_items": top_items,
+    }
+
+
+def summarize_quality_by_type(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate quality metrics per question type + an overall rollup."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for item in results:
+        groups.setdefault(item["type"], []).append(item)
+
+    def aggregate(name: str, bucket: list[dict[str, Any]]) -> dict[str, Any]:
+        count = len(bucket)
+        return {
+            "type": name,
+            "count": count,
+            "pass_rate": round(sum(1 for r in bucket if r["ok"]) / count, 4) if count else 0.0,
+            "hit_at_k": round(sum(r["hit_at_k"] for r in bucket) / count, 4) if count else 0.0,
+            "mrr": round(sum(r["mrr"] for r in bucket) / count, 4) if count else 0.0,
+            "precision_at_k": round(sum(r["precision_at_k"] for r in bucket) / count, 4) if count else 0.0,
+            "recall": round(sum(r["recall"] for r in bucket) / count, 4) if count else 0.0,
+            "fallback_accuracy": (
+                round(sum(1 for r in bucket if r["fallback_correct"]) / count, 4) if count else 0.0
+            ),
+            "mean_latency_ms": round(sum(r["latency_ms"] for r in bucket) / count, 2) if count else 0.0,
+        }
+
+    by_type = [aggregate(name, bucket) for name, bucket in sorted(groups.items())]
+    return {"overall": aggregate("overall", results), "by_type": by_type}
+
+
+async def run_quality(args: argparse.Namespace) -> dict[str, Any]:
+    cases = load_cases(Path(args.cases))
+    service = await build_service(with_answer=False)
+    results = []
+    for case in cases:
+        try:
+            results.append(await run_quality_case(service, case))
+        except Exception as exc:  # a single backend failure shouldn't abort the whole eval
+            results.append(
+                {
+                    "id": case.id,
+                    "type": case.type,
+                    "question": case.question,
+                    "ok": False,
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "hit_at_k": 0,
+                    "mrr": 0.0,
+                    "precision_at_k": 0.0,
+                    "recall": 0.0,
+                    "fallback_correct": False,
+                    "system_fallback": False,
+                    "latency_ms": 0.0,
+                }
+            )
+    summary = summarize_quality_by_type(results)
+    return {
+        "type": "quality",
+        "ok": summary["overall"]["pass_rate"] >= (args.pass_threshold / 100.0),
+        "pass_threshold": args.pass_threshold,
+        "settings": safe_settings_snapshot(),
+        "summary": summary,
+        "results": results,
     }
 
 
@@ -293,6 +542,7 @@ def summarize_latencies(latencies: list[float]) -> dict[str, Any]:
         "p50_ms": percentile(ordered, 0.50),
         "p90_ms": percentile(ordered, 0.90),
         "p95_ms": percentile(ordered, 0.95),
+        "p99_ms": percentile(ordered, 0.99),
         "max_ms": round(ordered[-1], 2),
         "mean_ms": round(statistics.fmean(ordered), 2),
     }
@@ -355,6 +605,18 @@ def build_parser() -> argparse.ArgumentParser:
     perf.add_argument("--concurrency", type=int, default=4)
     perf.add_argument("--iterations", type=int, default=20)
     perf.add_argument("--output", default=None)
+
+    quality = subparsers.add_parser(
+        "quality", help="retrieval-quality eval: IR metrics (hit@k/MRR/precision/recall) + fallback correctness, by question type"
+    )
+    quality.add_argument("--cases", default="test/kb/cases/retrieval_quality.json")
+    quality.add_argument(
+        "--pass-threshold",
+        type=float,
+        default=80.0,
+        help="overall pass rate (%%) below which the run is marked failed",
+    )
+    quality.add_argument("--output", default=None)
     return parser
 
 
@@ -367,6 +629,8 @@ async def async_main() -> int:
         report = await run_eval(args)
     elif args.command == "perf":
         report = await run_perf(args)
+    elif args.command == "quality":
+        report = await run_quality(args)
     else:
         raise ValueError(f"unknown command: {args.command}")
 

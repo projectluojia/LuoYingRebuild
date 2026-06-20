@@ -1,0 +1,176 @@
+[
+  {
+    "id": "fact_hubei_2024_score",
+    "type": "fact_metric",
+    "question": "武汉大学2024年在湖北的录取分数线是多少？",
+    "space_id": "whu",
+    "top_k": 8,
+    "expected_match": ["湖北", "2024"],
+    "expected_any": ["分数线", "录取分"],
+    "min_relevant": 1
+  },
+  {
+    "id": "fact_henan_2025_spatiotemporal",
+    "type": "fact_metric",
+    "question": "2025年河南物理类时空信息工程专业的最低分是多少？",
+    "space_id": "whu",
+    "top_k": 8,
+    "expected_match": ["河南", "2025", "时空信息工程"],
+    "expected_any": ["667"],
+    "min_relevant": 1
+  },
+  {
+    "id": "fact_hubei_2024_leijun",
+    "type": "fact_metric",
+    "question": "2024年湖北物理类计算机科学与技术(雷军班)的录取分是多少？",
+    "space_id": "whu",
+    "top_k": 8,
+    "expected_match": ["湖北", "2024", "雷军"],
+    "expected_any": ["677"],
+    "min_relevant": 1
+  },
+  {
+    "id": "fact_guangdong_2023_score",
+    "type": "fact_metric",
+    "question": "武汉大学在广东2023年的录取分数线是多少？",
+    "space_id": "whu",
+    "top_k": 8,
+    "expected_match": ["广东", "2023"],
+    "min_relevant": 1
+  },
+  {
+    "id": "rank_province_highest_2025",
+    "type": "ranking",
+    "question": "2025年哪一省录取最低分最高？",
+    "space_id": "whu",
+    "top_k": 8,
+    "expected_match": ["2025"],
+    "min_relevant": 1
+  },
+  {
+    "id": "rank_strong_foundation_highest",
+    "type": "ranking",
+    "question": "强基计划哪一省的最低分最高？",
+    "space_id": "whu",
+    "top_k": 8,
+    "expected_match": ["强基"],
+    "min_relevant": 1
+  },
+  {
+    "id": "strong_foundation_hubei_2025",
+    "type": "strong_foundation",
+    "question": "2025年强基计划在湖北的最低分是多少？",
+    "space_id": "whu",
+    "top_k": 8,
+    "expected_match": ["湖北", "2025", "强基"],
+    "min_relevant": 1
+  },
+  {
+    "id": "list_majors",
+    "type": "listing",
+    "question": "武汉大学有哪些专业？",
+    "space_id": "whu",
+    "top_k": 8,
+    "expected_any": ["信息管理与信息系统", "图书馆学", "数字出版"],
+    "min_relevant": 10
+  },
+  {
+    "id": "list_units",
+    "type": "listing",
+    "question": "武汉大学有哪些学部？",
+    "space_id": "whu",
+    "top_k": 8,
+    "expected_any": ["人文科学学部", "医学部", "信息科学学部", "工学部", "理学部", "社会科学学部"],
+    "min_relevant": 5
+  },
+  {
+    "id": "entity_school_unit",
+    "type": "entity",
+    "question": "经济与管理学院属于哪个学部？官网是什么？",
+    "space_id": "whu",
+    "top_k": 8,
+    "expected_match": ["经济与管理学院"],
+    "expected_any": ["社会科学学部"],
+    "min_relevant": 1
+  },
+  {
+    "id": "site_media_shiyangban",
+    "type": "site_media",
+    "question": "武汉大学有哪些试验班？",
+    "space_id": "whu",
+    "top_k": 8,
+    "expected_match": ["试验班"],
+    "expected_any": ["数智经济与管理本硕博试验班", "数字文化本硕博试验班"],
+    "min_relevant": 8
+  },
+  {
+    "id": "site_article_hotspot",
+    "type": "site_article",
+    "question": "热点武大有哪些文章？",
+    "space_id": "whu",
+    "top_k": 8,
+    "expected_match": ["热点武大"],
+    "min_relevant": 5
+  },
+  {
+    "id": "doc_sai_undergraduate_training",
+    "type": "doc_rag",
+    "question": "武汉大学人工智能学院本科生培养有哪些信息？",
+    "space_id": "sai",
+    "top_k": 8,
+    "expected_match": ["本科生培养"],
+    "expected_any": ["人工智能"],
+    "min_relevant": 1
+  },
+  {
+    "id": "doc_sai_ziqiang_plan",
+    "type": "doc_rag",
+    "question": "人工智能学院自强班的培养方案在哪里？",
+    "space_id": "sai",
+    "top_k": 8,
+    "expected_match": ["自强班"],
+    "min_relevant": 1
+  },
+  {
+    "id": "doc_sai_graduate_training",
+    "type": "doc_rag",
+    "question": "人工智能学院研究生培养方案包含哪些内容？",
+    "space_id": "sai",
+    "top_k": 8,
+    "expected_match": ["研究生培养"],
+    "min_relevant": 1
+  },
+  {
+    "id": "doc_sai_2025_plan",
+    "type": "doc_rag",
+    "question": "2025年人工智能学院本科招生分省计划表在哪里？",
+    "space_id": "sai",
+    "top_k": 8,
+    "expected_match": ["2025", "计划"],
+    "min_relevant": 1
+  },
+  {
+    "id": "oos_canteen_menu",
+    "type": "out_of_scope",
+    "question": "武汉大学食堂今天中午有什么菜？",
+    "space_id": "whu",
+    "top_k": 8,
+    "expect_fallback": true
+  },
+  {
+    "id": "oos_train_ticket",
+    "type": "out_of_scope",
+    "question": "帮我订一张明天去北京的高铁票",
+    "space_id": "whu",
+    "top_k": 8,
+    "expect_fallback": true
+  },
+  {
+    "id": "oos_weather",
+    "type": "out_of_scope",
+    "question": "今天武汉的天气怎么样？",
+    "space_id": "sai",
+    "top_k": 8,
+    "expect_fallback": true
+  }
+]
