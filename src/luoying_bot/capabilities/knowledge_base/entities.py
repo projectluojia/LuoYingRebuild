@@ -13,6 +13,8 @@ from luoying_bot.capabilities.knowledge_base.text_utils import (
 # Backwards-compatible alias: other modules import ``normalize_entity_text`` from here.
 normalize_entity_text = normalize_alnum_text
 
+GLOBAL_ENTITY_SPACE_ID = "__global__"
+
 
 @dataclass(frozen=True, slots=True)
 class EntityMatch:
@@ -22,6 +24,7 @@ class EntityMatch:
     canonical_name: str
     description: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
+    aliases: tuple[str, ...] = ()
     matched_alias: str = ""
     alias_type: str = ""
     score: float = 0.0
@@ -37,6 +40,7 @@ class EntityMatch:
             canonical_name=str(row["canonical_name"]),
             description=str(row.get("description") or ""),
             metadata=dict(metadata) if isinstance(metadata, dict) else {},
+            aliases=tuple(str(alias) for alias in metadata.get("aliases") or [] if str(alias).strip()),
             matched_alias=str(row.get("matched_alias") or row.get("alias") or ""),
             alias_type=str(row.get("alias_type") or ""),
             score=float(row.get("score") or 0.0),
@@ -45,7 +49,9 @@ class EntityMatch:
 
     def prompt_line(self) -> str:
         metadata_text = ", ".join(
-            f"{key}={value}" for key, value in sorted(self.metadata.items()) if value not in (None, "", [], {})
+            f"{key}={value}"
+            for key, value in sorted(self.metadata.items())
+            if value not in (None, "", [], {}) and not str(key).startswith("_")
         )
         parts = [
             f"type={self.entity_type}",

@@ -119,6 +119,7 @@ def entity_from_search_item(row: dict[str, Any], query: str) -> EntityMatch:
         canonical_name=canonical_name,
         description=str(metadata.get("description") or ""),
         metadata=entity_metadata,
+        aliases=tuple(alias for alias in aliases if alias.strip()),
         matched_alias=matched_alias,
         alias_type=str(metadata.get("alias_type") or "search_item"),
         score=score,

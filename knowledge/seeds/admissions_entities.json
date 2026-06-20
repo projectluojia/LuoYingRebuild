@@ -39,6 +39,22 @@
         {"alias": "强基", "alias_type": "short_name", "confidence": 0.92},
         {"alias": "基础学科招生改革试点", "alias_type": "official", "confidence": 0.9}
       ]
+    },
+    {
+      "key": "recommended_exemption",
+      "entity_type": "admission_method",
+      "canonical_name": "推荐免试研究生",
+      "description": "接收优秀应届本科毕业生免试攻读研究生，常被口语称为推免或保研",
+      "source_collection": "admissions",
+      "source_key": "recommended_exemption",
+      "aliases": [
+        {"alias": "推荐免试研究生", "alias_type": "official", "confidence": 1.0},
+        {"alias": "免试攻读研究生", "alias_type": "official", "confidence": 1.0},
+        {"alias": "推免生", "alias_type": "short_name", "confidence": 0.98},
+        {"alias": "推免", "alias_type": "short_name", "confidence": 0.98},
+        {"alias": "保研", "alias_type": "colloquial", "confidence": 0.95},
+        {"alias": "预推免", "alias_type": "stage", "confidence": 0.92}
+      ]
     }
   ],
   "relations": [

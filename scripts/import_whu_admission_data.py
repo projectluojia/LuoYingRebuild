@@ -15,7 +15,12 @@ from openpyxl import load_workbook
 
 from luoying_bot.capabilities.knowledge_base.artifacts import MarkdownArtifactStore
 from luoying_bot.capabilities.knowledge_base.embeddings import OpenAICompatibleEmbeddingProvider
-from luoying_bot.capabilities.knowledge_base.entities import normalize_entity_text, stable_entity_id, stable_search_item_id
+from luoying_bot.capabilities.knowledge_base.entities import (
+    GLOBAL_ENTITY_SPACE_ID,
+    normalize_entity_text,
+    stable_entity_id,
+    stable_search_item_id,
+)
 from luoying_bot.capabilities.knowledge_base.postgres_store import IndexedDocument, PostgresKnowledgeStore
 from luoying_bot.capabilities.knowledge_base.quality import MarkdownQualityChecker
 from luoying_bot.config import settings
@@ -28,7 +33,7 @@ SITE_ID = "whu_admissions"
 SPACE_ID = "whu"
 STRONG_FOUNDATION_XLSX = Path("docs/2025分省（区）录取分数及位次 - 挂网 - 最新.xlsx")
 STRONG_FOUNDATION_PROGRAM = "数学与应用数学（智能科学）强基计划"
-ENTITY_SEED_PATH = Path("knowledge/seeds/whu_admissions_entities.json")
+ENTITY_SEED_PATH = Path("knowledge/seeds/admissions_entities.json")
 
 
 async def main() -> None:
@@ -734,15 +739,16 @@ def build_admission_entities(
         *,
         entity_type: str,
         canonical_name: str,
+        space_id: str = SPACE_ID,
         description: str = "",
         source_collection: str = "",
         source_key: str = "",
         metadata: dict[str, Any] | None = None,
     ) -> str:
-        entity_id = stable_entity_id(SPACE_ID, entity_type, canonical_name)
+        entity_id = stable_entity_id(space_id, entity_type, canonical_name)
         entities[entity_id] = {
             "entity_id": entity_id,
-            "space_id": SPACE_ID,
+            "space_id": space_id,
             "entity_type": entity_type,
             "canonical_name": canonical_name,
             "description": description,
@@ -757,18 +763,27 @@ def build_admission_entities(
         normalized = normalize_entity_text(alias)
         if not normalized:
             return
+        entity = entities.get(entity_id)
+        space_id = str(entity.get("space_id") or SPACE_ID) if entity else SPACE_ID
         aliases[(entity_id, normalized)] = {
             "entity_id": entity_id,
-            "space_id": SPACE_ID,
+            "space_id": space_id,
             "alias": alias,
             "normalized_alias": normalized,
             "alias_type": alias_type,
             "confidence": confidence,
         }
 
-    def add_relation(subject_id: str, predicate: str, object_id: str, confidence: float) -> None:
+    def add_relation(
+        subject_id: str,
+        predicate: str,
+        object_id: str,
+        confidence: float,
+        *,
+        space_id: str = SPACE_ID,
+    ) -> None:
         relations[(subject_id, predicate, object_id)] = {
-            "space_id": SPACE_ID,
+            "space_id": space_id,
             "subject_entity_id": subject_id,
             "predicate": predicate,
             "object_entity_id": object_id,
@@ -782,6 +797,7 @@ def build_admission_entities(
         entity_id = add_entity(
             entity_type=clean(seed.get("entity_type")),
             canonical_name=clean(seed.get("canonical_name")),
+            space_id=GLOBAL_ENTITY_SPACE_ID,
             description=clean(seed.get("description")),
             source_collection=clean(seed.get("source_collection")),
             source_key=clean(seed.get("source_key")),
@@ -805,7 +821,13 @@ def build_admission_entities(
         object_id = seed_keys.get(str(relation.get("object_key") or ""))
         predicate = clean(relation.get("predicate"))
         if subject_id and object_id and predicate:
-            add_relation(subject_id, predicate, object_id, float(relation.get("confidence") or 1.0))
+            add_relation(
+                subject_id,
+                predicate,
+                object_id,
+                float(relation.get("confidence") or 1.0),
+                space_id=GLOBAL_ENTITY_SPACE_ID,
+            )
 
     major_rows: list[dict[str, Any]] = [
         *({"major_name": row.get("major_name")} for row in plans + scores),
@@ -903,8 +925,8 @@ def build_search_items(
         )
         items.append(
             {
-                "item_id": stable_search_item_id(SPACE_ID, "entity", str(entity["entity_id"])),
-                "space_id": SPACE_ID,
+                "item_id": stable_search_item_id(str(entity["space_id"]), "entity", str(entity["entity_id"])),
+                "space_id": entity["space_id"],
                 "item_type": "entity",
                 "entity_id": entity["entity_id"],
                 "title": str(entity["canonical_name"]),
