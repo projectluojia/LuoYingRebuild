@@ -311,26 +311,25 @@ class QQWsTransport(ChatTransport):
     
     #发送纯文本
     async def send_text(self, context: ChatContext, text: str) -> None:
-        if context.target.channel_type == ChannelType.GROUP:
-            #发送群聊信息
-            await self._send_raw(
-                {
-                    'action': 'send_group_msg',
-                    'params': {
-                        'group_id': int(context.target.conversation_id),
-                        'message': text
-                    }
+        messages = [message for message in re.split(r'(?:\r\n|\r|\n){2,}', text) if message]
+        for message in messages:
+            if context.target.channel_type == ChannelType.GROUP:
+                action = 'send_group_msg'
+                params = {
+                    'group_id': int(context.target.conversation_id),
+                    'message': message,
                 }
-            )
-        else:
-            #发送私聊信息
+            else:
+                action = 'send_private_msg'
+                params = {
+                    'user_id': int(context.user.user_id),
+                    'message': message,
+                }
+
             await self._send_raw(
                 {
-                    'action': 'send_private_msg', 
-                    'params': {
-                        'user_id': int(context.user.user_id), 
-                        'message': text
-                    }
+                    'action': action,
+                    'params': params,
                 }
             )
 
