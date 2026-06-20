@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from luoying_bot.capabilities.knowledge_base.analytics import KnowledgeAnalyticsEngine
 from luoying_bot.capabilities.knowledge_base.entity_resolver import EntityResolver
 from luoying_bot.capabilities.knowledge_base.models import KnowledgeQuery, RetrievalResult, StructuredRecord
 from luoying_bot.capabilities.knowledge_base.ports import RagBackend
+from luoying_bot.capabilities.knowledge_base.text_utils import optional_text
 
 
 @dataclass(slots=True)
@@ -49,8 +49,3 @@ class KBQueryAgent:
             if space_id:
                 return space_id
         return None
-
-
-def optional_text(value: Any) -> str | None:
-    text = str(value or "").strip()
-    return text or None

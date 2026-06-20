@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any
 
 from luoying_bot.capabilities.knowledge_base.answering import KnowledgeAnswerGenerator
@@ -16,6 +15,7 @@ from luoying_bot.capabilities.knowledge_base.models import (
 from luoying_bot.capabilities.knowledge_base.policy import KnowledgeBasePolicy
 from luoying_bot.capabilities.knowledge_base.ports import StructuredBackend
 from luoying_bot.capabilities.knowledge_base.query_agent import KBQueryAgent
+from luoying_bot.capabilities.knowledge_base.text_utils import now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 class KnowledgeBaseConfig:
     default_space_id: str
     require_citation: bool = True
+    min_relevance: float = 0.5
 
 
 class KnowledgeBaseService:
@@ -40,7 +41,10 @@ class KnowledgeBaseService:
         self.query_agent = query_agent
         self.answer_generator = answer_generator
         self.config = config
-        self.policy = policy or KnowledgeBasePolicy(require_citation=config.require_citation)
+        self.policy = policy or KnowledgeBasePolicy(
+            require_citation=config.require_citation,
+            min_relevance=config.min_relevance,
+        )
 
     async def answer(
         self,
@@ -210,4 +214,4 @@ class KnowledgeBaseService:
         )
 
     def _now_iso(self) -> str:
-        return datetime.now().isoformat(timespec="seconds")
+        return now_iso()

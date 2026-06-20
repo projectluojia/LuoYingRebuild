@@ -2,9 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from dataclasses import dataclass, field
 from typing import Any
+
+from luoying_bot.capabilities.knowledge_base.text_utils import (
+    longest_common_substring_length,
+    normalize_alnum_text,
+)
+
+# Backwards-compatible alias: other modules import ``normalize_entity_text`` from here.
+normalize_entity_text = normalize_alnum_text
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,10 +82,6 @@ def parse_metadata(value: Any) -> dict[str, Any]:
     return {}
 
 
-def normalize_entity_text(value: str) -> str:
-    return "".join(re.findall(r"[\u4e00-\u9fffA-Za-z0-9]+", str(value).lower()))
-
-
 def entity_match_score(*, query_norm: str, alias_norm: str, canonical_norm: str) -> float:
     if not query_norm or not alias_norm:
         return 0.0
@@ -95,17 +98,3 @@ def entity_match_score(*, query_norm: str, alias_norm: str, canonical_norm: str)
         return 0.0
     coverage = overlap / max(len(alias_norm), 1)
     return 35.0 + 40.0 * coverage
-
-
-def longest_common_substring_length(left: str, right: str) -> int:
-    best = 0
-    previous = [0] * (len(right) + 1)
-    for left_char in left:
-        current = [0] * (len(right) + 1)
-        for index, right_char in enumerate(right, start=1):
-            if left_char != right_char:
-                continue
-            current[index] = previous[index - 1] + 1
-            best = max(best, current[index])
-        previous = current
-    return best

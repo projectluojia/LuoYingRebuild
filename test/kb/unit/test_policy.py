@@ -86,3 +86,54 @@ class TestValidateAnswer:
         policy = KnowledgeBasePolicy()
         answer = KnowledgeAnswer(answer="hi", citations=[Citation(title="t", source="s")])
         assert policy.validate_answer(answer) is answer
+
+
+def _vec_chunk(vector_score: float, score: float = 1.0) -> RetrievedChunk:
+    return RetrievedChunk(
+        text="x",
+        score=score,
+        citation=Citation(title="t", source="s"),
+        metadata={"vector_score": vector_score},
+    )
+
+
+class TestRelevanceThreshold:
+    def test_low_relevance_chunk_only_falls_back(self):
+        policy = KnowledgeBasePolicy(min_relevance=0.5)
+        result = _retrieval(chunks=[_vec_chunk(0.4)])
+        answer = policy.validate_retrieval(result)
+        assert answer is not None
+        assert answer.fallback_reason == "low_relevance"
+
+    def test_high_relevance_chunk_only_passes(self):
+        policy = KnowledgeBasePolicy(min_relevance=0.5)
+        assert policy.validate_retrieval(_retrieval(chunks=[_vec_chunk(0.7)])) is None
+
+    def test_structured_records_bypass_threshold(self):
+        # analytics records are trusted; a low-relevance chunk must NOT trigger fallback.
+        policy = KnowledgeBasePolicy(min_relevance=0.5)
+        result = _retrieval(
+            records=[StructuredRecord(collection="c", data={"x": 1})],
+            chunks=[_vec_chunk(0.1)],
+        )
+        assert policy.validate_retrieval(result) is None
+
+    def test_threshold_disabled_when_zero(self):
+        policy = KnowledgeBasePolicy(min_relevance=0.0)
+        assert policy.validate_retrieval(_retrieval(chunks=[_vec_chunk(0.1)])) is None
+
+    def test_uses_best_vector_score_across_chunks(self):
+        # the relevance signal is the best vector_score in the result set, not the
+        # highest-combined-score chunk: one strongly-similar chunk is enough to answer.
+        policy = KnowledgeBasePolicy(min_relevance=0.5)
+        mixed = _retrieval(chunks=[_vec_chunk(0.3, score=2.0), _vec_chunk(0.9, score=0.5)])
+        assert policy.validate_retrieval(mixed) is None  # best vector 0.9 >= 0.5
+        all_low = _retrieval(chunks=[_vec_chunk(0.3, score=2.0), _vec_chunk(0.4, score=1.0)])
+        answer = policy.validate_retrieval(all_low)
+        assert answer is not None
+        assert answer.fallback_reason == "low_relevance"
+
+    def test_missing_vector_score_skips_threshold(self):
+        policy = KnowledgeBasePolicy(min_relevance=0.5)
+        result = _retrieval(chunks=[RetrievedChunk(text="x", citation=Citation(title="t", source="s"))])
+        assert policy.validate_retrieval(result) is None

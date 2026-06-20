@@ -124,8 +124,12 @@ async def build_service(*, with_answer: bool) -> KnowledgeBaseService:
         config=KnowledgeBaseConfig(
             default_space_id=settings.kb_default_space_id,
             require_citation=settings.kb_require_citation,
+            min_relevance=settings.kb_min_relevance,
         ),
-        policy=KnowledgeBasePolicy(require_citation=settings.kb_require_citation),
+        policy=KnowledgeBasePolicy(
+            require_citation=settings.kb_require_citation,
+            min_relevance=settings.kb_min_relevance,
+        ),
     )
 
 

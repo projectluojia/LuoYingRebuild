@@ -17,6 +17,7 @@ from luoying_bot.capabilities.knowledge_base.errors import BackendUnavailable
 from luoying_bot.capabilities.knowledge_base.models import Citation, RetrievedChunk
 from luoying_bot.capabilities.knowledge_base.ports import AnalyticsBackend, EntityBackend, RagBackend, StructuredBackend
 from luoying_bot.capabilities.knowledge_base.semantic_layer import KnowledgeSemanticLayer
+from luoying_bot.capabilities.knowledge_base.text_utils import normalize_alnum_text as compact_text
 
 
 @dataclass(slots=True)
@@ -1670,10 +1671,6 @@ def extract_keyword_terms(query: str) -> list[str]:
             seen.add(term)
             result.append(term)
     return result
-
-
-def compact_text(text: str) -> str:
-    return "".join(re.findall(r"[\u4e00-\u9fffA-Za-z0-9]+", text.lower()))
 
 
 def is_site_entry_url(url: str) -> bool:

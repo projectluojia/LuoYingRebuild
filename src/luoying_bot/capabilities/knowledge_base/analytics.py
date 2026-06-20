@@ -9,6 +9,11 @@ from luoying_bot.capabilities.knowledge_base.entity_resolver import EntityResolu
 from luoying_bot.capabilities.knowledge_base.models import Citation, KnowledgeQuery, StructuredRecord
 from luoying_bot.capabilities.knowledge_base.ports import AnalyticsBackend, StructuredBackend
 from luoying_bot.capabilities.knowledge_base.semantic_layer import KnowledgeSemanticLayer
+from luoying_bot.capabilities.knowledge_base.text_utils import (
+    longest_common_substring_length,
+    normalize_alnum_text as normalize_text,
+    optional_text,
+)
 from luoying_bot.ports.llm import ChatModel
 
 
@@ -320,11 +325,6 @@ def citation_from_row(row: dict[str, Any]) -> Citation:
     )
 
 
-def optional_text(value: Any) -> str | None:
-    text = str(value or "").strip()
-    return text or None
-
-
 def extract_year(question: str) -> int | None:
     match = re.search(r"(20\d{2})\s*年?", question)
     if match:
@@ -425,21 +425,3 @@ def candidate_score(alias: str, query_norm: str) -> int:
         return 100 + len(alias)
     overlap = longest_common_substring_length(alias, query_norm)
     return overlap if overlap >= 3 else 0
-
-
-def normalize_text(value: str) -> str:
-    return "".join(re.findall(r"[\u4e00-\u9fffA-Za-z0-9]+", str(value).lower()))
-
-
-def longest_common_substring_length(left: str, right: str) -> int:
-    best = 0
-    previous = [0] * (len(right) + 1)
-    for left_char in left:
-        current = [0] * (len(right) + 1)
-        for index, right_char in enumerate(right, start=1):
-            if left_char != right_char:
-                continue
-            current[index] = previous[index - 1] + 1
-            best = max(best, current[index])
-        previous = current
-    return best

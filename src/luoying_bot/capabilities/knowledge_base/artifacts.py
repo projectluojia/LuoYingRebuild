@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from luoying_bot.capabilities.knowledge_base.text_utils import sha256_text
+
 
 @dataclass(slots=True)
 class KnowledgeArtifact:
@@ -224,10 +226,6 @@ def stable_document_id(url: str) -> str:
 def safe_path_part(value: str) -> str:
     clean = re.sub(r"[^0-9A-Za-z._-]+", "_", value.strip())
     return clean.strip("_") or "default"
-
-
-def sha256_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()
 
 
 def yaml_scalar(value: Any) -> str:

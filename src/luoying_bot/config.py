@@ -77,6 +77,7 @@ class Settings:
     )
     kb_default_space_id: str = os.getenv('KB_DEFAULT_SPACE_ID', 'sai')
     kb_require_citation: bool = _env_bool('KB_REQUIRE_CITATION', True)
+    kb_min_relevance: float = float(os.getenv('KB_MIN_RELEVANCE', '0.5'))
     kb_embedding_base_url: str = os.getenv('KB_EMBEDDING_BASE_URL', 'http://127.0.0.1:8080/v1')
     kb_embedding_api_key: str = os.getenv('KB_EMBEDDING_API_KEY', '')
     kb_embedding_model: str = os.getenv('KB_EMBEDDING_MODEL', 'text-embeddings-inference')

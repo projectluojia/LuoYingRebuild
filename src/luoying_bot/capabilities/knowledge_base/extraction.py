@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import hashlib
 import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.parse import urldefrag, urljoin, urlparse
+
+from luoying_bot.capabilities.knowledge_base.text_utils import sha256_text
 
 DEFAULT_EXCLUDED_SELECTOR = ", ".join(
     [
@@ -326,7 +327,3 @@ def is_asset_url(url: str) -> bool:
             ".webp",
         )
     )
-
-
-def sha256_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()

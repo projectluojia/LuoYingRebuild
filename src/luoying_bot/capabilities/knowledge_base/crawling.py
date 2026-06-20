@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
@@ -12,10 +11,10 @@ from luoying_bot.capabilities.knowledge_base.extraction import (
     Crawl4AIExtractor,
     is_asset_url,
     normalize_url,
-    sha256_text,
 )
 from luoying_bot.capabilities.knowledge_base.postgres_store import IndexedDocument, PostgresKnowledgeStore
 from luoying_bot.capabilities.knowledge_base.quality import MarkdownQualityChecker
+from luoying_bot.capabilities.knowledge_base.text_utils import now_iso, sha256_text
 
 
 @dataclass(slots=True)
@@ -367,10 +366,6 @@ class KnowledgeCrawlRecorder:
         if current.get("content_hash") == artifact.metadata["content_hash"]:
             return "unchanged", graph_edges
         return "updated", graph_edges
-
-
-def now_iso() -> str:
-    return datetime.now().isoformat(timespec="seconds")
 
 
 def apply_markdown_replacements(text: str, replacements: list[MarkdownReplacement]) -> str:
