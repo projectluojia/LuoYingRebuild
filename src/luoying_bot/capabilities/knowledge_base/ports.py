@@ -13,9 +13,8 @@ class RagBackend(ABC):
     async def search(
         self,
         *,
-        query: str,
-        dataset_id: str,
-        filters: dict[str, Any],
+        queries: list[str],
+        space_ids: list[str],
         top_k: int,
     ) -> list[RetrievedChunk]: ...
 

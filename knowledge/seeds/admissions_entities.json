@@ -55,6 +55,24 @@
         {"alias": "保研", "alias_type": "colloquial", "confidence": 0.95},
         {"alias": "预推免", "alias_type": "stage", "confidence": 0.92}
       ]
+    },
+    {
+      "key": "admission_requirements",
+      "entity_type": "concept",
+      "canonical_name": "招生申请要求",
+      "description": "招生、推免、报名场景中的申请条件、材料要求、流程和实施细则等要求类表达",
+      "source_collection": "admissions",
+      "source_key": "admission_requirements",
+      "aliases": [
+        {"alias": "要求", "alias_type": "colloquial", "confidence": 0.95},
+        {"alias": "条件", "alias_type": "colloquial", "confidence": 0.95},
+        {"alias": "申请条件", "alias_type": "official", "confidence": 1.0},
+        {"alias": "报名条件", "alias_type": "official", "confidence": 1.0},
+        {"alias": "材料要求", "alias_type": "official", "confidence": 1.0},
+        {"alias": "工作流程", "alias_type": "official", "confidence": 0.95},
+        {"alias": "申请办法", "alias_type": "official", "confidence": 0.95},
+        {"alias": "实施细则", "alias_type": "document_type", "confidence": 0.95}
+      ]
     }
   ],
   "relations": [

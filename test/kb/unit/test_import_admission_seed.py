@@ -13,6 +13,14 @@ def test_seed_entities_are_materialized_in_global_space(tmp_path: Path):
         {
           "entities": [
             {
+              "key": "sai",
+              "entity_type": "school",
+              "canonical_name": "人工智能学院",
+              "aliases": [
+                {"alias": "人工智能学院", "alias_type": "official", "confidence": 1.0}
+              ]
+            },
+            {
               "key": "recommended_exemption",
               "entity_type": "admission_method",
               "canonical_name": "推荐免试研究生",
@@ -36,6 +44,7 @@ def test_seed_entities_are_materialized_in_global_space(tmp_path: Path):
         seed_path=seed_path,
     )
     seed_entity = next(entity for entity in payload["entities"] if entity["canonical_name"] == "推荐免试研究生")
+    school_entity = next(entity for entity in payload["entities"] if entity["canonical_name"] == "人工智能学院")
     generated_entity = next(entity for entity in payload["entities"] if entity["canonical_name"] == "人工智能")
     search_items = build_search_items(
         entity_payload=payload,
@@ -44,7 +53,10 @@ def test_seed_entities_are_materialized_in_global_space(tmp_path: Path):
         strong_foundation_scores=[],
     )
     seed_search_item = next(item for item in search_items if item["entity_id"] == seed_entity["entity_id"])
+    school_search_item = next(item for item in search_items if item["entity_id"] == school_entity["entity_id"])
 
     assert seed_entity["space_id"] == GLOBAL_ENTITY_SPACE_ID
+    assert school_entity["space_id"] == GLOBAL_ENTITY_SPACE_ID
     assert seed_search_item["space_id"] == GLOBAL_ENTITY_SPACE_ID
+    assert school_search_item["space_id"] == GLOBAL_ENTITY_SPACE_ID
     assert generated_entity["space_id"] != GLOBAL_ENTITY_SPACE_ID

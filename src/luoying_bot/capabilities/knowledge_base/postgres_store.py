@@ -494,85 +494,83 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
     async def search(
         self,
         *,
-        query: str,
-        dataset_id: str,
-        filters: dict[str, Any],
+        queries: list[str],
+        space_ids: list[str],
         top_k: int,
     ) -> list[RetrievedChunk]:
-        del dataset_id
-        space_id = str(filters.get("space_id") or "")
-        query_vector = (await self.embedding_provider.embed_texts([query]))[0]
-        self._validate_embeddings([query_vector])
-        query_terms = extract_keyword_terms(query)
+        route_queries = dedupe_queries(queries)
+        search_space_ids = dedupe_space_ids(space_ids)
+        if not route_queries:
+            return []
+        query_vectors = await self.embedding_provider.embed_texts(route_queries)
+        self._validate_embeddings(query_vectors)
         candidate_limit = max(50, top_k * 12)
+        ranked_lists: list[tuple[str, float, list[dict[str, Any]]]] = []
         pool = await self._get_pool()
         async with pool.acquire() as conn:
-            title = await self._title_candidates(
-                conn,
-                query=query,
-                query_terms=query_terms,
-                space_id=space_id,
-                limit=candidate_limit,
-            )
-            lexical = await self._lexical_candidates(
-                conn,
-                query=query,
-                space_id=space_id,
-                limit=candidate_limit,
-            )
-            vector = await self._vector_candidates(
-                conn,
-                query_vector=query_vector,
-                space_id=space_id,
-                limit=candidate_limit,
-            )
+            for route_index, (route_query, query_vector) in enumerate(zip(route_queries, query_vectors, strict=True)):
+                query_terms = extract_keyword_terms(route_query)
+                title = await self._title_candidates(
+                    conn,
+                    query=route_query,
+                    query_terms=query_terms,
+                    space_ids=search_space_ids,
+                    limit=candidate_limit,
+                )
+                lexical = await self._lexical_candidates(
+                    conn,
+                    query=route_query,
+                    space_ids=search_space_ids,
+                    limit=candidate_limit,
+                )
+                vector = await self._vector_candidates(
+                    conn,
+                    query_vector=query_vector,
+                    space_ids=search_space_ids,
+                    limit=candidate_limit,
+                )
+                route_name = f"route_{route_index + 1}"
+                route_factor = retrieval_route_weight(route_index, route_count=len(route_queries))
+                ranked_lists.extend(
+                    [
+                        (f"{route_name}:title", route_factor * 1.35, title),
+                        (f"{route_name}:vector", route_factor * 1.0, vector),
+                        (f"{route_name}:lexical", route_factor * 0.35, lexical),
+                    ]
+                )
 
-        combined: dict[str, dict[str, Any]] = {}
-        for row in title:
-            combined.setdefault(row["chunk_id"], row)["title_score"] = row["title_score"]
-        for row in lexical:
-            combined.setdefault(row["chunk_id"], row)["lexical_score"] = row["lexical_score"]
-        for row in vector:
-            item = combined.setdefault(row["chunk_id"], row)
-            item["vector_score"] = row["vector_score"]
-        scored = []
-        for item in combined.values():
-            title_score = float(item.get("title_score") or 0.0)
-            lexical_score = float(item.get("lexical_score") or 0.0)
-            vector_score = float(item.get("vector_score") or 0.0)
-            phrase_score = phrase_overlap_score(
-                query_terms=query_terms,
-                title=str(item.get("title") or ""),
-                text=str(item.get("text") or ""),
-            )
-            item["phrase_score"] = phrase_score
-            item["score"] = (
-                2.8 * title_score
-                + 1.4 * phrase_score
-                + 1.0 * vector_score
-                + 0.7 * lexical_score
-            )
-            scored.append(item)
-        apply_document_support(scored)
-        scored.sort(key=lambda item: item["score"], reverse=True)
+        scored = fuse_ranked_candidates(ranked_lists)
+        scored.sort(
+            key=lambda item: (
+                float(item.get("score") or 0.0),
+                float(item.get("best_raw_score") or 0.0),
+            ),
+            reverse=True,
+        )
+        route_metadata = [{"route": f"route_{index + 1}", "query": route_query} for index, route_query in enumerate(route_queries)]
         chunks: list[RetrievedChunk] = []
         for item in scored[:top_k]:
+            metadata = {
+                "document_id": item["document_id"],
+                "chunk_id": item["chunk_id"],
+                "score": item["score"],
+                "rrf_score": item["score"],
+                "title_score": item.get("title_score", 0.0),
+                "lexical_score": item.get("lexical_score", 0.0),
+                "vector_score": item.get("vector_score", 0.0),
+                "best_rank": item.get("best_rank"),
+                "best_raw_score": item.get("best_raw_score", 0.0),
+                "retrieval_space_ids": search_space_ids,
+                "retrieval_routes": route_metadata,
+                "retrieval_matches": item.get("retrieval_matches", []),
+                "embedding_model": item.get("embedding_model"),
+            }
             citation = Citation(
                 title=str(item["title"]),
                 source=str(item["source_url"]),
                 snippet=str(item["text"])[:500],
                 published_at=item.get("published_at"),
-                metadata={
-                    "document_id": item["document_id"],
-                    "chunk_id": item["chunk_id"],
-                    "score": item["score"],
-                    "title_score": item.get("title_score", 0.0),
-                    "lexical_score": item.get("lexical_score", 0.0),
-                    "vector_score": item.get("vector_score", 0.0),
-                    "phrase_score": item.get("phrase_score", 0.0),
-                    "document_support_score": item.get("document_support_score", 0.0),
-                    "embedding_model": item.get("embedding_model"),
-                },
+                metadata=metadata,
             )
             chunks.append(
                 RetrievedChunk(
@@ -1439,7 +1437,7 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
         *,
         query: str,
         query_terms: list[str],
-        space_id: str,
+        space_ids: list[str],
         limit: int,
     ) -> list[dict[str, Any]]:
         query_compact = compact_text(query)
@@ -1447,13 +1445,14 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
             return []
         rows = await conn.fetch(
             """
-            select c.chunk_id, c.document_id, c.title, c.source_url, c.published_at, c.text,
+            select c.chunk_id, c.document_id, d.space_id, c.title, c.source_url, c.published_at, c.text,
                    c.embedding_model
             from kb_chunks c
             join kb_documents d on d.document_id = c.document_id
-            where c.chunk_index = 0 and d.status = 'active' and ($1 = '' or d.space_id = $1)
+            where c.chunk_index = 0 and d.status = 'active'
+              and (cardinality($1::text[]) = 0 or d.space_id = any($1::text[]))
             """,
-            space_id,
+            space_ids,
         )
         items = [record_to_dict(row) for row in rows]
         title_frequencies = title_term_frequencies(items, query_terms)
@@ -1497,9 +1496,10 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
             return candidates
         rows = await conn.fetch(
             """
-            select c.chunk_id, c.document_id, c.title, c.source_url, c.published_at, c.text,
+            select c.chunk_id, c.document_id, d.space_id, c.title, c.source_url, c.published_at, c.text,
                    c.embedding_model
             from kb_chunks c
+            join kb_documents d on d.document_id = c.document_id
             where c.document_id = any($1::text[]) and c.chunk_index > 0
             order by c.document_id, c.chunk_index
             """,
@@ -1522,7 +1522,7 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
         conn: asyncpg.Connection,
         *,
         query: str,
-        space_id: str,
+        space_ids: list[str],
         limit: int,
     ) -> list[dict[str, Any]]:
         ts_query = build_tsquery(query)
@@ -1530,19 +1530,19 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
             return []
         rows = await conn.fetch(
             """
-            select c.chunk_id, c.document_id, c.title, c.source_url, c.published_at, c.text,
+            select c.chunk_id, c.document_id, d.space_id, c.title, c.source_url, c.published_at, c.text,
                    ts_rank_cd(c.search_vector, to_tsquery('simple', $1)) as lexical_score,
                    c.embedding_model
             from kb_chunks c
             join kb_documents d on d.document_id = c.document_id
             where c.search_vector @@ to_tsquery('simple', $1)
               and d.status = 'active'
-              and ($2 = '' or d.space_id = $2)
+              and (cardinality($2::text[]) = 0 or d.space_id = any($2::text[]))
             order by lexical_score desc
             limit $3
             """,
             ts_query,
-            space_id,
+            space_ids,
             limit,
         )
         items = [record_to_dict(row) for row in rows]
@@ -1555,22 +1555,23 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
         conn: asyncpg.Connection,
         *,
         query_vector: list[float],
-        space_id: str,
+        space_ids: list[str],
         limit: int,
     ) -> list[dict[str, Any]]:
         rows = await conn.fetch(
             """
-            select c.chunk_id, c.document_id, c.title, c.source_url, c.published_at, c.text,
+            select c.chunk_id, c.document_id, d.space_id, c.title, c.source_url, c.published_at, c.text,
                    c.embedding_model,
                    1 - (c.embedding <=> $1::vector) as vector_score
             from kb_chunks c
             join kb_documents d on d.document_id = c.document_id
-            where d.status = 'active' and ($2 = '' or d.space_id = $2)
+            where d.status = 'active'
+              and (cardinality($2::text[]) = 0 or d.space_id = any($2::text[]))
             order by c.embedding <=> $1::vector
             limit $3
             """,
             vector_literal(query_vector),
-            space_id,
+            space_ids,
             limit,
         )
         return [record_to_dict(row) for row in rows]
@@ -1668,6 +1669,81 @@ def build_tsquery(query: str) -> str:
     return " | ".join(f"{term}:*" for term in terms[:24])
 
 
+def dedupe_queries(queries: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for query in queries:
+        clean_query = query.strip()
+        normalized = compact_text(clean_query)
+        if not clean_query or not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        result.append(clean_query)
+    return result
+
+
+def dedupe_space_ids(space_ids: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for space_id in space_ids:
+        clean_space_id = str(space_id or "").strip()
+        if not clean_space_id or clean_space_id in seen:
+            continue
+        seen.add(clean_space_id)
+        result.append(clean_space_id)
+    return result
+
+
+def fuse_ranked_candidates(
+    ranked_lists: list[tuple[str, float, list[dict[str, Any]]]],
+    *,
+    rrf_k: int = 60,
+) -> list[dict[str, Any]]:
+    combined: dict[str, dict[str, Any]] = {}
+    for source, weight, rows in ranked_lists:
+        for rank, row in enumerate(rows, start=1):
+            chunk_id = str(row.get("chunk_id") or "")
+            if not chunk_id:
+                continue
+            item = combined.setdefault(chunk_id, dict(row))
+            merge_candidate_fields(item, row)
+            raw_score = candidate_raw_score(row)
+            item["score"] = float(item.get("score") or 0.0) + weight / (rrf_k + rank)
+            item["best_rank"] = min(int(item.get("best_rank") or rank), rank)
+            item["best_raw_score"] = max(float(item.get("best_raw_score") or 0.0), raw_score)
+            item.setdefault("retrieval_matches", []).append(
+                {
+                    "source": source,
+                    "rank": rank,
+                    "weight": weight,
+                    "raw_score": raw_score,
+                }
+            )
+    return list(combined.values())
+
+
+def retrieval_route_weight(route_index: int, *, route_count: int) -> float:
+    if route_count <= 1:
+        return 1.0
+    return 0.5 if route_index == 0 else 1.5
+
+
+def merge_candidate_fields(item: dict[str, Any], row: dict[str, Any]) -> None:
+    for key, value in row.items():
+        if key in {"title_score", "lexical_score", "vector_score"}:
+            item[key] = max(float(item.get(key) or 0.0), float(value or 0.0))
+        elif key not in item or item[key] in (None, ""):
+            item[key] = value
+
+
+def candidate_raw_score(row: dict[str, Any]) -> float:
+    return max(
+        float(row.get("title_score") or 0.0),
+        float(row.get("lexical_score") or 0.0),
+        float(row.get("vector_score") or 0.0),
+    )
+
+
 def extract_keyword_terms(query: str) -> list[str]:
     compact = compact_text(query)
     terms = re.findall(r"[A-Za-z0-9]{2,}", query.lower())
@@ -1737,47 +1813,24 @@ def title_overlap_score(
         idf = math.log((title_count + 1) / (frequency + 1)) + 1.0
         query_coverage = len(title) / max(len(query_compact), 1)
         return min(4.0, max(3.6, 2.4 + idf * math.sqrt(query_coverage)))
-    matches = [term for term in compact_terms if term in title or title in term]
+    matches = [term for term in compact_terms if term in title]
     if not matches:
         return 0.0
-    best = 0.0
+    covered = [False] * len(title)
+    idf_sum = 0.0
     for term in matches:
         frequency = max(title_frequencies.get(term, 0), 1)
         idf = math.log((title_count + 1) / (frequency + 1)) + 1.0
-        coverage = min(len(term), len(title)) / max(len(title), 1)
-        best = max(best, idf * coverage)
-    return min(4.0, 0.8 + best)
-
-
-def phrase_overlap_score(*, query_terms: list[str], title: str, text: str) -> float:
-    title_compact = compact_text(title)
-    text_compact = compact_text(text)
-    score = 0.0
-    seen: set[str] = set()
-    for term in query_terms:
-        compact = compact_text(term)
-        if len(compact) < 2 or compact in seen:
-            continue
-        seen.add(compact)
-        if compact in title_compact:
-            score += 0.32
-        elif compact in text_compact:
-            score += 0.12
-    return min(2.5, score)
-
-
-def apply_document_support(items: list[dict[str, Any]]) -> None:
-    by_document: dict[str, list[dict[str, Any]]] = {}
-    for item in items:
-        by_document.setdefault(str(item.get("document_id") or ""), []).append(item)
-    for document_items in by_document.values():
-        if len(document_items) <= 1:
-            continue
-        ranked = sorted((float(item.get("score") or 0.0) for item in document_items), reverse=True)
-        support = min(1.0, sum(ranked[:4]) / 30.0)
-        for item in document_items:
-            item["document_support_score"] = support
-            item["score"] = float(item["score"]) + support
+        idf_sum += idf * min(len(term), 8)
+        start = title.find(term)
+        while start >= 0:
+            for index in range(start, min(start + len(term), len(title))):
+                covered[index] = True
+            start = title.find(term, start + 1)
+    title_coverage = sum(1 for item in covered if item) / max(len(title), 1)
+    query_span = min(1.0, len(title) / max(len(query_compact), 1) * 4.0)
+    idf_factor = min(1.0, idf_sum / 80.0)
+    return min(4.0, 0.4 + 2.8 * title_coverage * query_span + 0.8 * idf_factor)
 
 
 def normalize_filter(filters: dict[str, Any]) -> dict[str, Any]:

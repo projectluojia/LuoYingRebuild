@@ -7,9 +7,9 @@ from luoying_bot.capabilities.knowledge_base.models import KnowledgeQuery
 from luoying_bot.capabilities.knowledge_base.query_agent import (
     KBQueryAgent,
     KBQueryAgentConfig,
-    rag_query_with_entities,
+    rag_query_routes,
 )
-from luoying_bot.capabilities.knowledge_base.entities import EntityMatch
+from luoying_bot.capabilities.knowledge_base.entities import GLOBAL_ENTITY_SPACE_ID, EntityMatch
 
 from _fakes import FakeEntityBackend, FakeRagBackend
 
@@ -20,12 +20,24 @@ class FakeAnalyticsEngine:
 
 
 @pytest.mark.asyncio
-async def test_resolved_entity_aliases_expand_rag_query():
+async def test_resolved_entity_aliases_add_expanded_rag_route():
     entity_backend = FakeEntityBackend(
         items=[
             {
+                "entity_id": "e_sai",
+                "space_id": GLOBAL_ENTITY_SPACE_ID,
+                "title": "人工智能学院",
+                "metadata_json": {
+                    "entity_type": "school",
+                    "canonical_name": "人工智能学院",
+                    "aliases": ["人工智能学院", "武汉大学人工智能学院"],
+                    "entity_metadata": {},
+                },
+                "score": 0.0,
+            },
+            {
                 "entity_id": "e_recommended_exemption",
-                "space_id": "sai",
+                "space_id": GLOBAL_ENTITY_SPACE_ID,
                 "title": "推荐免试研究生",
                 "metadata_json": {
                     "entity_type": "admission_method",
@@ -45,17 +57,20 @@ async def test_resolved_entity_aliases_expand_rag_query():
         config=KBQueryAgentConfig(default_space_id="sai"),
     )
 
-    await agent.retrieve(KnowledgeQuery(question="保研要求", space_id="sai"))
+    await agent.retrieve(KnowledgeQuery(question="人工智能学院保研要求", space_id="whu"))
 
-    rag_query = rag_backend.calls[0]["query"]
-    assert "保研要求" in rag_query
-    assert "推荐免试研究生" in rag_query
-    assert "免试攻读研究生" in rag_query
-    assert "推免" in rag_query
+    assert rag_backend.calls[0]["space_ids"] == ["whu", "sai"]
+    rag_queries = rag_backend.calls[0]["queries"]
+    assert rag_queries[0] == "人工智能学院保研要求"
+    assert len(rag_queries) == 2
+    assert "人工智能学院保研要求" in rag_queries[1]
+    assert "推荐免试研究生" in rag_queries[1]
+    assert "免试攻读研究生" in rag_queries[1]
+    assert "推免" in rag_queries[1]
 
 
-def test_rag_query_expansion_ignores_low_confidence_entity_matches():
-    query = rag_query_with_entities(
+def test_rag_query_routes_ignore_low_confidence_entity_matches():
+    queries = rag_query_routes(
         "保研要求",
         (
             EntityMatch(
@@ -69,4 +84,4 @@ def test_rag_query_expansion_ignores_low_confidence_entity_matches():
         ),
     )
 
-    assert query == "保研要求"
+    assert queries == ["保研要求"]
