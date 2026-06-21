@@ -1,18 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from luoying_bot.capabilities.knowledge_base.analytics import KnowledgeAnalyticsEngine
 from luoying_bot.capabilities.knowledge_base.entity_resolver import EntityResolver
 from luoying_bot.capabilities.knowledge_base.entities import GLOBAL_ENTITY_SPACE_ID, EntityMatch, normalize_entity_text
 from luoying_bot.capabilities.knowledge_base.models import KnowledgeQuery, RetrievalResult, StructuredRecord
 from luoying_bot.capabilities.knowledge_base.ports import RagBackend
 from luoying_bot.capabilities.knowledge_base.text_utils import optional_text
-
-
-@dataclass(slots=True)
-class KBQueryAgentConfig:
-    default_space_id: str
 
 
 class KBQueryAgent:
@@ -22,12 +15,10 @@ class KBQueryAgent:
         rag_backend: RagBackend,
         analytics_engine: KnowledgeAnalyticsEngine,
         entity_resolver: EntityResolver,
-        config: KBQueryAgentConfig,
     ):
         self.rag_backend = rag_backend
         self.analytics_engine = analytics_engine
         self.entity_resolver = entity_resolver
-        self.config = config
 
     async def retrieve(self, query: KnowledgeQuery) -> RetrievalResult:
         entities = await self.entity_resolver.resolve(query)
@@ -48,6 +39,8 @@ class KBQueryAgent:
         records: list[StructuredRecord],
         matches: tuple[EntityMatch, ...],
     ) -> list[str]:
+        if not optional_text(query.space_id):
+            return []
         spaces: list[str] = []
         append_space(spaces, query.space_id)
         for match in matches:
@@ -55,7 +48,6 @@ class KBQueryAgent:
                 append_space(spaces, match.space_id)
         for record in records:
             append_space(spaces, optional_text(record.data.get("space_id")))
-        append_space(spaces, self.config.default_space_id)
         return spaces
 
 

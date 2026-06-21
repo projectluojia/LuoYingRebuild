@@ -25,7 +25,7 @@ from luoying_bot.capabilities.knowledge_base.embeddings import OpenAICompatibleE
 from luoying_bot.capabilities.knowledge_base.entity_resolver import EntityResolver
 from luoying_bot.capabilities.knowledge_base.policy import KnowledgeBasePolicy
 from luoying_bot.capabilities.knowledge_base.postgres_store import PostgresKnowledgeStore
-from luoying_bot.capabilities.knowledge_base.query_agent import KBQueryAgent, KBQueryAgentConfig
+from luoying_bot.capabilities.knowledge_base.query_agent import KBQueryAgent
 from luoying_bot.capabilities.knowledge_base.semantic_layer import KnowledgeSemanticLayer
 from luoying_bot.config import settings
 from luoying_bot.infra.llm.openai_chat import OpenAICompatibleChatModel
@@ -143,9 +143,6 @@ async def _build_container(
             semantic_layer=KnowledgeSemanticLayer(),
         ),
         entity_resolver=EntityResolver(knowledge_store),
-        config=KBQueryAgentConfig(
-            default_space_id=settings.kb_default_space_id,
-        ),
     )
     knowledge_base_service = KnowledgeBaseService(
         structured_backend=knowledge_store,

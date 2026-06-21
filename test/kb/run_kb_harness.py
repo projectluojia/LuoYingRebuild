@@ -18,7 +18,7 @@ from luoying_bot.capabilities.knowledge_base.entity_resolver import EntityResolv
 from luoying_bot.capabilities.knowledge_base.models import RetrievalResult
 from luoying_bot.capabilities.knowledge_base.policy import KnowledgeBasePolicy
 from luoying_bot.capabilities.knowledge_base.postgres_store import PostgresKnowledgeStore, compact_text
-from luoying_bot.capabilities.knowledge_base.query_agent import KBQueryAgent, KBQueryAgentConfig
+from luoying_bot.capabilities.knowledge_base.query_agent import KBQueryAgent
 from luoying_bot.capabilities.knowledge_base.semantic_layer import KnowledgeSemanticLayer
 from luoying_bot.config import settings
 from luoying_bot.infra.llm.openai_chat import OpenAICompatibleChatModel
@@ -71,7 +71,7 @@ class QueryCase:
             question=str(data["question"]),
             space_id=(None if data.get("space_id") in (None, "") else str(data["space_id"]))
             if "space_id" in data
-            else settings.kb_default_space_id,
+            else None,
             top_k=int(data.get("top_k") or 5),
             expected_any=[str(item) for item in data.get("expected_any", [])],
             expected_sources_any=[str(item) for item in data.get("expected_sources_any", [])],
@@ -113,9 +113,6 @@ async def build_service(*, with_answer: bool) -> KnowledgeBaseService:
             semantic_layer=KnowledgeSemanticLayer(),
         ),
         entity_resolver=EntityResolver(store),
-        config=KBQueryAgentConfig(
-            default_space_id=settings.kb_default_space_id,
-        ),
     )
     return KnowledgeBaseService(
         structured_backend=store,

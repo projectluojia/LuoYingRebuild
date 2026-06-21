@@ -6,7 +6,6 @@ from luoying_bot.capabilities.knowledge_base.entity_resolver import EntityResolv
 from luoying_bot.capabilities.knowledge_base.models import KnowledgeQuery
 from luoying_bot.capabilities.knowledge_base.query_agent import (
     KBQueryAgent,
-    KBQueryAgentConfig,
     rag_query_routes,
 )
 from luoying_bot.capabilities.knowledge_base.entities import GLOBAL_ENTITY_SPACE_ID, EntityMatch
@@ -54,12 +53,11 @@ async def test_resolved_entity_aliases_add_expanded_rag_route():
         rag_backend=rag_backend,
         analytics_engine=FakeAnalyticsEngine(),
         entity_resolver=EntityResolver(entity_backend),
-        config=KBQueryAgentConfig(default_space_id="sai"),
     )
 
-    await agent.retrieve(KnowledgeQuery(question="人工智能学院保研要求", space_id="whu"))
+    await agent.retrieve(KnowledgeQuery(question="人工智能学院保研要求", space_id=""))
 
-    assert rag_backend.calls[0]["space_ids"] == ["whu", "sai"]
+    assert rag_backend.calls[0]["space_ids"] == []
     rag_queries = rag_backend.calls[0]["queries"]
     assert rag_queries[0] == "人工智能学院保研要求"
     assert len(rag_queries) == 2
