@@ -108,20 +108,19 @@ class TestRetrievalResult:
 
 
 class TestKnowledgeAnswer:
-    def test_text_with_citations_without_citations(self):
+    def test_source_links_text_without_citations(self):
         answer = KnowledgeAnswer(answer="  hi  ", citations=[])
-        assert answer.text_with_citations() == "hi"
+        assert answer.source_links_text() == ""
 
-    def test_text_with_citations_appends_source_section(self):
+    def test_source_links_text_renders_source_links(self):
         answer = KnowledgeAnswer(
             answer="回答内容",
             citations=[Citation(title="来源A", source="url-a"), Citation(title="来源B", source="url-b")],
         )
-        text = answer.text_with_citations()
-        assert text.startswith("回答内容\n")
-        assert "- 来源A" in text
-        assert "- 来源B" in text
-        assert "来源：" in text
+        text = answer.source_links_text()
+        assert text.startswith("来源链接：\n")
+        assert "url-a（来源A）" in text
+        assert "url-b（来源B）" in text
 
     def test_to_dict_shape(self):
         answer = KnowledgeAnswer(answer="a", citations=[Citation(title="t", source="s")], confidence=0.9, need_follow_up=True)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from luoying_bot.capabilities.knowledge_base.analytics import relative_year_context
 from luoying_bot.capabilities.knowledge_base.models import KnowledgeAnswer, KnowledgeQuery, RetrievalResult
 from luoying_bot.capabilities.knowledge_base.prompts import ANSWER_PROMPT
 from luoying_bot.ports.llm import ChatModel
@@ -21,6 +22,7 @@ class KnowledgeAnswerGenerator:
         else:
             prompt = ANSWER_PROMPT.format(
                 question=query.question,
+                time_context=relative_year_context(query.question),
                 structured_context=structured_context,
                 rag_context=rag_context,
             )

@@ -5,6 +5,7 @@ import pytest
 from luoying_bot.capabilities.knowledge_base.analytics import (
     KnowledgeAnalyticsEngine,
     extract_year,
+    relative_year_context,
     validate_select_sql,
 )
 from luoying_bot.capabilities.knowledge_base.entities import EntityMatch
@@ -120,8 +121,16 @@ class TestExtractYear:
             ("2025年招生计划", 2025),
             ("24年的数据", 2024),
             ("85年", 1985),
-            ("今年", None),
+            ("今年", 2026),
+            ("去年人工智能学院湖北省分数线是多少", 2025),
+            ("前年湖北录取分数线", 2024),
         ],
     )
     def test_extract(self, question, expected):
-        assert extract_year(question) == expected
+        assert extract_year(question, current_year=2026) == expected
+
+    def test_explicit_year_wins_over_relative_year(self):
+        assert extract_year("去年也就是2024年的分数线", current_year=2026) == 2024
+
+    def test_relative_year_context(self):
+        assert relative_year_context("去年人工智能学院湖北省分数线是多少", current_year=2026) == "去年 = 2025年（当前年份 2026）。"

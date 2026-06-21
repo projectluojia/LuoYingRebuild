@@ -134,15 +134,6 @@ class KnowledgeAnswer:
     fallback_reason: str | None = None
     data: dict[str, Any] = field(default_factory=dict)
 
-    def text_with_citations(self) -> str:
-        text = self.answer.strip()
-        if not self.citations:
-            return text
-        lines = [text, "", "来源："]
-        for citation in self.citations:
-            lines.append(f"- {citation.label()}")
-        return "\n".join(lines).strip()
-
     def source_links_text(self) -> str:
         if not self.citations:
             return ""

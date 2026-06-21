@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from luoying_bot.capabilities.knowledge_base.entity_resolver import EntityResolution
@@ -193,6 +194,7 @@ class KnowledgeAnalyticsEngine:
             semantic_rules=self.semantic_layer.semantic_rules(),
             candidate_values=candidate_values or "无",
             resolved_entities=entities.prompt_context() if entities else "无",
+            time_context=relative_year_context(query.question),
             max_rows=self.max_rows,
             question=query.question,
             space_filter=f"space_id = '{query.space_id}'" if query.space_id else "按问题语义决定；不确定时不要强行限制 space_id",
@@ -234,6 +236,9 @@ ANALYTICS_PROMPT = """\
 
 已解析实体：
 {resolved_entities}
+
+时间解析：
+{time_context}
 
 约束：
 - 只允许 SELECT。
@@ -332,15 +337,37 @@ def citation_from_row(row: dict[str, Any]) -> Citation:
     )
 
 
-def extract_year(question: str) -> int | None:
+def extract_year(question: str, *, current_year: int | None = None) -> int | None:
     match = re.search(r"(20\d{2})\s*年?", question)
     if match:
         return int(match.group(1))
     short = re.search(r"(?<!\d)(\d{2})\s*年", question)
-    if not short:
-        return None
-    year = int(short.group(1))
-    return 2000 + year if year < 80 else 1900 + year
+    if short:
+        year = int(short.group(1))
+        return 2000 + year if year < 80 else 1900 + year
+    relative_year = extract_relative_year(question, current_year=current_year)
+    return relative_year[1] if relative_year else None
+
+
+def extract_relative_year(question: str, *, current_year: int | None = None) -> tuple[str, int] | None:
+    base_year = current_year or runtime_current_year()
+    for marker, offset in (("前年", -2), ("去年", -1), ("今年", 0)):
+        if marker in question:
+            return marker, base_year + offset
+    return None
+
+
+def relative_year_context(question: str, *, current_year: int | None = None) -> str:
+    resolved = extract_relative_year(question, current_year=current_year)
+    if resolved is None:
+        return "无"
+    marker, year = resolved
+    base_year = current_year or runtime_current_year()
+    return f"{marker} = {year}年（当前年份 {base_year}）。"
+
+
+def runtime_current_year() -> int:
+    return datetime.now(timezone(timedelta(hours=8))).year
 
 
 def wants_listing(question: str) -> bool:
