@@ -7,7 +7,7 @@ url: "https://sai.whu.edu.cn/teacher/zzjs.htm"
 published_at: null
 content_hash: "ee92b4bce3cfdee78923d36f1a4a5ba294d83166c191594b3de2f29e3dcf0050"
 content_type: "listing"
-fetched_at: "2026-06-19T22:20:47"
+fetched_at: "2026-06-21T01:13:57"
 depth: 0
 link_count: 36
 raw_path: "raw/teacher_zzjs.htm_a0469089f2f3.html"

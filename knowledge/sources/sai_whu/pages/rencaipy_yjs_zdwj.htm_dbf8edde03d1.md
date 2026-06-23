@@ -7,8 +7,8 @@ url: "https://sai.whu.edu.cn/rencaipy/yjs/zdwj.htm"
 published_at: null
 content_hash: "b3291e9cbbfdab8a3f9b4a366bb9bf4060bc934c86753ce3c789e45877aecf79"
 content_type: "listing"
-fetched_at: "2026-06-19T22:21:14"
-depth: 1
+fetched_at: "2026-06-21T01:14:02"
+depth: 0
 link_count: 17
 raw_path: "raw/rencaipy_yjs_zdwj.htm_dbf8edde03d1.html"
 quality: {"ok": true, "score": 1.0, "warnings": [], "metrics": {"chars": 2213, "lines": 17, "main_nav_hits": 0, "footer_hits": 0, "breadcrumb_hits": 0, "script_hits": 0, "pagination_hits": 0, "duplicate_line_ratio": 0.0}}

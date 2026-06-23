@@ -7,7 +7,7 @@ url: "https://sai.whu.edu.cn/recruit/fbryzp.htm"
 published_at: null
 content_hash: "31e2d603b4946f8cf897b67b23fa562130d96f8e389753875c88f742027be5d1"
 content_type: "listing"
-fetched_at: "2026-06-19T22:20:54"
+fetched_at: "2026-06-21T01:14:07"
 depth: 0
 link_count: 3
 raw_path: "raw/recruit_fbryzp.htm_ea812d48592b.html"

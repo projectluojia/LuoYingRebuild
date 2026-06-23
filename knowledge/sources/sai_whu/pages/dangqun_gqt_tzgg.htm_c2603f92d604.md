@@ -7,8 +7,8 @@ url: "https://sai.whu.edu.cn/dangqun/gqt/tzgg.htm"
 published_at: null
 content_hash: "759a8ea40be267221e9acc9fb2b26a0b5bdb3e083f0e5f87a16f36c8d6c1c3c1"
 content_type: "listing"
-fetched_at: "2026-06-19T22:21:38"
-depth: 1
+fetched_at: "2026-06-21T01:14:06"
+depth: 0
 link_count: 11
 raw_path: "raw/dangqun_gqt_tzgg.htm_c2603f92d604.html"
 quality: {"ok": true, "score": 1.0, "warnings": [], "metrics": {"chars": 1399, "lines": 12, "main_nav_hits": 0, "footer_hits": 0, "breadcrumb_hits": 0, "script_hits": 0, "pagination_hits": 0, "duplicate_line_ratio": 0.0}}

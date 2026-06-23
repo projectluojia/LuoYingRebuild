@@ -7,7 +7,7 @@ url: "https://sai.whu.edu.cn/kxyj/xsdt.htm"
 published_at: null
 content_hash: "579b1e517d1a99df7b8cab56ee2cb48ce6cda408a4f81ce7d44d7230d818427e"
 content_type: "listing"
-fetched_at: "2026-06-19T22:20:52"
+fetched_at: "2026-06-21T01:14:03"
 depth: 0
 link_count: 17
 raw_path: "raw/kxyj_xsdt.htm_255cf51524dd.html"

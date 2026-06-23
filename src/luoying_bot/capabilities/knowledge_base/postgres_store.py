@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 import asyncpg
 
 from luoying_bot.capabilities.knowledge_base.embeddings import EmbeddingProvider
-from luoying_bot.capabilities.knowledge_base.entities import normalize_entity_text
+from luoying_bot.capabilities.knowledge_base.entities import GLOBAL_ENTITY_SPACE_ID, normalize_entity_text
 from luoying_bot.capabilities.knowledge_base.errors import BackendUnavailable
 from luoying_bot.capabilities.knowledge_base.models import Citation, RetrievedChunk
 from luoying_bot.capabilities.knowledge_base.ports import AnalyticsBackend, EntityBackend, RagBackend, StructuredBackend
@@ -688,6 +688,9 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
         self._validate_embeddings([query_vector])
         ts_query = build_tsquery(query)
         type_clause = "and (cardinality($2::text[]) = 0 or item_type = any($2::text[]))"
+        searchable_space_ids = [space_id]
+        if item_types == ["entity"] and space_id != GLOBAL_ENTITY_SPACE_ID:
+            searchable_space_ids.append(GLOBAL_ENTITY_SPACE_ID)
         lexical_sql = ""
         if ts_query:
             lexical_sql = f"""
@@ -696,7 +699,7 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
                     select *, ts_rank_cd(search_vector, to_tsquery('simple', $4)) * 4.0 as score
                     from kb_search_items
                     where review_status = 'approved'
-                      and ($1 = '' or space_id = $1)
+                      and ($1 = '' or space_id = any($6::text[]))
                       {type_clause}
                       and search_vector @@ to_tsquery('simple', $4)
                     limit $3
@@ -711,7 +714,7 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
                         select *, (1 - (embedding <=> $5::vector)) as score
                         from kb_search_items
                         where review_status = 'approved'
-                          and ($1 = '' or space_id = $1)
+                          and ($1 = '' or space_id = any($6::text[]))
                           {type_clause}
                         order by embedding <=> $5::vector
                         limit $3
@@ -733,12 +736,16 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
                 limit,
                 ts_query or "",
                 vector_literal(query_vector),
+                searchable_space_ids,
             )
         return [record_to_dict(row) for row in rows]
 
     async def fetch_entity_relations(self, *, space_id: str, entity_ids: list[str]) -> list[dict[str, Any]]:
         if not entity_ids:
             return []
+        searchable_space_ids = [space_id]
+        if space_id != GLOBAL_ENTITY_SPACE_ID:
+            searchable_space_ids.append(GLOBAL_ENTITY_SPACE_ID)
         pool = await self._get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch(
@@ -753,11 +760,12 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
                 where r.review_status = 'approved'
                   and s.review_status = 'approved'
                   and o.review_status = 'approved'
-                  and ($1 = '' or r.space_id = $1)
+                  and ($1 = '' or r.space_id = any($3::text[]))
                   and (r.subject_entity_id = any($2::text[]) or r.object_entity_id = any($2::text[]))
                 """,
                 space_id,
                 entity_ids,
+                searchable_space_ids,
             )
         return [record_to_dict(row) for row in rows]
 

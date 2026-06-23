@@ -7,7 +7,7 @@ url: "https://sai.whu.edu.cn/xxgk/bslc.htm"
 published_at: null
 content_hash: "6b6a5613b782dafbad965d00f49a2d5a0ace000c96d0198a1183e11c673de9e3"
 content_type: "listing"
-fetched_at: "2026-06-19T22:20:55"
+fetched_at: "2026-06-21T01:14:08"
 depth: 0
 link_count: 13
 raw_path: "raw/xxgk_bslc.htm_05aacecc776d.html"

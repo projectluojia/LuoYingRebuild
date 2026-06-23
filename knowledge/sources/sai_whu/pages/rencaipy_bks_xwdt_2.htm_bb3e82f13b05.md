@@ -7,7 +7,7 @@ url: "https://sai.whu.edu.cn/rencaipy/bks/xwdt/2.htm"
 published_at: null
 content_hash: "87513dbb02d431c128a608531ff92e41aeb2d64ca18e35b06b6dee905b0097a8"
 content_type: "listing"
-fetched_at: "2026-06-19T22:21:13"
+fetched_at: "2026-06-21T01:14:25"
 depth: 1
 link_count: 19
 raw_path: "raw/rencaipy_bks_xwdt_2.htm_bb3e82f13b05.html"

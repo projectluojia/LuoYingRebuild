@@ -7,8 +7,8 @@ url: "https://sai.whu.edu.cn/about/jigou/xsjg.htm"
 published_at: null
 content_hash: "20346fb16ed2153e5860a138b540e4f5c3a80ea7b958757d095d44242eb1f6b9"
 content_type: "listing"
-fetched_at: "2026-06-19T22:21:04"
-depth: 1
+fetched_at: "2026-06-21T01:13:55"
+depth: 0
 link_count: 4
 raw_path: "raw/about_jigou_xsjg.htm_83fe00723f4a.html"
 quality: {"ok": false, "score": 0.85, "warnings": ["high_duplicate_line_ratio"], "metrics": {"chars": 1213, "lines": 136, "main_nav_hits": 0, "footer_hits": 0, "breadcrumb_hits": 0, "script_hits": 0, "pagination_hits": 0, "duplicate_line_ratio": 0.4375}}

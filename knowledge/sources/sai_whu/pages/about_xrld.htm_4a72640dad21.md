@@ -7,7 +7,7 @@ url: "https://sai.whu.edu.cn/about/xrld.htm"
 published_at: null
 content_hash: "5422aade1ebd58d018adbff075090d4eed52d845f5d025ea2ef81ae72fd4d8ab"
 content_type: "listing"
-fetched_at: "2026-06-19T22:20:46"
+fetched_at: "2026-06-21T01:13:55"
 depth: 0
 link_count: 0
 raw_path: "raw/about_xrld.htm_4a72640dad21.html"

@@ -7,7 +7,7 @@ url: "https://sai.whu.edu.cn/about/jigou/jxzz.htm"
 published_at: null
 content_hash: "876da47a448f723cced2116f5fab69584ec2237316ba3317bd9ddf85b69ada64"
 content_type: "page"
-fetched_at: "2026-06-19T22:20:46"
+fetched_at: "2026-06-21T01:13:55"
 depth: 0
 link_count: 4
 raw_path: "raw/about_jigou_jxzz.htm_d2ad686f00db.html"

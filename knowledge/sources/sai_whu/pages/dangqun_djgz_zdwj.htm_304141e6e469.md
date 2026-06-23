@@ -7,8 +7,8 @@ url: "https://sai.whu.edu.cn/dangqun/djgz/zdwj.htm"
 published_at: null
 content_hash: "f28f27ee1d6469fb39e66df586029317a0fcdf8323d3a2cbc61354fbbdb9ab51"
 content_type: "listing"
-fetched_at: "2026-06-19T22:21:25"
-depth: 1
+fetched_at: "2026-06-21T01:14:05"
+depth: 0
 link_count: 15
 raw_path: "raw/dangqun_djgz_zdwj.htm_304141e6e469.html"
 quality: {"ok": true, "score": 1.0, "warnings": [], "metrics": {"chars": 1976, "lines": 16, "main_nav_hits": 0, "footer_hits": 0, "breadcrumb_hits": 0, "script_hits": 0, "pagination_hits": 0, "duplicate_line_ratio": 0.0}}
