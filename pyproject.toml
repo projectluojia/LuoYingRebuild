@@ -58,4 +58,4 @@ dev = [
 asyncio_mode = "auto"
 testpaths = ["test"]
 python_files = ["test_*.py"]
-pythonpath = ["src"]
+pythonpath = [".", "src"]
