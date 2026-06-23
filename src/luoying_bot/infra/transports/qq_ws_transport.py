@@ -311,8 +311,8 @@ class QQWsTransport(ChatTransport):
     
     #发送纯文本
     async def send_text(self, context: ChatContext, text: str) -> None:
-        messages = [message for message in re.split(r'(?:\r\n|\r|\n){2,}', text) if message]
-        for message in messages:
+        messages = [message.strip() for message in re.split(r'\r\n|\r|\n', text) if message.strip()]
+        for index, message in enumerate(messages):
             if context.target.channel_type == ChannelType.GROUP:
                 action = 'send_group_msg'
                 params = {
@@ -332,6 +332,8 @@ class QQWsTransport(ChatTransport):
                     'params': params,
                 }
             )
+            if index < len(messages) - 1:
+                await asyncio.sleep(0.5)
 
     async def send_track(
         self,
