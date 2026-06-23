@@ -310,8 +310,11 @@ class QQWsTransport(ChatTransport):
         return UniMessage(platform=Platform.QQ, raw_event=data)
     
     #发送纯文本
-    async def send_text(self, context: ChatContext, text: str) -> None:
-        messages = [message.strip() for message in re.split(r'\r\n|\r|\n', text) if message.strip()]
+    async def send_text(self, context: ChatContext, text: str, *, split: bool = False) -> None:
+        if split:
+            messages = [message.strip() for message in re.split(r'\r\n|\r|\n', text) if message.strip()]
+        else:
+            messages = [text] if text else []
         for index, message in enumerate(messages):
             if context.target.channel_type == ChannelType.GROUP:
                 action = 'send_group_msg'

@@ -175,10 +175,11 @@ class EventHandler:
             await self.transport.send_text_iter(context, output_chunks())
             return Reply(text=''.join(sent_parts))
 
-        rp_msg=await self.agent.reply(message)
-        rp_msg=self.risk_control_service.do_output_risk_control_any(rp_msg)
+        agent_reply=await self.agent.reply(message)
+        rp_msg=self.risk_control_service.do_output_risk_control(agent_reply.text)
         reply = Reply(
-            text=self.risk_control_service.do_output_risk_control(rp_msg)
+            text=rp_msg,
+            metadata=dict(agent_reply.metadata),
         )
         
         
@@ -187,7 +188,8 @@ class EventHandler:
             logger.info("主 Agent 已返回 final",extra=extra)
             await self.transport.send_text(
                 context, 
-                prefix + reply.text
+                prefix + reply.text,
+                split=reply.metadata.get("split") is True,
             )
         return reply
     

@@ -129,7 +129,7 @@ class AgentService:
         final_action = (
             '- {"type":"ok_to_answer"}'
             if stream_final
-            else '- {"type":"final","answer":"..."}'
+            else '- {"type":"final","answer":"...","split":false}'
         )
         
         user_prompt=(
@@ -250,7 +250,7 @@ class AgentService:
         if data.get("type")=="final":
             answer=data.get("answer")
             if isinstance(answer, str) and answer.strip():
-                return {"type": "final", "answer": answer}
+                return {"type": "final", "answer": answer, "split": data.get("split") is True}
             return {"type": "invalid", "raw": text}
 
         if data.get("type") == "ok_to_answer":
@@ -467,7 +467,7 @@ class AgentService:
             return await skill.run(request)
         return await asyncio.wait_for(skill.run(request), timeout=timeout)
 
-    async def reply(self,message:UniMessage)->str:
+    async def reply(self,message:UniMessage)->Reply:
         context=message.context
         extra=context_log_extra(context)
         start_at=time.monotonic()
@@ -492,6 +492,7 @@ class AgentService:
         logger.info("主 Agent 开始处理消息", extra=extra)
         scratchpad: list[AgentStep]=[]
         answer=None
+        split = False
 
         invalid_action_count = 0
         max_invalid_actions = 3
@@ -522,6 +523,7 @@ class AgentService:
             if action["type"]=="final":
                 invalid_action_count = 0
                 answer=action["answer"].strip()
+                split = action.get("split") is True
                 break
 
             if action["type"]!="act":
@@ -615,7 +617,8 @@ class AgentService:
                 answer = "我这边刚刚处理超时了，能再发一次或者换个更具体的说法吗？"
         
         self.memory.append_user(message)
-        self.memory.append_assistant(message.context, Reply(text=answer))
+        reply = Reply(text=answer, metadata={"split": split})
+        self.memory.append_assistant(message.context, reply)
         await self.skills.services.user_memory_service.record_turn(
             user_id=user_id,
             user_text=raw_user_text,
@@ -623,7 +626,7 @@ class AgentService:
         )
         await self._maybe_name_thread(thread_id, user_text, answer)
         logger.info("主 Agent 完成处理，耗时 %.2fs", time.monotonic() - start_at, extra=extra)
-        return answer
+        return reply
 
     async def reply_stream(self, message: UniMessage) -> AsyncIterator[str]:
         context = message.context

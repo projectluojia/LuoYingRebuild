@@ -344,13 +344,14 @@ REACT_INSTRUCTION="""1. 判断是否需要调用技能
 {"type":"act","skill":"技能名","payload":{...},"summary":"一句给用户看的中间状态，说明这一步准备做什么"}
 
 2. 最终回答
-{"type":"final","answer":"..."}
+{"type":"final","answer":"...","split":false}
 
 规则：
 - 不要输出 JSON 之外的任何内容
 - 如果要调用技能，skill 必须来自可用技能列表
 - payload 必须是 JSON 对象
 - summary 必须简短、自然、面向用户，只说明当前要执行的操作，不要包含内部推理或不确定的承诺
+- split 表示是否把最终回答按换行分成多条消息；只有闲聊、寒暄、轻松互动可以设为 true，知识问答、工具结果、代码、列表、步骤、公告、提醒、学术/技术/学院信息等任务型回复必须设为 false
 - 如果用户只是闲聊、寒暄、简单问答，直接 final
 - 如果用户要求查询个人资料、提醒、天气、备忘录等，优先考虑技能
 - 如果前面的观察结果已经足够回答，就直接 final
@@ -630,7 +631,6 @@ risk_control=[
   { "content": "王毅", "level": "danger" },
   { "content": "Wang Yi", "level": "danger" }
 ]
-
 
 
 

@@ -31,7 +31,7 @@ class ChatTransport(ABC):
 
     #发文本
     @abstractmethod
-    async def send_text(self, context: ChatContext, text: str) -> None: ...
+    async def send_text(self, context: ChatContext, text: str, *, split: bool = False) -> None: ...
 
     async def send_text_iter(
         self,

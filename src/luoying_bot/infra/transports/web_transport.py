@@ -44,7 +44,7 @@ class WebTransport(ChatTransport):
     def format_mention(self, context: ChatContext, user_id: str) -> str:
         return ""
 
-    async def send_text(self, context: ChatContext, text: str) -> None:
+    async def send_text(self, context: ChatContext, text: str, *, split: bool = False) -> None:
         async def chunks() -> AsyncIterator[str]:
             yield text
 
