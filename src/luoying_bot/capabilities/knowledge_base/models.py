@@ -23,6 +23,16 @@ class Citation:
             parts.append(self.source)
         return "，".join(parts)
 
+    def link_label(self) -> str:
+        if not self.source:
+            return self.label()
+        parts = [self.title.strip() or "未命名来源"]
+        if self.department:
+            parts.append(self.department)
+        if self.published_at:
+            parts.append(self.published_at)
+        return f"{self.source}（{'，'.join(parts)}）"
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "title": self.title,
@@ -131,6 +141,14 @@ class KnowledgeAnswer:
         lines = [text, "", "来源："]
         for citation in self.citations:
             lines.append(f"- {citation.label()}")
+        return "\n".join(lines).strip()
+
+    def source_links_text(self) -> str:
+        if not self.citations:
+            return ""
+        lines = ["来源链接："]
+        for citation in self.citations:
+            lines.append(f"- {citation.link_label()}")
         return "\n".join(lines).strip()
 
     def to_dict(self) -> dict[str, Any]:

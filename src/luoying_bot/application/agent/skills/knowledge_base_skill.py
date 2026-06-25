@@ -14,7 +14,8 @@ class KnowledgeBaseSkill(BaseSkill):
     description = (
         "查询学校知识库。适合回答招生、政策、专业介绍、办事说明、学校资料等需要可靠来源的问题。"
         "本技能使用 Git 管理的网页 Markdown artifact 和本地混合索引。"
-        "回答会附带来源；没有可靠来源时会拒绝给出确定结论。"
+        "回答正文不需要包含来源；系统会把本技能返回的来源链接附在最终回复末尾。"
+        "没有可靠来源时会拒绝给出确定结论。"
         "payload 示例："
         '{"question":"去年河北物理类人工智能最低多少分？"} '
         '{"question":"软件工程和人工智能专业有什么区别？"}'
@@ -42,11 +43,13 @@ class KnowledgeBaseSkill(BaseSkill):
             request_uid=context.request_uid,
         )
         return SkillResult(
-            text=answer.text_with_citations(),
+            text=answer.answer,
             data={
                 "ok": answer.fallback_reason is None,
                 **answer.to_dict(),
             },
+            llm_observation=answer.answer,
+            final_append_text=answer.source_links_text(),
         )
 
     def _optional_text(self, value) -> str | None:

@@ -19,6 +19,8 @@ class SkillResult:
     text: str
     data: dict[str, Any] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    llm_observation: str | None = None
+    final_append_text: str = ""
 
 class BaseSkill(ABC):
     name: str = ''

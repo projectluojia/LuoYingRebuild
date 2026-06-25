@@ -176,6 +176,9 @@ class AgentService:
     def _normalize_skill_result(self,skill_result:Any)->str:
         if skill_result is None:
             return "技能返回空结果"
+        llm_observation=getattr(skill_result,"llm_observation",None)
+        if isinstance(llm_observation,str) and llm_observation.strip():
+            return llm_observation.strip()
         text=getattr(skill_result,"text",None)
         data=getattr(skill_result,"data",None)
 
@@ -187,6 +190,26 @@ class AgentService:
             return self._json_dumps(data)
 
         return str(skill_result)
+
+    def _skill_append_text(self, skill_result: Any) -> str:
+        append_text = getattr(skill_result, "final_append_text", "")
+        if not isinstance(append_text, str):
+            return ""
+        return append_text.strip()
+
+    def _append_skill_texts(self, answer: str | None, append_texts: list[str]) -> str:
+        clean_answer = (answer or "").rstrip()
+        clean_append_texts: list[str] = []
+        seen: set[str] = set()
+        for append_text in append_texts:
+            clean_text = append_text.strip()
+            if not clean_text or clean_text in clean_answer or clean_text in seen:
+                continue
+            seen.add(clean_text)
+            clean_append_texts.append(clean_text)
+        if not clean_append_texts:
+            return clean_answer
+        return "\n\n".join([clean_answer, *clean_append_texts]).strip()
     
     async def _fallback_answer(
         self,
@@ -491,6 +514,7 @@ class AgentService:
 
         logger.info("主 Agent 开始处理消息", extra=extra)
         scratchpad: list[AgentStep]=[]
+        append_texts: list[str]=[]
         answer=None
         split = False
 
@@ -587,6 +611,9 @@ class AgentService:
                     deadline=deadline,
                 )
                 observation_text=self._normalize_skill_result(skill_result)
+                append_text=self._skill_append_text(skill_result)
+                if append_text:
+                    append_texts.append(append_text)
             except asyncio.TimeoutError:
                 observation_text = f"技能 {skill_name} 执行超时"
                 logger.warning("技能 %s 执行超时", skill_name, extra=extra)
@@ -615,6 +642,8 @@ class AgentService:
                 )
             except asyncio.TimeoutError:
                 answer = "我这边刚刚处理超时了，能再发一次或者换个更具体的说法吗？"
+
+        answer = self._append_skill_texts(answer, append_texts)
         
         self.memory.append_user(message)
         reply = Reply(text=answer, metadata={"split": split})
@@ -649,6 +678,7 @@ class AgentService:
 
         logger.info("主 Agent 开始处理流式消息", extra=extra)
         scratchpad: list[AgentStep] = []
+        append_texts: list[str] = []
         answer: str | None = None
         invalid_action_count = 0
         max_invalid_actions = 3
@@ -763,6 +793,9 @@ class AgentService:
                     deadline=deadline,
                 )
                 observation_text = self._normalize_skill_result(skill_result)
+                append_text = self._skill_append_text(skill_result)
+                if append_text:
+                    append_texts.append(append_text)
             except asyncio.TimeoutError:
                 observation_text = f"技能 {skill_name} 执行超时"
                 logger.warning("技能 %s 执行超时", skill_name, extra=extra)
@@ -792,6 +825,12 @@ class AgentService:
             except asyncio.TimeoutError:
                 answer = "我这边刚刚处理超时了，能再发一次或者换个更具体的说法吗？"
             yield answer
+
+        answer_with_append_text = self._append_skill_texts(answer, append_texts)
+        suffix = answer_with_append_text[len(answer or ""):]
+        if suffix:
+            yield suffix
+        answer = answer_with_append_text
 
         self.memory.append_user(message)
         self.memory.append_assistant(message.context, Reply(text=answer))
