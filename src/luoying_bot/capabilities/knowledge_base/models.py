@@ -148,7 +148,7 @@ class KnowledgeAnswer:
             return ""
         lines = ["来源链接："]
         for citation in self.citations:
-            lines.append(f"- {citation.link_label()}")
+            lines.append(citation.link_label())
         return "\n".join(lines).strip()
 
     def to_dict(self) -> dict[str, Any]:
