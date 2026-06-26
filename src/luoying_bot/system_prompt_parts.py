@@ -316,7 +316,6 @@ def build_extra_traits_prompt(
     lines = ["【额外特征】"]
     for key in EXTRA_TRAIT_ORDER:
         spec = EXTRA_TRAIT_RULES[key]
-        name = str(spec["name"])
         rules = spec["rules"]
         if not isinstance(rules, Mapping):
             continue

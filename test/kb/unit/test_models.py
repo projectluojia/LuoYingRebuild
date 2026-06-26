@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pytest
 
 from luoying_bot.capabilities.knowledge_base.models import (
     Citation,

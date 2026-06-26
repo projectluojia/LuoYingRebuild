@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import random
 from collections.abc import AsyncIterator
@@ -11,7 +10,6 @@ from luoying_bot.application.services.group_runtime import GroupRuntime
 from luoying_bot.application.services.quick_reply_service import QuickReplyService
 from luoying_bot.application.services.risk_control_service import RiskControlService
 from luoying_bot.domain.message import UniMessage
-from luoying_bot.domain.message import MessageSegment
 from luoying_bot.domain.context import Platform, ChannelType
 from luoying_bot.domain.result import Reply
 from luoying_bot.infra.logging_setup import context_log_extra

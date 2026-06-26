@@ -6,10 +6,6 @@ from threading import Lock
 
 from luoying_bot.domain.context import (
     ChatContext,
-    ChannelType,
-    ConversationTarget,
-    Platform,
-    UserIdentity,
 )
 from luoying_bot.domain.schedule import ScheduleRule
 

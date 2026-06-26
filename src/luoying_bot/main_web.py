@@ -6,7 +6,7 @@ import logging
 import uvicorn
 
 from luoying_bot.infra.logging_setup import configure_logging
-from luoying_bot.infra.web.api import WebApiFactory
+from luoying_bot.infra.http.api import WebApiFactory
 
 def create_app():
     configure_logging(logging.INFO)

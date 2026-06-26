@@ -84,7 +84,7 @@ async def send_morning_greeting(
     now_weather=None
     try:
         now_weather=await whWeather()
-    except Exception as e:
+    except Exception:
         pass
     try:
         response=await model.chat(
@@ -96,7 +96,7 @@ async def send_morning_greeting(
                 {"role":"system","content":"请执行system中的要求"}
             ]
         )
-    except Exception as e :
+    except Exception:
         response="早安信息获取出错！"
     await service.send_group_text(group_id, response.strip())
 

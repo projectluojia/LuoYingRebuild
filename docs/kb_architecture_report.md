@@ -10,7 +10,7 @@
 - 事实型知识使用 Postgres 结构化表 + SQL 精确计算。
 - 实体型知识使用轻量 Entity Registry + 关系解析。
 - 实体和事实统一生成可搜索投影 `kb_search_items`，用于召回；最终答案仍回到事实表或原文档证据。
-- 所有运行时数据集中在 Postgres + pgvector 内，不再依赖 Directus / RAGFlow。
+- 所有运行时数据集中在 Postgres + pgvector 内。
 
 当前核心链路：
 
@@ -62,7 +62,7 @@ src/luoying_bot/bootstrap.py
 src/luoying_bot/application/agent/skills/knowledge_base_skill.py
   Agent skill: knowledge_base
 
-src/luoying_bot/infra/web/knowledge_base_api.py
+src/luoying_bot/infra/http/knowledge_base_api.py
   /knowledge/answer
   /knowledge/search
   /knowledge/admin/sources
@@ -733,16 +733,14 @@ test/kb/cases/*.json
 常用命令：
 
 ```bash
-UV_CACHE_DIR=var/uv-cache UV_PROJECT_ENVIRONMENT=var/venv \
-PYTHONPATH=src uv run --frozen python test/kb/run_kb_harness.py eval \
+uv run --frozen python test/kb/run_kb_harness.py eval \
   --cases test/kb/cases/whu_strong_foundation.json
 ```
 
 带回答生成：
 
 ```bash
-UV_CACHE_DIR=var/uv-cache UV_PROJECT_ENVIRONMENT=var/venv \
-PYTHONPATH=src uv run --frozen python test/kb/run_kb_harness.py eval \
+uv run --frozen python test/kb/run_kb_harness.py eval \
   --with-answer \
   --cases test/kb/cases/whu_strong_foundation.json
 ```
@@ -796,23 +794,20 @@ perf:    p50≈390ms p95≈1.7s，embedding 2 次/查询；
 导入招生事实、实体、搜索投影：
 
 ```bash
-UV_CACHE_DIR=var/uv-cache UV_PROJECT_ENVIRONMENT=var/venv \
-PYTHONPATH=src uv run --frozen python scripts/import_whu_admission_data.py --year 2025
+uv run --frozen python scripts/import_whu_admission_data.py --year 2025
 ```
 
 爬取学院网站：
 
 ```bash
-UV_CACHE_DIR=var/uv-cache UV_PROJECT_ENVIRONMENT=var/venv \
-PYTHONPATH=src uv run --frozen python scripts/crawl_site_to_kb.py \
+uv run --frozen python scripts/crawl_site_to_kb.py \
   --config docs/site_configs/sai_whu.json
 ```
 
 从 Markdown artifact 重建文档索引：
 
 ```bash
-UV_CACHE_DIR=var/uv-cache UV_PROJECT_ENVIRONMENT=var/venv \
-PYTHONPATH=src uv run --frozen python scripts/rebuild_kb_index.py
+uv run --frozen python scripts/rebuild_kb_index.py
 ```
 
 查看搜索投影统计：

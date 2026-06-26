@@ -53,7 +53,7 @@ src/luoying_bot/application/agent/skills/knowledge_base_skill.py
 Web API entry:
 
 ```text
-src/luoying_bot/infra/web/knowledge_base_api.py
+src/luoying_bot/infra/http/knowledge_base_api.py
 ```
 
 ## Configuration

@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import copy
 
-from typing import Union
 
-from luoying_bot.config import settings
 from luoying_bot.constants import risk_control
 from luoying_bot.domain.message import UniMessage,MessageSegment
 

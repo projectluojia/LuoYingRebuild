@@ -6,7 +6,6 @@ import pkgutil
 
 from luoying_bot.application.agent.skill_base import BaseSkill
 from luoying_bot.application.service_hub import ServiceHub
-from luoying_bot.domain.context import Platform
 
 
 class SkillRegistry:

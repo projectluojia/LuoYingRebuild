@@ -39,7 +39,7 @@ class QuickReplyService:
     def match(self,text:str,context:ChatContext|None=None)->Optional[str]:
         try:
             self._load_rules(force=False)
-        except Exception as e:
+        except Exception:
             pass
         
         text=(text or "").strip()

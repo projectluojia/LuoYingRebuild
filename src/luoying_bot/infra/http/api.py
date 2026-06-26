@@ -13,8 +13,7 @@ from typing import Any
 from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, StreamingResponse
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field
 
@@ -22,13 +21,10 @@ from luoying_bot.bootstrap import AppContainer, build_web_container
 from luoying_bot.config import settings
 from luoying_bot.domain.context import UserIdentity
 from luoying_bot.domain.message import UniMessage
-from luoying_bot.infra.web.knowledge_base_api import create_knowledge_base_router
+from luoying_bot.infra.http.knowledge_base_api import create_knowledge_base_router
 from luoying_bot.infra.transports.web_transport import WebTransport
 from luoying_bot.ports.memory import ConversationThread
 
-WEB_DIR = Path(__file__).resolve().parent
-INDEX_HTML_FILE = WEB_DIR / "index.html"
-STATIC_DIR = WEB_DIR / "static"
 MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_FILE_UPLOAD_BYTES = 25 * 1024 * 1024
 ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
@@ -358,8 +354,7 @@ class WebApiFactory:
                     await close()
                 await container.transport.close()
 
-        app = FastAPI(title="Luoying Web Agent", lifespan=lifespan)
-        app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+        app = FastAPI(title="Luoying API", lifespan=lifespan)
 
         def container() -> AppContainer:
             current = getattr(app.state, "container", None)
@@ -378,9 +373,9 @@ class WebApiFactory:
         async def health() -> dict[str, str]:
             return {"ok": "true"}
 
-        @app.get("/", response_class=HTMLResponse)
-        async def index() -> str:
-            return INDEX_HTML_FILE.read_text(encoding="utf-8")
+        @app.get("/")
+        async def root() -> dict[str, str]:
+            return {"name": "luoying-api", "ok": "true"}
 
         @app.get("/auth/me", response_model=WebCurrentUser)
         async def auth_me(
