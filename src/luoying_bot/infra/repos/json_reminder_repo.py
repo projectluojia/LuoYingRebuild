@@ -35,6 +35,8 @@ class JsonReminderRepo(ReminderRepo):
     #将json解析为数据类
     def _to_record(self, row: dict) -> ReminderRecord:
         context_data=row.get('context')
+        if not isinstance(context_data, dict):
+            raise ValueError("reminder record missing context")
         context=ChatContext.from_dict(context_data)
         
         return ReminderRecord(

@@ -167,8 +167,9 @@ class ScriptWorkspaceService:
         for index, slide in enumerate(presentation.slides, start=1):
             slide_parts: list[str] = []
             for shape in slide.shapes:
-                if hasattr(shape, "text") and shape.text.strip():
-                    slide_parts.append(shape.text.strip())
+                text = getattr(shape, "text", "")
+                if isinstance(text, str) and text.strip():
+                    slide_parts.append(text.strip())
             if slide_parts:
                 parts.append(f"[幻灯片 {index}]\n" + "\n".join(slide_parts))
         return "\n\n".join(parts)

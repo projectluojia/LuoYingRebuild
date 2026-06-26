@@ -476,6 +476,8 @@ def normalize_strong_foundation_rows(
         return []
     workbook = load_workbook(path, data_only=True, read_only=True)
     worksheet = workbook.active
+    if worksheet is None:
+        return []
     headers = [clean_header(cell) for cell in next(worksheet.iter_rows(min_row=1, max_row=1, values_only=True))]
     province_index = headers.index("省份")
     program_index = headers.index(clean_header("数学与应用数学\n（智能科学）\n强基计划"))

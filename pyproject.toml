@@ -93,5 +93,5 @@ exclude = [
 venvPath = "."
 venv = ".venv"
 pythonVersion = "3.11"
-typeCheckingMode = "off"
+typeCheckingMode = "basic"
 reportMissingTypeStubs = "none"

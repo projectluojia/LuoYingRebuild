@@ -493,17 +493,19 @@ class AgentService:
     async def reply(self,message:UniMessage)->Reply:
         context=message.context
         extra=context_log_extra(context)
+        if context is None:
+            return Reply(text="", silent=True)
         start_at=time.monotonic()
         deadline=start_at+self.total_timeout_sec if self.total_timeout_sec>0 else None
 
 
-        thread_id=message.context.thread_id
+        thread_id=context.thread_id
         raw_user_text=message.to_llm_text()
         user_text=self._render_user_message_for_agent(message)
-        self.memory.ensure_thread(message.context, title_hint=user_text)
+        self.memory.ensure_thread(context, title_hint=user_text)
         pltf=message.platform
-        cntp=message.context.target.channel_type
-        user_id=str(message.context.user.user_id)
+        cntp=context.target.channel_type
+        user_id=str(context.user.user_id)
         system_prompt=self._select_system_prompt(pltf,cntp,user_id)
         user_memory_text=await self.skills.services.user_memory_service.build_prompt_block(
             user_id,
@@ -605,7 +607,7 @@ class AgentService:
                     skill,
                     SkillRequest(
                         message=message,
-                        context=message.context,
+                        context=context,
                         payload=payload,
                     ),
                     deadline=deadline,
@@ -647,7 +649,7 @@ class AgentService:
         
         self.memory.append_user(message)
         reply = Reply(text=answer, metadata={"split": split})
-        self.memory.append_assistant(message.context, reply)
+        self.memory.append_assistant(context, reply)
         await self.skills.services.user_memory_service.record_turn(
             user_id=user_id,
             user_text=raw_user_text,
@@ -660,16 +662,18 @@ class AgentService:
     async def reply_stream(self, message: UniMessage) -> AsyncIterator[str]:
         context = message.context
         extra = context_log_extra(context)
+        if context is None:
+            return
         start_at = time.monotonic()
         deadline = start_at + self.total_timeout_sec if self.total_timeout_sec > 0 else None
 
-        thread_id = message.context.thread_id
+        thread_id = context.thread_id
         raw_user_text = message.to_llm_text()
         user_text = self._render_user_message_for_agent(message)
-        self.memory.ensure_thread(message.context, title_hint=user_text)
+        self.memory.ensure_thread(context, title_hint=user_text)
         pltf = message.platform
-        cntp = message.context.target.channel_type
-        user_id = str(message.context.user.user_id)
+        cntp = context.target.channel_type
+        user_id = str(context.user.user_id)
         system_prompt = self._select_system_prompt(pltf, cntp, user_id)
         user_memory_text = await self.skills.services.user_memory_service.build_prompt_block(
             user_id,
@@ -728,7 +732,7 @@ class AgentService:
 
             if action["type"] == "final":
                 invalid_action_count = 0
-                answer = action["answer"].strip()
+                answer = str(action.get("answer") or "").strip()
                 yield answer
                 break
 
@@ -787,7 +791,7 @@ class AgentService:
                     skill,
                     SkillRequest(
                         message=message,
-                        context=message.context,
+                        context=context,
                         payload=payload,
                     ),
                     deadline=deadline,
@@ -833,7 +837,7 @@ class AgentService:
         answer = answer_with_append_text
 
         self.memory.append_user(message)
-        self.memory.append_assistant(message.context, Reply(text=answer))
+        self.memory.append_assistant(context, Reply(text=answer))
         await self.skills.services.user_memory_service.record_turn(
             user_id=user_id,
             user_text=raw_user_text,

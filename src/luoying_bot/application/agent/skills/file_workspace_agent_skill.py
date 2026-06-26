@@ -9,6 +9,7 @@ from langchain.tools import tool
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import InMemorySaver
 from langchain_core.runnables import RunnableConfig
+from pydantic import SecretStr
 
 from luoying_bot.application.agent.skill_base import BaseSkill,SkillRequest,SkillResult
 from luoying_bot.config import settings
@@ -204,7 +205,7 @@ class FileWorkspaceAgentSkill(BaseSkill):
 
         model = ChatOpenAI(
             model=settings.coding_model,
-            api_key=settings.coding_api_key,
+            api_key=SecretStr(settings.coding_api_key) if settings.coding_api_key else None,
             base_url=settings.coding_base_url,
             temperature=0.2,
             extra_body={"chat_template_kwargs": {"enable_thinking": False}},

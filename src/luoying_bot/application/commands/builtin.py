@@ -237,7 +237,7 @@ class EmojiCommand(BaseCommand):
         return args
     async def execute(self, context, args):
         try:
-            await self.services.transport.send_reaction(context, emoji_id=args['--code'])
+            await self.services.transport.send_reaction(context, emoji_id=int(args['--code']))
         except Exception:
             pass
 

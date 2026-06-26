@@ -127,6 +127,8 @@ def _embedding_test(embedding_url: str, timeout: float) -> dict[str, Any]:
     )
     data = result.get("json")
     try:
+        if not isinstance(data, dict):
+            raise ValueError("embedding response is not a JSON object")
         embedding = data["data"][0]["embedding"]
         result["embedding_dim"] = len(embedding)
         result["sample"] = embedding[:3]

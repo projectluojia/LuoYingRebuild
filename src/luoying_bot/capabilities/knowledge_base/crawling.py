@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urljoin, urlparse
 
 from luoying_bot.capabilities.knowledge_base.artifacts import MarkdownArtifactStore, stable_document_id
@@ -64,7 +64,7 @@ class SiteCrawlConfig:
 
     @classmethod
     def from_site_record(cls, record: dict[str, Any]) -> "SiteCrawlConfig":
-        crawl_config = record.get("crawl_config") if isinstance(record.get("crawl_config"), dict) else {}
+        crawl_config = cast(dict[str, Any], record.get("crawl_config")) if isinstance(record.get("crawl_config"), dict) else {}
         return cls.from_dict(
             {
                 **crawl_config,

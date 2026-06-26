@@ -36,6 +36,7 @@ class BaseCommand(ABC):
     def _parse_args(self, args: list[str] | None) -> dict[str, str]:
         if not self.args_required:
             return {}
+        args = args or []
         if len(args) % 2 != 0: raise ValueError(f'参数数量应与值数量相等，但收到 {len(args)} 个内容块')
         alias_map = self._build_alias_map(); normalized: dict[str, str] = {}
         for raw_key, value in zip(args[::2], args[1::2]):

@@ -34,7 +34,7 @@ async def main() -> None:
                 "title": item.parsed.title if item.parsed else "",
                 "published_at": item.parsed.published_at if item.parsed else None,
                 "content_hash": item.parsed.content_hash if item.parsed else "",
-                "text_preview": item.parsed.text[:240] if item.parsed else "",
+                "text_preview": item.parsed.markdown[:240] if item.parsed else "",
                 "link_count": len(item.parsed.links) if item.parsed else 0,
             }
             for item in result.results
@@ -48,4 +48,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-

@@ -190,7 +190,7 @@ def _workspace_download_url(user_id: str, file_path: str) -> str:
 def _datetime_text(value: Any) -> str | None:
     isoformat = getattr(value, "isoformat", None)
     if callable(isoformat):
-        return isoformat()
+        return str(isoformat())
     return str(value) if value else None
 
 
@@ -613,7 +613,8 @@ class WebApiFactory:
                     task.cancel()
                     yield _sse("error", {"error": f"{type(exc).__name__}: {exc}"})
                 finally:
-                    transport.unregister_request(ctx.request_uid)
+                    if ctx.request_uid is not None:
+                        transport.unregister_request(ctx.request_uid)
                     with contextlib.suppress(BaseException):
                         if not task.done():
                             task.cancel()

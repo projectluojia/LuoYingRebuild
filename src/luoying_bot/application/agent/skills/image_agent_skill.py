@@ -10,6 +10,7 @@ from urllib.parse import unquote, urlparse
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
+from pydantic import SecretStr
 
 from luoying_bot.application.agent.skill_base import BaseSkill, SkillRequest, SkillResult
 from luoying_bot.config import settings
@@ -373,7 +374,7 @@ class ImageAgentSkill(BaseSkill):
         try:
             model = ChatOpenAI(
                 model=getattr(settings, "image_model", "") or settings.openai_model,
-                api_key=getattr(settings, "image_api_key", "") or settings.openai_api_key,
+                api_key=SecretStr(getattr(settings, "image_api_key", "") or settings.openai_api_key),
                 base_url=getattr(settings, "image_base_url", "") or settings.openai_base_url,
                 temperature=0.2,
                 extra_body={"chat_template_kwargs": {"enable_thinking": False}},
@@ -398,7 +399,7 @@ class ImageAgentSkill(BaseSkill):
         try:
             model = ChatOpenAI(
                 model=getattr(settings, "image_model", "") or settings.openai_model,
-                api_key=getattr(settings, "image_api_key", "") or settings.openai_api_key,
+                api_key=SecretStr(getattr(settings, "image_api_key", "") or settings.openai_api_key),
                 base_url=getattr(settings, "image_base_url", "") or settings.openai_base_url,
                 temperature=0.2,
                 extra_body={"chat_template_kwargs": {"enable_thinking": False}},

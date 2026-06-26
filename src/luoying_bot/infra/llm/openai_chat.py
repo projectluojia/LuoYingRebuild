@@ -1,8 +1,9 @@
 from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
-from typing import Dict, List
+from typing import Dict, List, cast
 from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletionMessageParam
 from luoying_bot.ports.llm import ChatModel
 
 #模型的调用实现
@@ -48,7 +49,7 @@ class OpenAICompatibleChatModel(ChatModel):
         
         response = await self.client.chat.completions.create(
             model=self.model,
-            messages=messages,
+            messages=cast(list[ChatCompletionMessageParam], messages),
             temperature=self.default_temperature if temperature is None else temperature,
             extra_body=self._extra_body(),
         )
@@ -67,7 +68,7 @@ class OpenAICompatibleChatModel(ChatModel):
 
         stream = await self.client.chat.completions.create(
             model=self.model,
-            messages=messages,
+            messages=cast(list[ChatCompletionMessageParam], messages),
             temperature=self.default_temperature if temperature is None else temperature,
             stream=True,
             extra_body=self._extra_body(),

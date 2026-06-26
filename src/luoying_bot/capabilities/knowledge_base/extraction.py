@@ -128,7 +128,7 @@ class Crawl4AIExtractor:
             metadata=metadata,
         )
 
-    def _run_config_for(self, url: str) -> object:
+    def _run_config_for(self, url: str) -> Any:
         parsed = urlparse(normalize_url(url))
         path = parsed.path.strip("/")
         if not path or path == "index.htm":

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
+from typing import Any, cast
 
 from memobase import AsyncMemoBaseClient, ChatBlob
 
@@ -37,7 +38,7 @@ class UserMemoryService:
     def _memobase_user_id(self, user_id: str) -> str:
         return str(uuid.uuid5(uuid.NAMESPACE_URL, f"luoying:user:{user_id or 'unknown'}"))
 
-    async def _get_user(self, user_id: str):
+    async def _get_user(self, user_id: str) -> Any:
         if not self.client:
             return None
         memobase_user_id = self._memobase_user_id(user_id)
@@ -50,12 +51,18 @@ class UserMemoryService:
             )
             return await self.client.get_user(memobase_user_id, no_get=True)
 
+    async def _require_user(self, user_id: str) -> Any:
+        user = await self._get_user(user_id)
+        if user is None:
+            raise RuntimeError("Memobase client is not configured")
+        return user
+
     async def get_memory(self,user_id:str)->UserMemoryResult:
         if not self.enabled:
             return UserMemoryResult(False, "Memobase 未配置：请设置 MEMOBASE_API_KEY", {})
         memobase_user_id = self._memobase_user_id(user_id)
         try:
-            user = await self._get_user(user_id)
+            user = await self._require_user(user_id)
             content = await user.context(max_token_size=self.max_context_tokens)
         except Exception as exc:
             logger.exception(
@@ -77,7 +84,7 @@ class UserMemoryService:
         if not content:
             return UserMemoryResult(False,"记忆内容不能为空",{})
         try:
-            user = await self._get_user(user_id)
+            user = await self._require_user(user_id)
             profile_id = await user.add_profile(
                 content=content,
                 topic="explicit_memory",
@@ -97,15 +104,18 @@ class UserMemoryService:
             return UserMemoryResult(False, "Memobase 未配置：请设置 MEMOBASE_API_KEY", {})
         memobase_user_id = self._memobase_user_id(user_id)
         try:
+            client = self.client
+            if client is None:
+                raise RuntimeError("Memobase client is not configured")
             try:
-                await self.client.delete_user(memobase_user_id)
+                await client.delete_user(memobase_user_id)
             except Exception:
                 logger.info(
                     "Memobase 用户不存在或删除失败，将尝试重新创建：user_id=%s memobase_user_id=%s",
                     user_id,
                     memobase_user_id,
                 )
-            await self.client.add_user(
+            await client.add_user(
                 data={"source": "luoying", "app_user_id": str(user_id)},
                 id=memobase_user_id,
             )
@@ -123,16 +133,19 @@ class UserMemoryService:
             return "（暂无该用户长期记忆）"
         memobase_user_id = self._memobase_user_id(user_id)
         try:
-            user = await self._get_user(user_id)
+            user = await self._require_user(user_id)
             chats = (
                 [{"role": "user", "content": latest_user_text}]
                 if latest_user_text.strip()
                 else None
             )
-            content = await user.context(
-                max_token_size=self.max_context_tokens,
-                chats=chats,
-            )
+            if chats is None:
+                content = await user.context(max_token_size=self.max_context_tokens)
+            else:
+                content = await user.context(
+                    max_token_size=self.max_context_tokens,
+                    chats=cast(Any, chats),
+                )
         except Exception:
             logger.exception(
                 "构建 Memobase 长期记忆上下文失败：user_id=%s memobase_user_id=%s",
@@ -157,13 +170,13 @@ class UserMemoryService:
             return
         memobase_user_id = self._memobase_user_id(user_id)
         try:
-            user = await self._get_user(user_id)
+            user = await self._require_user(user_id)
             await user.insert(
                 ChatBlob(
-                    messages=[
+                    messages=cast(Any, [
                         {"role": "user", "content": user_text},
                         {"role": "assistant", "content": assistant_text},
-                    ]
+                    ])
                 ),
                 sync=self.write_sync,
             )

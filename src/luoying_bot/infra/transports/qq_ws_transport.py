@@ -356,6 +356,8 @@ class QQWsTransport(ChatTransport):
     
     #给你贴表情
     async def send_reaction(self, context: ChatContext, emoji_id: int) -> None:
+        if context.message_id is None:
+            return
         await self._send_raw(
             {
                 'action': 'set_msg_emoji_like',

@@ -1,11 +1,16 @@
 from __future__ import annotations
 
-from luoying_bot.capabilities.knowledge_base.analytics import KnowledgeAnalyticsEngine
-from luoying_bot.capabilities.knowledge_base.entity_resolver import EntityResolver
+from typing import Protocol
+
+from luoying_bot.capabilities.knowledge_base.entity_resolver import EntityResolution, EntityResolver
 from luoying_bot.capabilities.knowledge_base.entities import GLOBAL_ENTITY_SPACE_ID, EntityMatch, normalize_entity_text
 from luoying_bot.capabilities.knowledge_base.models import KnowledgeQuery, RetrievalResult, StructuredRecord
 from luoying_bot.capabilities.knowledge_base.ports import RagBackend
 from luoying_bot.capabilities.knowledge_base.text_utils import optional_text
+
+
+class AnalyticsEngine(Protocol):
+    async def query(self, query: KnowledgeQuery, entities: EntityResolution | None = None) -> list[StructuredRecord]: ...
 
 
 class KBQueryAgent:
@@ -13,7 +18,7 @@ class KBQueryAgent:
         self,
         *,
         rag_backend: RagBackend,
-        analytics_engine: KnowledgeAnalyticsEngine,
+        analytics_engine: AnalyticsEngine,
         entity_resolver: EntityResolver,
     ):
         self.rag_backend = rag_backend

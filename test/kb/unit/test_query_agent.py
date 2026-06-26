@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from luoying_bot.capabilities.knowledge_base.entity_resolver import EntityResolver
-from luoying_bot.capabilities.knowledge_base.models import KnowledgeQuery
+from luoying_bot.capabilities.knowledge_base.entity_resolver import EntityResolution, EntityResolver
+from luoying_bot.capabilities.knowledge_base.models import KnowledgeQuery, StructuredRecord
 from luoying_bot.capabilities.knowledge_base.query_agent import (
     KBQueryAgent,
     rag_query_routes,
@@ -14,7 +14,7 @@ from _fakes import FakeEntityBackend, FakeRagBackend
 
 
 class FakeAnalyticsEngine:
-    async def query(self, query, entities):
+    async def query(self, query: KnowledgeQuery, entities: EntityResolution | None = None) -> list[StructuredRecord]:
         return []
 
 

@@ -8,12 +8,12 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from luoying_bot.capabilities.knowledge_base import KnowledgeBaseConfig, KnowledgeBaseService
 from luoying_bot.capabilities.knowledge_base.analytics import KnowledgeAnalyticsEngine
 from luoying_bot.capabilities.knowledge_base.answering import KnowledgeAnswerGenerator
-from luoying_bot.capabilities.knowledge_base.embeddings import OpenAICompatibleEmbeddingProvider
+from luoying_bot.capabilities.knowledge_base.embeddings import EmbeddingProvider, OpenAICompatibleEmbeddingProvider
 from luoying_bot.capabilities.knowledge_base.entity_resolver import EntityResolver
 from luoying_bot.capabilities.knowledge_base.models import RetrievalResult
 from luoying_bot.capabilities.knowledge_base.policy import KnowledgeBasePolicy
@@ -30,18 +30,12 @@ DEFAULT_REPORT_DIR = Path("test/kb/reports")
 class CountingEmbeddingProvider:
     """Wrap an embedding provider to count calls and texts (efficiency signal)."""
 
-    def __init__(self, inner):
+    def __init__(self, inner: EmbeddingProvider):
         self.inner = inner
+        self.provider_id = inner.provider_id
+        self.model = inner.model
         self.calls = 0
         self.texts = 0
-
-    @property
-    def provider_id(self) -> str:
-        return self.inner.provider_id
-
-    @property
-    def model(self) -> str:
-        return self.inner.model
 
     async def embed_texts(self, texts: list[str]) -> list[list[float]]:
         self.calls += 1
@@ -256,7 +250,7 @@ async def run_eval(args: argparse.Namespace) -> dict[str, Any]:
 async def run_perf(args: argparse.Namespace) -> dict[str, Any]:
     cases = load_cases(Path(args.cases))
     service = await build_service(with_answer=False)
-    embedding_provider = service.structured_backend.embedding_provider
+    embedding_provider = cast(CountingEmbeddingProvider, cast(PostgresKnowledgeStore, service.structured_backend).embedding_provider)
     semaphore = asyncio.Semaphore(args.concurrency)
     latencies: list[float] = []
     latencies_by_type: dict[str, list[float]] = {}

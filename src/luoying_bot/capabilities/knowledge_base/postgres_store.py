@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import math
 import re
+import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse
 
 import asyncpg
@@ -508,23 +509,24 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
         ranked_lists: list[tuple[str, float, list[dict[str, Any]]]] = []
         pool = await self._get_pool()
         async with pool.acquire() as conn:
+            typed_conn = cast(asyncpg.Connection, conn)
             for route_index, (route_query, query_vector) in enumerate(zip(route_queries, query_vectors, strict=True)):
                 query_terms = extract_keyword_terms(route_query)
                 title = await self._title_candidates(
-                    conn,
+                    typed_conn,
                     query=route_query,
                     query_terms=query_terms,
                     space_ids=search_space_ids,
                     limit=candidate_limit,
                 )
                 lexical = await self._lexical_candidates(
-                    conn,
+                    typed_conn,
                     query=route_query,
                     space_ids=search_space_ids,
                     limit=candidate_limit,
                 )
                 vector = await self._vector_candidates(
-                    conn,
+                    typed_conn,
                     query_vector=query_vector,
                     space_ids=search_space_ids,
                     limit=candidate_limit,
@@ -1835,24 +1837,31 @@ def title_overlap_score(
 
 def normalize_filter(filters: dict[str, Any]) -> dict[str, Any]:
     normalized: dict[str, Any] = {}
-    clauses = filters.get("_and") if isinstance(filters.get("_and"), list) else []
+    raw_clauses = filters.get("_and")
+    clauses: list[Any] = raw_clauses if isinstance(raw_clauses, list) else []
     for clause in clauses:
         if not isinstance(clause, dict):
             continue
         for key, value in clause.items():
             if isinstance(value, dict) and "_eq" in value:
                 normalized[key] = value["_eq"]
-            elif isinstance(value, dict) and "_in" in value:
+            elif isinstance(value, dict) and "_in" in value and isinstance(value["_in"], list):
                 normalized[f"{key}_in"] = [str(item) for item in value["_in"]]
     for key, value in filters.items():
         if isinstance(value, dict):
             if "_eq" in value:
                 normalized[key] = value["_eq"]
-            elif "_in" in value:
+            elif "_in" in value and isinstance(value["_in"], list):
                 normalized[f"{key}_in"] = [str(item) for item in value["_in"]]
         elif key != "_and":
             normalized[key] = value
-    if "id_in" not in normalized and "id" in filters and isinstance(filters["id"], dict) and "_in" in filters["id"]:
+    if (
+        "id_in" not in normalized
+        and "id" in filters
+        and isinstance(filters["id"], dict)
+        and "_in" in filters["id"]
+        and isinstance(filters["id"]["_in"], list)
+    ):
         normalized["id_in"] = [str(item) for item in filters["id"]["_in"]]
     return normalized
 
@@ -1875,7 +1884,7 @@ def project_fields(row: dict[str, Any], fields: list[str] | None) -> dict[str, A
 def record_to_dict(row: asyncpg.Record) -> dict[str, Any]:
     data = dict(row)
     for key, value in list(data.items()):
-        if isinstance(value, asyncpg.pgproto.pgproto.UUID):
+        if isinstance(value, uuid.UUID):
             data[key] = str(value)
         elif isinstance(value, (datetime, date)):
             data[key] = value.isoformat()

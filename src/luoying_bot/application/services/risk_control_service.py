@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from typing import overload
 
 
 from luoying_bot.constants import risk_control
@@ -16,18 +17,22 @@ class RiskControlService:
 
     def _match_sen(self,text:str)->str:
         for sen in self.sensitive:
-            text=text.replace(sen.get('content'),"")
+            content = sen.get('content')
+            if isinstance(content, str):
+                text=text.replace(content,"")
         return text
     
     def _match_input_danger(self,text:str)->str:
         for dan in self.danger:
-            if dan.get('content') in text:
+            content = dan.get('content')
+            if isinstance(content, str) and content in text:
                 return "包含危险词汇，已被风控"
         return text
             
     def _match_output_danger(self,text:str)->str:
         for dan in self.danger:
-            if dan.get('content') in text:
+            content = dan.get('content')
+            if isinstance(content, str) and content in text:
                 return "你好，这个问题我暂时无法回答，让我们换个话题再聊聊吧。"
         return text
             
@@ -95,13 +100,24 @@ class RiskControlService:
 
         return new_msg
 
+    @overload
+    def do_input_risk_control_any(self, content: str) -> str: ...
+
+    @overload
+    def do_input_risk_control_any(self, content: UniMessage) -> UniMessage: ...
+
     def do_input_risk_control_any(self, content: str | UniMessage)->str | UniMessage:
         if isinstance(content,UniMessage):
             return self.do_input_risk_control_message(content)
         return self.do_input_risk_control(content)
 
+    @overload
+    def do_output_risk_control_any(self, content: str) -> str: ...
+
+    @overload
+    def do_output_risk_control_any(self, content: UniMessage) -> UniMessage: ...
+
     def do_output_risk_control_any(self, content: str | UniMessage)->str | UniMessage:
         if isinstance(content,UniMessage):
             return self.do_output_risk_control_message(content)
         return self.do_output_risk_control(content)
-
