@@ -16,6 +16,7 @@ env/
 data/
 var/
 deploy/kb/
+knowledge/sources/
 
 *.zip
 
