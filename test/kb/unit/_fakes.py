@@ -37,11 +37,19 @@ class FakeRagBackend(RagBackend):
         self._chunks = list(chunks or [])
         self.calls: list[dict[str, Any]] = []
 
-    async def search(self, *, queries: list[str], space_ids: list[str], top_k: int) -> list[RetrievedChunk]:
+    async def search(
+        self,
+        *,
+        queries: list[str],
+        space_ids: list[str],
+        entity_matches: tuple[Any, ...],
+        top_k: int,
+    ) -> list[RetrievedChunk]:
         self.calls.append(
             {
                 "queries": list(queries),
                 "space_ids": list(space_ids),
+                "entity_matches": tuple(entity_matches),
                 "top_k": top_k,
             }
         )

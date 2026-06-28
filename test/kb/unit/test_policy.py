@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pytest
+
+from luoying_bot.capabilities.knowledge_base.errors import BackendUnavailable
 from luoying_bot.capabilities.knowledge_base.models import Citation, RetrievedChunk, RetrievalResult, StructuredRecord
 from luoying_bot.capabilities.knowledge_base.policy import NO_SOURCE_TEXT, KnowledgeBasePolicy
 
@@ -13,7 +16,11 @@ def _retrieval(*, chunks=None, records=None, follow_up=None):
 
 
 def _chunk(title="t", source="s"):
-    return RetrievedChunk(text="x", citation=Citation(title=title, source=source))
+    return RetrievedChunk(
+        text="x",
+        citation=Citation(title=title, source=source),
+        metadata={"rerank_score": 100.0, "vector_score": 1.0},
+    )
 
 
 class TestFallbackAnswers:
@@ -56,7 +63,7 @@ class TestValidateRetrieval:
 
     def test_evidence_without_citations_passes_when_not_required(self):
         policy = KnowledgeBasePolicy(require_citation=False)
-        result = _retrieval(chunks=[RetrievedChunk(text="x", citation=None)])
+        result = _retrieval(chunks=[RetrievedChunk(text="x", citation=None, metadata={"rerank_score": 100.0})])
         assert policy.validate_retrieval(result) is None
 
     def test_structured_record_without_citation_triggers_fallback(self):
@@ -88,12 +95,12 @@ class TestValidateAnswer:
         assert policy.validate_answer(answer) is answer
 
 
-def _vec_chunk(vector_score: float, score: float = 1.0) -> RetrievedChunk:
+def _vec_chunk(vector_score: float, score: float = 1.0, rerank_score: float = 100.0) -> RetrievedChunk:
     return RetrievedChunk(
         text="x",
         score=score,
         citation=Citation(title="t", source="s"),
-        metadata={"vector_score": vector_score},
+        metadata={"vector_score": vector_score, "rerank_score": rerank_score},
     )
 
 
@@ -133,7 +140,28 @@ class TestRelevanceThreshold:
         assert answer is not None
         assert answer.fallback_reason == "low_relevance"
 
-    def test_missing_vector_score_skips_threshold(self):
+    def test_low_rerank_score_falls_back_even_when_vector_is_high(self):
+        policy = KnowledgeBasePolicy(min_relevance=0.5, min_rerank_score=30)
+        result = _retrieval(chunks=[_vec_chunk(0.9, rerank_score=10)])
+        answer = policy.validate_retrieval(result)
+        assert answer is not None
+        assert answer.fallback_reason == "low_relevance"
+
+    def test_missing_rerank_score_is_backend_error(self):
         policy = KnowledgeBasePolicy(min_relevance=0.5)
         result = _retrieval(chunks=[RetrievedChunk(text="x", citation=Citation(title="t", source="s"))])
+        with pytest.raises(BackendUnavailable, match="missing rerank_score"):
+            policy.validate_retrieval(result)
+
+    def test_missing_vector_score_skips_vector_threshold(self):
+        policy = KnowledgeBasePolicy(min_relevance=0.5)
+        result = _retrieval(
+            chunks=[
+                RetrievedChunk(
+                    text="x",
+                    citation=Citation(title="t", source="s"),
+                    metadata={"rerank_score": 100.0},
+                )
+            ]
+        )
         assert policy.validate_retrieval(result) is None

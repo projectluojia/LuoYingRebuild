@@ -18,7 +18,8 @@ from luoying_bot.capabilities.knowledge_base.entity_resolver import EntityResolv
 from luoying_bot.capabilities.knowledge_base.models import RetrievalResult
 from luoying_bot.capabilities.knowledge_base.policy import KnowledgeBasePolicy
 from luoying_bot.capabilities.knowledge_base.postgres_store import PostgresKnowledgeStore, compact_text
-from luoying_bot.capabilities.knowledge_base.query_agent import KBQueryAgent
+from luoying_bot.capabilities.knowledge_base.query_agent import KBQueryAgent, KBRetrievalPlanner
+from luoying_bot.capabilities.knowledge_base.rerankers import LlmReranker
 from luoying_bot.capabilities.knowledge_base.semantic_layer import KnowledgeSemanticLayer
 from luoying_bot.config import settings
 from luoying_bot.infra.llm.openai_chat import OpenAICompatibleChatModel
@@ -34,13 +35,20 @@ class CountingEmbeddingProvider:
         self.inner = inner
         self.provider_id = inner.provider_id
         self.model = inner.model
-        self.calls = 0
-        self.texts = 0
+        self.query_calls = 0
+        self.query_texts = 0
+        self.document_calls = 0
+        self.document_texts = 0
 
-    async def embed_texts(self, texts: list[str]) -> list[list[float]]:
-        self.calls += 1
-        self.texts += len(texts)
-        return await self.inner.embed_texts(texts)
+    async def embed_queries(self, texts: list[str]) -> list[list[float]]:
+        self.query_calls += 1
+        self.query_texts += len(texts)
+        return await self.inner.embed_queries(texts)
+
+    async def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        self.document_calls += 1
+        self.document_texts += len(texts)
+        return await self.inner.embed_documents(texts)
 
 
 @dataclass(slots=True)
@@ -92,21 +100,33 @@ async def build_service(*, with_answer: bool) -> KnowledgeBaseService:
                 base_url=settings.kb_embedding_base_url,
                 api_key=settings.kb_embedding_api_key,
                 model=settings.kb_embedding_model,
+                query_instruction=settings.kb_embedding_query_instruction,
                 batch_size=settings.kb_embedding_batch_size,
             )
         ),
+        reranker=LlmReranker(
+            query_model,
+            candidate_limit=settings.kb_rerank_candidate_limit,
+            max_text_chars=settings.kb_rerank_max_text_chars,
+        ),
         embedding_dimensions=settings.kb_embedding_dimensions,
+        min_rerank_score=settings.kb_min_rerank_score,
     )
     await store.ensure_schema()
+    semantic_layer = KnowledgeSemanticLayer()
     query_agent = KBQueryAgent(
         rag_backend=store,
         analytics_engine=KnowledgeAnalyticsEngine(
             backend=store,
             value_backend=store,
             model=query_model,
-            semantic_layer=KnowledgeSemanticLayer(),
+            semantic_layer=semantic_layer,
         ),
         entity_resolver=EntityResolver(store),
+        retrieval_planner=KBRetrievalPlanner(
+            query_model,
+            semantic_layer=semantic_layer,
+        ),
     )
     return KnowledgeBaseService(
         structured_backend=store,
@@ -116,10 +136,12 @@ async def build_service(*, with_answer: bool) -> KnowledgeBaseService:
             default_space_id=settings.kb_default_space_id,
             require_citation=settings.kb_require_citation,
             min_relevance=settings.kb_min_relevance,
+            min_rerank_score=settings.kb_min_rerank_score,
         ),
         policy=KnowledgeBasePolicy(
             require_citation=settings.kb_require_citation,
             min_relevance=settings.kb_min_relevance,
+            min_rerank_score=settings.kb_min_rerank_score,
         ),
     )
 
@@ -134,7 +156,6 @@ async def run_case(
     if with_answer:
         answer = await service.answer(
             question=case.question,
-            space_id=case.space_id,
             platform="harness",
             conversation_id="kb-harness",
             user_id="kb-harness",
@@ -157,7 +178,6 @@ async def run_case(
     else:
         retrieval = await service.search(
             query_text=case.question,
-            space_id=case.space_id,
             top_k=case.top_k,
         )
         elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
@@ -182,9 +202,12 @@ async def run_case(
             "title": citation.title,
             "source": citation.source,
             "score": getattr(citation, "metadata", {}).get("score"),
+            "rrf_score": getattr(citation, "metadata", {}).get("rrf_score"),
+            "rerank_score": getattr(citation, "metadata", {}).get("rerank_score"),
+            "rerank_rationale": getattr(citation, "metadata", {}).get("rerank_rationale"),
             "title_score": getattr(citation, "metadata", {}).get("title_score"),
-            "phrase_score": getattr(citation, "metadata", {}).get("phrase_score"),
-            "lexical_score": getattr(citation, "metadata", {}).get("lexical_score"),
+            "entity_score": getattr(citation, "metadata", {}).get("entity_score"),
+            "bm25_score": getattr(citation, "metadata", {}).get("bm25_score"),
             "vector_score": getattr(citation, "metadata", {}).get("vector_score"),
             "embedding_model": getattr(citation, "metadata", {}).get("embedding_model"),
         }
@@ -276,12 +299,27 @@ async def run_perf(args: argparse.Namespace) -> dict[str, Any]:
                     }
                 )
 
-    embedding_before = (embedding_provider.calls, embedding_provider.texts)
+    embedding_before = (
+        embedding_provider.query_calls,
+        embedding_provider.query_texts,
+        embedding_provider.document_calls,
+        embedding_provider.document_texts,
+    )
     started = time.perf_counter()
     await asyncio.gather(*(worker(index) for index in range(args.iterations)))
     elapsed_sec = time.perf_counter() - started
-    embedding_calls = embedding_provider.calls - embedding_before[0]
-    embedding_texts = embedding_provider.texts - embedding_before[1]
+    embedding_calls = (
+        embedding_provider.query_calls
+        + embedding_provider.document_calls
+        - embedding_before[0]
+        - embedding_before[2]
+    )
+    embedding_texts = (
+        embedding_provider.query_texts
+        + embedding_provider.document_texts
+        - embedding_before[1]
+        - embedding_before[3]
+    )
     latency_by_type = [
         {"type": type_name, **summarize_latencies(bucket)}
         for type_name, bucket in sorted(latencies_by_type.items())
@@ -422,7 +460,6 @@ async def run_quality_case(service: KnowledgeBaseService, case: QueryCase) -> di
     started = time.perf_counter()
     retrieval = await service.search(
         query_text=case.question,
-        space_id=case.space_id,
         top_k=case.top_k,
     )
     latency_ms = round((time.perf_counter() - started) * 1000, 2)
@@ -560,10 +597,15 @@ def safe_settings_snapshot() -> dict[str, Any]:
         "kb_database_url": settings.kb_database_url,
         "kb_default_space_id": settings.kb_default_space_id,
         "kb_require_citation": settings.kb_require_citation,
+        "kb_min_relevance": settings.kb_min_relevance,
+        "kb_min_rerank_score": settings.kb_min_rerank_score,
         "kb_embedding_base_url": settings.kb_embedding_base_url,
         "kb_embedding_model": settings.kb_embedding_model,
+        "kb_embedding_query_instruction": settings.kb_embedding_query_instruction,
         "kb_embedding_batch_size": settings.kb_embedding_batch_size,
         "kb_embedding_dimensions": settings.kb_embedding_dimensions,
+        "kb_rerank_candidate_limit": settings.kb_rerank_candidate_limit,
+        "kb_rerank_max_text_chars": settings.kb_rerank_max_text_chars,
     }
 
 

@@ -59,25 +59,6 @@ class TestValueHintFields:
         assert ("majors", "name") in pairs
 
 
-class TestIsAnalyticsQuestion:
-    @pytest.mark.parametrize(
-        "question",
-        [
-            "武汉大学在湖北的分数线是多少？",
-            "计算机专业招生计划多少人？",
-            "强基计划录取最低分",
-            "有哪些学院？",
-            "试验班有哪些？",
-        ],
-    )
-    def test_positive_cases(self, layer, question):
-        assert layer.is_analytics_question(question) is True
-
-    @pytest.mark.parametrize("question", ["你好", "谢谢老师", "今天几号"])
-    def test_negative_cases(self, layer, question):
-        assert layer.is_analytics_question(question) is False
-
-
 class TestPromptContext:
     def test_prompt_context_lists_every_table(self, layer):
         context = layer.prompt_context()
