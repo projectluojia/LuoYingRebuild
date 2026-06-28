@@ -13,7 +13,9 @@ from luoying_bot.capabilities.knowledge_base.crawling import (
 )
 from luoying_bot.capabilities.knowledge_base.embeddings import OpenAICompatibleEmbeddingProvider
 from luoying_bot.capabilities.knowledge_base.postgres_store import PostgresKnowledgeStore
+from luoying_bot.capabilities.knowledge_base.rerankers import LlmReranker
 from luoying_bot.config import settings
+from luoying_bot.infra.llm.openai_chat import OpenAICompatibleChatModel
 
 
 async def main() -> None:
@@ -23,15 +25,29 @@ async def main() -> None:
 
     config = SiteCrawlConfig.from_dict(json.loads(Path(args.config).read_text(encoding="utf-8")))
     result = await KnowledgeSiteCrawler().crawl(config)
+    rerank_model = OpenAICompatibleChatModel(
+        settings.openai_base_url,
+        settings.openai_api_key,
+        settings.openai_model,
+        0.0,
+        settings.openai_enable_thinking,
+    )
     store = PostgresKnowledgeStore(
         settings.kb_database_url,
         embedding_provider=OpenAICompatibleEmbeddingProvider(
             base_url=settings.kb_embedding_base_url,
             api_key=settings.kb_embedding_api_key,
             model=settings.kb_embedding_model,
+            query_instruction=settings.kb_embedding_query_instruction,
             batch_size=settings.kb_embedding_batch_size,
         ),
+        reranker=LlmReranker(
+            rerank_model,
+            candidate_limit=settings.kb_rerank_candidate_limit,
+            max_text_chars=settings.kb_rerank_max_text_chars,
+        ),
         embedding_dimensions=settings.kb_embedding_dimensions,
+        min_rerank_score=settings.kb_min_rerank_score,
     )
     await store.ensure_schema()
     recorder = KnowledgeCrawlRecorder(

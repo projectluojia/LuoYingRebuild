@@ -3,7 +3,9 @@
   "name": "武汉大学人工智能学院官网",
   "base_url": "https://sai.whu.edu.cn/",
   "space_id": "sai",
-  "allowed_domains": ["sai.whu.edu.cn"],
+  "allowed_domains": [
+    "sai.whu.edu.cn"
+  ],
   "entry_urls": [
     "https://sai.whu.edu.cn/",
     "https://sai.whu.edu.cn/index.htm",
@@ -20,7 +22,8 @@
     "https://sai.whu.edu.cn/teacher/lyys.htm",
     "https://sai.whu.edu.cn/teacher/rwskzsjs.htm",
     "https://sai.whu.edu.cn/teacher/gccrc.htm",
-    "https://sai.whu.edu.cn/teacher/zzjs.htm",
+    "https://sai.whu.edu.cn/teacher/zzjs/jxx.htm",
+    "https://sai.whu.edu.cn/teacher/zzjs/yjs.htm",
     "https://sai.whu.edu.cn/teacher/spjs.htm",
     "https://sai.whu.edu.cn/teacher/jzjs.htm",
     "https://sai.whu.edu.cn/xwzx/tzgg.htm",

@@ -10,7 +10,7 @@
 - 事实型知识使用 Postgres 结构化表 + SQL 精确计算。
 - 实体型知识使用轻量 Entity Registry + 关系解析。
 - 实体和事实统一生成可搜索投影 `kb_search_items`，用于召回；最终答案仍回到事实表或原文档证据。
-- 所有运行时数据集中在 Postgres + pgvector 内。
+- 所有运行时数据集中在 PostgreSQL 18 + ParadeDB `pg_search` + pgvector 内。
 
 当前核心链路：
 
@@ -40,9 +40,9 @@ src/luoying_bot/capabilities/knowledge_base/
   embeddings.py         # OpenAI-compatible embedding provider
   entities.py           # entity id、search item id、文本归一化、metadata 解析
   entity_resolver.py    # 基于 kb_search_items + relations 的实体解析
-  postgres_store.py     # Postgres/pgvector 存储、检索、结构化写入
+  postgres_store.py     # PostgreSQL/pg_search/pgvector 存储、检索、结构化写入
   semantic_layer.py     # text-to-SQL 可用表、字段、语义规则
-  analytics.py          # 实体优先 SQL planner + fallback LLM SQL planner
+  analytics.py          # 语义层/实体驱动 SQL planner + LLM SQL planner
   query_agent.py        # KB 子 agent 查询编排
   answering.py          # 基于证据生成答案
   policy.py             # 引用/证据策略
@@ -129,7 +129,7 @@ Markdown artifact frontmatter 包含：
 正文入库时会切 chunk，写入 `kb_chunks`，同时生成：
 
 - dense vector: `embedding`
-- sparse lexical index: `search_vector`
+- sparse BM25 index: ParadeDB `pg_search` / `USING bm25`
 
 ### 3.2 招生结构化资料流
 
@@ -206,7 +206,7 @@ KnowledgeQuery
   -> EntityResolver.resolve        实体解析（kb_search_items + relations）
   -> KnowledgeAnalyticsEngine.query 结构化 SQL（三级规划，见 4.4）
   -> space_id 解析                  query.space_id -> 结构化结果里的 space_id -> default
-  -> RagBackend.search             文档混合检索（向量 + 词面 + 标题，见 4.6）
+  -> RagBackend.search             文档混合检索（实体关联 + BM25 + 向量 + 标题，见 4.6）
   -> RetrievalResult(structured_records, chunks)
 ```
 
@@ -323,11 +323,11 @@ limit 1;
 
 ```text
 query
-  -> embedding vector search
-  -> full-text search
+  -> query-instructed embedding vector search
+  -> ParadeDB BM25 search
   -> title candidates
-  -> phrase overlap scoring
-  -> document support scoring
+  -> RRF candidate fusion
+  -> required LLM reranker
   -> RetrievedChunk[]
 ```
 
@@ -389,15 +389,13 @@ index(space_id, status)
 | `embedding_provider` | text | embedding provider |
 | `embedding_model` | text | embedding model |
 | `embedding_dimensions` | integer | 向量维度 |
-| `search_vector` | tsvector | Postgres full-text 向量 |
-
 索引：
 
 ```sql
 primary key(chunk_id)
 index(document_id, chunk_index)
-gin(search_vector)
 hnsw(embedding vector_cosine_ops)
+bm25(chunk_id, space_id, document_id, title::pdb.ngram(2,4), text::pdb.ngram(2,4))
 ```
 
 ### 5.2 实体表
@@ -497,15 +495,13 @@ unique(space_id, entity_id, normalized_alias)
 | `embedding_dimensions` | integer | 向量维度 |
 | `review_status` | text | approved 等 |
 | `updated_at` | timestamptz | 更新时间 |
-| `search_vector` | tsvector | full-text search vector |
-
 索引：
 
 ```sql
 primary key(item_id)
 index(space_id, item_type, review_status)
-gin(search_vector)
 hnsw(embedding vector_cosine_ops)
+bm25(item_id, space_id, item_type, review_status, title::pdb.ngram(2,4), content_text::pdb.ngram(2,4))
 ```
 
 投影示例：
@@ -696,30 +692,35 @@ seed 是初始化/管理数据，不是查询补丁。它只放无法稳定从�
 
 当前 `search_kb_items`：
 
-1. 对 query 生成 embedding。
+1. 对 query 加 `KB_EMBEDDING_QUERY_INSTRUCTION` 后生成 embedding。
 2. 对 `kb_search_items.embedding` 做 HNSW cosine vector search。
-3. 如果 `build_tsquery(query)` 非空，同时走 `search_vector @@ to_tsquery(...)`。
-4. 合并 vector 和 lexical candidates。
+3. 使用 ParadeDB `pg_search` 的 `title ||| query OR content_text ||| query` 查询 BM25 index，并用 `pdb.score(item_id)` 打分。
+4. 合并 vector 和 BM25 candidates。
 5. 按 `score desc` 排序。
 
 ### 7.2 `kb_chunks` RAG retrieval
 
-当前文档 RAG 对 `kb_chunks` 做三路召回：
+当前文档 RAG 对 `kb_chunks` 做四路召回：
 
+- entity-linked candidates
 - title candidates
-- lexical candidates
+- BM25 candidates
 - vector candidates
 
-再计算：
+先使用 RRF 融合候选：
 
 ```text
-score =
-  2.8 * title_score
-  + 1.4 * phrase_score
-  + 1.0 * vector_score
-  + 0.7 * lexical_score
-  + document_support_score
+entity-linked candidates * 1.45
+title candidates * 1.6
+BM25 candidates * 1.25
+vector candidates * 1.0
 ```
+
+最终结果必须经过 LLM reranker，返回的 `score` 是 `rerank_score`，原始融合分数保存在
+`rrf_score` 里用于诊断。
+
+chunk-only 回答还必须通过 `KB_MIN_RERANK_SCORE` 门槛；reranker 判断“相关但不能回答”
+时，即使 `vector_score` 较高也会触发低相关拒答。
 
 ## 8. 测试和验证
 
@@ -847,12 +848,11 @@ docker compose restart luoying
 ### 10.2 建议的下一步
 
 1. 将 `kb_chunks` 同步写入 `kb_search_items`，形成真正统一召回层。
-2. 为 `kb_search_items` 增加 RRF 排序或 reranker 字段，避免 vector/lexical 分数尺度不一致。
-3. 将 entity seed 接入管理后台，支持人工审核 alias 和 relation。
-4. 增加 fact coverage 表，用于明确表达“不招生/无数据/未收录”的区别。
-5. 增加 SQL execution verifier：
+2. 将 entity seed 接入管理后台，支持人工审核 alias 和 relation。
+3. 增加 fact coverage 表，用于明确表达“不招生/无数据/未收录”的区别。
+4. 增加 SQL execution verifier：
    - 空结果时区分实体不存在、实体存在但年份无数据、实体存在但省份无招生。
-6. 为每类事实表增加专门 eval cases，避免新增数据源时破坏已有查询。
+5. 为每类事实表增加专门 eval cases，避免新增数据源时破坏已有查询。
 
 ## 11. 架构判断
 

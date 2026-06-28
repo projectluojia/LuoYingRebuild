@@ -12,8 +12,9 @@ Crawl4AI web crawler
 -> Git commit
 -> Postgres metadata DB
 -> hybrid index
-   -> Postgres full-text keyword index
+   -> ParadeDB pg_search BM25 index
    -> pgvector index
+   -> required LLM reranker
 -> KB API
 -> Agent
 ```
@@ -21,7 +22,7 @@ Crawl4AI web crawler
 Core rules:
 
 - `knowledge/` 是知识资产，必须可 review、可 diff、可提交。
-- Postgres/pgvector 是运行时派生库，可以从 `knowledge/` 重建。
+- Postgres/ParadeDB `pg_search`/pgvector 是运行时派生库，可以从 `knowledge/` 重建。
 - Markdown 文件是单页事实源；frontmatter 保存该页核心元数据和质量结果。
 - `graph.jsonl` 保存网页之间的链接关系；索引可以用它扩展上下文。
 - crawler/extractor 使用 Crawl4AI；没有旧抽取器和降级路径。
@@ -33,7 +34,7 @@ src/luoying_bot/capabilities/knowledge_base/
 ├── artifacts.py      # write source.yaml, pages/*.md, raw/*.html, graph.jsonl
 ├── crawling.py       # crawl site and record artifacts/index
 ├── extraction.py     # Crawl4AI extraction
-├── postgres_store.py # Postgres metadata, full-text search, pgvector search
+├── postgres_store.py # Postgres metadata, ParadeDB BM25, pgvector search
 ├── quality.py        # markdown quality checks
 ├── query_agent.py    # KB query sub-agent orchestration
 ├── analytics.py      # Text-to-SQL analytics engine
@@ -63,12 +64,28 @@ KB_ARTIFACT_ROOT=./knowledge
 KB_DATABASE_URL=postgresql://luoying_kb:luoying_kb@127.0.0.1:15432/luoying_kb
 KB_DEFAULT_SPACE_ID=sai
 KB_REQUIRE_CITATION=true
+KB_MIN_RERANK_SCORE=30
 KB_EMBEDDING_BASE_URL=http://127.0.0.1:8080/v1
 KB_EMBEDDING_API_KEY=
-KB_EMBEDDING_MODEL=text-embeddings-inference
-KB_EMBEDDING_BATCH_SIZE=32
+KB_EMBEDDING_MODEL=/models/bge-small-zh-v1.5
+KB_EMBEDDING_QUERY_INSTRUCTION=为这个句子生成表示以用于检索相关文章：
+KB_EMBEDDING_BATCH_SIZE=4
 KB_EMBEDDING_DIMENSIONS=512
+KB_RERANK_CANDIDATE_LIMIT=40
+KB_RERANK_MAX_TEXT_CHARS=900
 ```
+
+Embedding is asymmetric:
+
+- query text is embedded with `KB_EMBEDDING_QUERY_INSTRUCTION`
+- document and structured search-item text is embedded without a query instruction
+
+Changing the embedding model, dimension, or pooling requires rebuilding the derived Postgres
+index. Changing only the query instruction affects new queries immediately; run the quality
+harness after changing it.
+
+For chunk-only answers, `KB_MIN_RERANK_SCORE` is the primary relevance gate. Candidates below
+that score are treated as non-answerable even if dense vector similarity is high.
 
 ## Artifact Layout
 
