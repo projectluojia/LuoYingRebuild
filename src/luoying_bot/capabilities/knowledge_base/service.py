@@ -25,6 +25,7 @@ class KnowledgeBaseConfig:
     default_space_id: str
     require_citation: bool = True
     min_relevance: float = 0.5
+    min_rerank_score: float = 30.0
 
 
 class KnowledgeBaseService:
@@ -44,13 +45,13 @@ class KnowledgeBaseService:
         self.policy = policy or KnowledgeBasePolicy(
             require_citation=config.require_citation,
             min_relevance=config.min_relevance,
+            min_rerank_score=config.min_rerank_score,
         )
 
     async def answer(
         self,
         *,
         question: str,
-        space_id: str | None = None,
         platform: str = "",
         conversation_id: str = "",
         user_id: str = "",
@@ -60,7 +61,6 @@ class KnowledgeBaseService:
     ) -> KnowledgeAnswer:
         query = self._build_query(
             question=question,
-            space_id=space_id,
             platform=platform,
             conversation_id=conversation_id,
             user_id=user_id,
@@ -92,13 +92,11 @@ class KnowledgeBaseService:
         self,
         *,
         query_text: str,
-        space_id: str | None = None,
         filters: dict[str, Any] | None = None,
         top_k: int = 8,
     ) -> RetrievalResult:
         query = self._build_query(
             question=query_text,
-            space_id=space_id,
             filters=filters,
             top_k=top_k,
         )
@@ -153,11 +151,7 @@ class KnowledgeBaseService:
         return await self.structured_backend.create_item("kb_feedback", payload)
 
     async def _retrieve(self, query: KnowledgeQuery) -> RetrievalResult:
-        try:
-            return await self.query_agent.retrieve(query)
-        except BackendUnavailable as exc:
-            logger.warning("知识库子 agent 查询失败：%s", exc)
-            return RetrievalResult(fallback_reason=str(exc))
+        return await self.query_agent.retrieve(query)
 
     async def _record_answer_log(
         self,
@@ -175,6 +169,12 @@ class KnowledgeBaseService:
             "user_id": query.user_id,
             "question": query.question,
             "filters": query.filters,
+            "retrieval_stats": {
+                "structured_records": len(retrieval.structured_records),
+                "chunks": len(retrieval.chunks),
+                "citations": len(answer.citations),
+                "fallback_reason": retrieval.fallback_reason,
+            },
             "structured_records": [record.to_dict() for record in retrieval.structured_records],
             "retrieved_chunks": [chunk.to_dict() for chunk in retrieval.chunks],
             "citations": [citation.to_dict() for citation in answer.citations],
@@ -192,7 +192,6 @@ class KnowledgeBaseService:
         self,
         *,
         question: str,
-        space_id: str | None = None,
         platform: str = "",
         conversation_id: str = "",
         user_id: str = "",
@@ -204,7 +203,7 @@ class KnowledgeBaseService:
             raise KnowledgeBaseError("知识库问题不能为空")
         return KnowledgeQuery(
             question=clean_question,
-            space_id=str(space_id or "").strip(),
+            space_id="",
             platform=platform,
             conversation_id=conversation_id,
             user_id=user_id,

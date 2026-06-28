@@ -78,11 +78,18 @@ class Settings:
     kb_default_space_id: str = os.getenv('KB_DEFAULT_SPACE_ID', 'sai')
     kb_require_citation: bool = _env_bool('KB_REQUIRE_CITATION', True)
     kb_min_relevance: float = float(os.getenv('KB_MIN_RELEVANCE', '0.5'))
+    kb_min_rerank_score: float = float(os.getenv('KB_MIN_RERANK_SCORE', '30'))
     kb_embedding_base_url: str = os.getenv('KB_EMBEDDING_BASE_URL', 'http://127.0.0.1:8080/v1')
     kb_embedding_api_key: str = os.getenv('KB_EMBEDDING_API_KEY', '')
-    kb_embedding_model: str = os.getenv('KB_EMBEDDING_MODEL', 'text-embeddings-inference')
+    kb_embedding_model: str = os.getenv('KB_EMBEDDING_MODEL', '/models/bge-small-zh-v1.5')
+    kb_embedding_query_instruction: str = os.getenv(
+        'KB_EMBEDDING_QUERY_INSTRUCTION',
+        '为这个句子生成表示以用于检索相关文章：',
+    )
     kb_embedding_batch_size: int = int(os.getenv('KB_EMBEDDING_BATCH_SIZE', '32'))
     kb_embedding_dimensions: int = int(os.getenv('KB_EMBEDDING_DIMENSIONS', '512'))
+    kb_rerank_candidate_limit: int = int(os.getenv('KB_RERANK_CANDIDATE_LIMIT', '40'))
+    kb_rerank_max_text_chars: int = int(os.getenv('KB_RERANK_MAX_TEXT_CHARS', '900'))
 
     memory_max_messages_per_thread: int = int(os.getenv('MEMORY_MAX_MESSAGES_PER_THREAD', '80'))
     agent_skill_timeout_sec: float = float(os.getenv('AGENT_SKILL_TIMEOUT_SEC', '30'))

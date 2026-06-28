@@ -22,6 +22,8 @@ from luoying_bot.ports.llm import ChatModel
 class AnalyticsPlan:
     sql: str
     rationale: str = ""
+    table: str = ""
+    metric: str = ""
 
 
 class KnowledgeAnalyticsEngine:
@@ -41,26 +43,31 @@ class KnowledgeAnalyticsEngine:
         self.max_rows = max_rows
 
     async def query(self, query: KnowledgeQuery, entities: EntityResolution | None = None) -> list[StructuredRecord]:
-        if not self.semantic_layer.is_analytics_question(query.question):
+        plans = [
+            self._entity_plan(query, entities) if entities else None,
+            self._semantic_filter_plan(query, entities),
+        ]
+        for plan in plans:
+            records = await self._execute_plan(plan)
+            if records:
+                return records
+        return await self._execute_plan(await self._plan(query, entities))
+
+    async def _execute_plan(self, plan: AnalyticsPlan | None) -> list[StructuredRecord]:
+        if plan is None or not plan.sql:
             return []
-        plan = self._site_content_plan(query, entities)
-        if plan is None:
-            plan = self._entity_plan(query, entities) if entities else None
-        if plan is None:
-            plan = await self._plan(query, entities)
-        if not plan.sql:
-            return []
-        safe_sql = validate_select_sql(
-            plan.sql,
-            allowed_tables=self.semantic_layer.allowed_tables,
-            max_rows=self.max_rows,
-        )
+        safe_sql = validate_select_sql(plan.sql, allowed_tables=self.semantic_layer.allowed_tables, max_rows=self.max_rows)
         rows = await self.backend.execute_select(safe_sql, limit=self.max_rows)
+        metric_label = self.semantic_layer.metric_label(plan.table, plan.metric)
         return [
             StructuredRecord(
                 collection="analytics",
-                data={**row, "_sql": safe_sql, "_rationale": plan.rationale},
-                citation=citation_from_row(row),
+                data={
+                    **enrich_structured_row(row, metric=plan.metric, metric_label=metric_label),
+                    "_sql": safe_sql,
+                    "_rationale": plan.rationale,
+                },
+                citation=citation_from_row(row, metric=plan.metric, metric_label=metric_label),
                 score=1.0,
             )
             for row in rows
@@ -81,7 +88,7 @@ class KnowledgeAnalyticsEngine:
             fact_tables = [str(item) for item in entity.metadata.get("fact_tables") or []]
             field = str(entity.metadata.get("fact_column") or "")
             if not table and fact_tables:
-                table = choose_fact_table(query.question, fact_tables)
+                table = self.semantic_layer.choose_table(query.question, fact_tables)
             if table not in self.semantic_layer.allowed_tables or field not in self.semantic_layer.table_columns(table):
                 continue
             columns = self.semantic_layer.table_columns(table)
@@ -95,7 +102,7 @@ class KnowledgeAnalyticsEngine:
             year = extract_year(query.question)
             if year:
                 clauses.append(f"year = {year}")
-            subject_type = extract_subject_type(query.question)
+            subject_type = self.semantic_layer.subject_type(query.question)
             if subject_type and "subject_type" in columns:
                 clauses.append(f"subject_type = {sql_literal(subject_type)}")
             question_norm = normalize_text(query.question)
@@ -106,85 +113,60 @@ class KnowledgeAnalyticsEngine:
                     continue
                 clauses.append(f"province = {sql_literal(province.canonical_name)}")
                 break
-            order_by = "id asc"
-            limit = 1
-            if wants_highest(query.question) and "min_score" in columns:
-                order_by = "min_score desc nulls last, min_rank asc nulls last, province asc"
-            elif wants_lowest(query.question) and "min_score" in columns:
-                order_by = "min_score asc nulls last, min_rank asc nulls last, province asc"
-            if wants_listing(query.question):
-                limit = self.max_rows
-                if not (wants_highest(query.question) or wants_lowest(query.question)):
-                    order_by = "province asc"
+            metric = self.semantic_layer.metric_for_question(table, query.question)
+            order_by = self.semantic_layer.order_by_for_question(table, query.question) or default_order_by(columns)
+            limit = 1 if metric else self.max_rows
             sql = (
                 f"select {select_columns} from {table} "
                 f"where {' and '.join(clauses)} "
                 f"order by {order_by} limit {limit}"
             )
-            return AnalyticsPlan(sql=sql, rationale="entity_grounded")
+            return AnalyticsPlan(sql=sql, rationale="entity_grounded", table=table, metric=metric)
         return None
 
-    def _site_content_plan(self, query: KnowledgeQuery, entities: EntityResolution | None) -> AnalyticsPlan | None:
+    def _semantic_filter_plan(self, query: KnowledgeQuery, entities: EntityResolution | None) -> AnalyticsPlan | None:
         question = query.question
-        if is_fact_metric_question(question):
-            return None
-        clauses = ["review_status = 'approved'"]
-        if query.space_id:
-            clauses.append(f"space_id = {sql_literal(query.space_id)}")
-        if "试验班" in question:
-            where = " and ".join([*clauses, "category_name = '试验班'"])
+        year = extract_year(question)
+        for table in self.semantic_layer.ranked_tables(question):
+            columns = table.columns
+            clauses: list[str] = []
+            semantic_filters = 0
+            if "review_status" in columns:
+                clauses.append("review_status = 'approved'")
+            if query.space_id and "space_id" in columns:
+                clauses.append(f"space_id = {sql_literal(query.space_id)}")
+            if year and "year" in columns:
+                clauses.append(f"year = {year}")
+                semantic_filters += 1
+            subject_type = self.semantic_layer.subject_type(question)
+            if subject_type and "subject_type" in columns:
+                clauses.append(f"subject_type = {sql_literal(subject_type)}")
+                semantic_filters += 1
+            for field, value in self.semantic_layer.literal_filter_clauses(table, question):
+                if field in columns:
+                    clauses.append(f"{field} = {sql_literal(value)}")
+                    semantic_filters += 1
+            for field, value in entity_dimension_filters(
+                question=question,
+                table_name=table.name,
+                columns=columns,
+                entities=entities,
+                semantic_layer=self.semantic_layer,
+            ):
+                clauses.append(f"{field} = {sql_literal(value)}")
+                semantic_filters += 1
+            metric = self.semantic_layer.metric_for_question(table.name, question)
+            if semantic_filters == 0 and metric == "" and table.measures:
+                continue
+            where = " and ".join(clauses) if clauses else "true"
+            order_by = self.semantic_layer.order_by_for_question(table.name, question) or default_order_by(columns)
+            limit = 1 if metric else self.max_rows
             sql = (
-                "select space_id, category_name, title, item_type, source_url, media_url, description, "
-                "published_at, source_document, source_department, review_status "
-                "from admission_media_items "
+                f"select {', '.join(columns)} from {table.name} "
                 f"where {where} "
-                "order by title asc "
-                f"limit {self.max_rows}"
+                f"order by {order_by} limit {limit}"
             )
-            return AnalyticsPlan(sql=sql, rationale="site_media_category")
-        if "热点武大" in question:
-            where = " and ".join([*clauses, "category_name = '热点武大'"])
-            sql = (
-                "select space_id, category_name, title, description, source_url, published_at, "
-                "view_count, source_document, source_department, review_status "
-                "from admission_articles "
-                f"where {where} "
-                "order by published_at desc nulls last, title asc "
-                f"limit {self.max_rows}"
-            )
-            return AnalyticsPlan(sql=sql, rationale="site_article_category")
-        if "学部" in question and entities:
-            for school in entities.by_type("school"):
-                where = " and ".join([*clauses, f"name = {sql_literal(school.canonical_name)}"])
-                sql = (
-                    "select space_id, unit_name, name, official_url, source_url, source_document, "
-                    "source_department, review_status "
-                    "from admission_schools "
-                    f"where {where} "
-                    "order by name asc "
-                    "limit 1"
-                )
-                return AnalyticsPlan(sql=sql, rationale="site_school_unit")
-        if "学院" in question and ("哪些" in question or "有哪些" in question or "列" in question):
-            sql = (
-                "select space_id, unit_name, name, official_url, source_url, source_document, "
-                "source_department, review_status "
-                "from admission_schools "
-                f"where {' and '.join(clauses)} "
-                "order by unit_name asc, name asc "
-                f"limit {self.max_rows}"
-            )
-            return AnalyticsPlan(sql=sql, rationale="site_school_listing")
-        if "专业" in question and ("哪些" in question or "有哪些" in question or "列" in question):
-            sql = (
-                "select space_id, name, school_name, category, source_url, source_document, "
-                "source_department, review_status "
-                "from majors "
-                f"where {' and '.join(clauses)} "
-                "order by school_name asc, name asc "
-                f"limit {self.max_rows}"
-            )
-            return AnalyticsPlan(sql=sql, rationale="site_major_listing")
+            return AnalyticsPlan(sql=sql, rationale="semantic_filter", table=table.name, metric=metric)
         return None
 
     async def _plan(self, query: KnowledgeQuery, entities: EntityResolution | None) -> AnalyticsPlan:
@@ -319,14 +301,13 @@ def parse_json_object(raw: str) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def citation_from_row(row: dict[str, Any]) -> Citation:
-    title = str(
-        row.get("source_document")
-        or row.get("program_name")
-        or row.get("major_name")
-        or row.get("name")
-        or "结构化知识库"
-    )
+def enrich_structured_row(row: dict[str, Any], *, metric: str = "", metric_label: str = "") -> dict[str, Any]:
+    title = structured_row_title(row, metric=metric, metric_label=metric_label)
+    return {**row, "_display_title": title, "_display_text": structured_row_text(row, title=title)}
+
+
+def citation_from_row(row: dict[str, Any], *, metric: str = "", metric_label: str = "") -> Citation:
+    title = structured_row_title(row, metric=metric, metric_label=metric_label)
     source = str(row.get("source_url") or "")
     return Citation(
         title=title,
@@ -335,6 +316,37 @@ def citation_from_row(row: dict[str, Any]) -> Citation:
         department=optional_text(row.get("source_department")),
         metadata={"collection": "analytics"},
     )
+
+
+def structured_row_title(row: dict[str, Any], *, metric: str = "", metric_label: str = "") -> str:
+    parts = [
+        optional_text(row.get("source_document")),
+        optional_text(row.get("year")),
+        optional_text(row.get("province")),
+        optional_text(row.get("subject_type")),
+        optional_text(row.get("program_name") or row.get("major_name") or row.get("name") or row.get("title")),
+        optional_text(metric_label),
+        optional_text(primary_metric_value(row, metric=metric)),
+    ]
+    return " ".join(str(part) for part in parts if part) or "结构化知识库"
+
+
+def structured_row_text(row: dict[str, Any], *, title: str) -> str:
+    values = [title]
+    for key, value in row.items():
+        if value in (None, "", [], {}) or str(key).startswith("_"):
+            continue
+        values.append(f"{key}={value}")
+    return "；".join(values)
+
+
+def primary_metric_value(row: dict[str, Any], *, metric: str = "") -> Any:
+    if metric and row.get(metric) not in (None, ""):
+        return row[metric]
+    for key, value in row.items():
+        if isinstance(value, (int, float)) and not str(key).startswith("_"):
+            return value
+    return None
 
 
 def extract_year(question: str, *, current_year: int | None = None) -> int | None:
@@ -370,54 +382,58 @@ def runtime_current_year() -> int:
     return datetime.now(timezone(timedelta(hours=8))).year
 
 
-def wants_listing(question: str) -> bool:
-    return any(marker in question for marker in ("所有", "全部", "列出", "列给", "列一下", "明细", "各省"))
+def entity_dimension_filters(
+    *,
+    question: str,
+    table_name: str,
+    columns: tuple[str, ...],
+    entities: EntityResolution | None,
+    semantic_layer: KnowledgeSemanticLayer,
+) -> list[tuple[str, str]]:
+    if entities is None:
+        return []
+    query_norm = normalize_text(question)
+    result: list[tuple[str, str]] = []
+    seen_fields: set[str] = set()
+    column_set = set(columns)
+    for entity in entities.matches:
+        if not (entity.score >= 100.0 or entity.alias_type == "relation_resolution"):
+            continue
+        canonical_norm = normalize_text(entity.canonical_name)
+        alias_norm = normalize_text(entity.matched_alias)
+        if entity.alias_type != "relation_resolution" and canonical_norm not in query_norm and alias_norm not in query_norm:
+            continue
+        for field in entity_filter_fields(entity, table_name=table_name, columns=column_set, semantic_layer=semantic_layer):
+            if field in seen_fields:
+                continue
+            result.append((field, entity.canonical_name))
+            seen_fields.add(field)
+            break
+    return result
 
 
-def choose_fact_table(question: str, fact_tables: list[str]) -> str:
-    if any(marker in question for marker in ("招生计划", "招生人数", "计划人数", "招多少", "多少人")):
-        if "admission_plans" in fact_tables:
-            return "admission_plans"
-    if any(marker in question for marker in ("分数", "分数线", "最低分", "最高分", "平均分", "位次", "录取")):
-        if "admission_scores" in fact_tables:
-            return "admission_scores"
-    return fact_tables[0] if fact_tables else ""
+def entity_filter_fields(entity: Any, *, table_name: str, columns: set[str], semantic_layer: KnowledgeSemanticLayer) -> list[str]:
+    fields: list[str] = []
+    fact_table = str(entity.metadata.get("fact_table") or "")
+    fact_tables = [str(item) for item in entity.metadata.get("fact_tables") or []]
+    fact_column = str(entity.metadata.get("fact_column") or "")
+    if fact_column and (fact_table == table_name or table_name in fact_tables):
+        fields.append(fact_column)
+    fields.extend(semantic_layer.entity_fields(table_name, str(entity.entity_type or "")))
+    return [field for field in fields if field in columns]
 
 
-def extract_subject_type(question: str) -> str:
-    for subject_type in ("物理类", "历史类", "综合改革", "文史", "理工", "艺术类"):
-        if subject_type in question:
-            return subject_type
-    return ""
-
-
-def is_fact_metric_question(question: str) -> bool:
-    return any(
-        marker in question
-        for marker in (
-            "分数",
-            "分数线",
-            "最低分",
-            "最高分",
-            "平均分",
-            "位次",
-            "录取",
-            "强基",
-            "招生计划",
-            "招生人数",
-            "计划人数",
-            "招多少",
-            "多少人",
-        )
-    )
-
-
-def wants_highest(question: str) -> bool:
-    return "最高" in question or "最高分" in question
-
-
-def wants_lowest(question: str) -> bool:
-    return "最低" in question or "最低分" in question
+def default_order_by(columns: tuple[str, ...]) -> str:
+    if "year" in columns:
+        return "year desc"
+    if "published_at" in columns:
+        return "published_at desc nulls last"
+    if "sort_order" in columns:
+        return "sort_order asc"
+    for field in ("name", "title", "id"):
+        if field in columns:
+            return f"{field} asc"
+    return f"{columns[0]} asc" if columns else "1"
 
 
 def sql_literal(value: str) -> str:

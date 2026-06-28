@@ -22,9 +22,7 @@ class KnowledgeBaseSkill(BaseSkill):
     )
 
     async def run(self, req: SkillRequest) -> SkillResult:
-        question = str(req.payload.get("question") or "").strip()
-        if not question:
-            question = req.message.to_llm_text().strip() or req.message.get_plain_text().strip()
+        question = req.message.to_llm_text().strip() or req.message.get_plain_text().strip()
         if not question:
             return SkillResult(
                 text="知识库查询问题不能为空",
@@ -34,7 +32,6 @@ class KnowledgeBaseSkill(BaseSkill):
         context = req.context
         answer = await self.services.knowledge_base_service.answer(
             question=question,
-            space_id=self._optional_text(req.payload.get("space_id")),
             platform=context.target.platform.value,
             conversation_id=context.target.conversation_id,
             user_id=context.user.user_id,
@@ -48,13 +45,11 @@ class KnowledgeBaseSkill(BaseSkill):
                 "ok": answer.fallback_reason is None,
                 **answer.to_dict(),
             },
+            metadata={"skip_output_risk_control": answer.fallback_reason is None and bool(answer.citations)},
             llm_observation=answer.answer,
             final_append_text=answer.source_links_text(),
+            final_response=True,
         )
-
-    def _optional_text(self, value) -> str | None:
-        text = str(value or "").strip()
-        return text or None
 
     def _dict_payload(self, value) -> dict:
         return dict(value) if isinstance(value, dict) else {}

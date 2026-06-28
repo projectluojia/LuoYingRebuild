@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
+from luoying_bot.capabilities.knowledge_base.entities import EntityMatch
 from luoying_bot.capabilities.knowledge_base.models import (
     RetrievedChunk,
 )
@@ -15,6 +16,7 @@ class RagBackend(ABC):
         *,
         queries: list[str],
         space_ids: list[str],
+        entity_matches: tuple[EntityMatch, ...],
         top_k: int,
     ) -> list[RetrievedChunk]: ...
 

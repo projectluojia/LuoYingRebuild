@@ -10,7 +10,6 @@ from luoying_bot.capabilities.knowledge_base.text_utils import (
     normalize_alnum_text,
 )
 
-# Backwards-compatible alias: other modules import ``normalize_entity_text`` from here.
 normalize_entity_text = normalize_alnum_text
 
 GLOBAL_ENTITY_SPACE_ID = "__global__"

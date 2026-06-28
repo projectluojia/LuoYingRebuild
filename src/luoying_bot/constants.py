@@ -534,14 +534,13 @@ risk_control=[
       "content":"席",
       "level":"danger"
    },
-   {
+	 {
       "content":"圣洋",
       "level":"danger"
    },
-   { "content": "习近平", "level": "danger" },
-   { "content": "Xi Jinping", "level": "danger" },
-   { "content": "XJP", "level": "danger" },
-
+   # { "content": "习近平", "level": "danger" },
+   # { "content": "Xi Jinping", "level": "danger" },
+   # { "content": "XJP", "level": "danger" },
    { "content": "小熊维尼", "level": "danger" },
    { "content": "维尼", "level": "danger" },
    { "content": "pooh", "level": "danger" },
@@ -574,8 +573,8 @@ risk_control=[
   { "content": "韩正", "level": "danger" },
   { "content": "Han Zheng", "level": "danger" },
 
-  { "content": "毛泽东", "level": "danger" },
-  { "content": "Mao Zedong", "level": "danger" },
+  # { "content": "毛泽东", "level": "danger" },
+  # { "content": "Mao Zedong", "level": "danger" },
   { "content": "周恩来", "level": "danger" },
   { "content": "Zhou Enlai", "level": "danger" },
   { "content": "刘少奇", "level": "danger" },
@@ -631,6 +630,4 @@ risk_control=[
   { "content": "王毅", "level": "danger" },
   { "content": "Wang Yi", "level": "danger" }
 ]
-
-
 

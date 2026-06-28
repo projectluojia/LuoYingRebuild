@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from luoying_bot.capabilities.knowledge_base.errors import BackendUnavailable
 from luoying_bot.capabilities.knowledge_base.models import KnowledgeAnswer, RetrievalResult
 
 
@@ -10,13 +11,19 @@ NO_SOURCE_TEXT = (
 
 
 class KnowledgeBasePolicy:
-    def __init__(self, *, require_citation: bool = True, min_relevance: float = 0.5):
+    def __init__(
+        self,
+        *,
+        require_citation: bool = True,
+        min_relevance: float = 0.5,
+        min_rerank_score: float = 30.0,
+    ):
         self.require_citation = require_citation
-        # Minimum cosine similarity (``vector_score``) the top retrieved chunk must reach
-        # before we trust chunk-only evidence. Structured (analytics) records bypass this
-        # gate because they come from filtered SQL, not fuzzy similarity. Set to 0 to
-        # disable the relevance floor entirely.
+        # Structured (analytics) records bypass relevance gates because they come from
+        # filtered SQL, not fuzzy similarity. Chunk-only evidence must pass the reranker
+        # floor first, then the vector floor as a secondary distance guard.
         self.min_relevance = min_relevance
+        self.min_rerank_score = min_rerank_score
 
     def fallback_for_missing_evidence(self) -> KnowledgeAnswer:
         return KnowledgeAnswer(
@@ -58,12 +65,21 @@ class KnowledgeBasePolicy:
     def _is_low_relevance(self, retrieval: RetrievalResult) -> bool:
         """Refuse chunk-only answers whose strongest semantic match is too distant.
 
-        Only applies when there are no structured records (which are trusted). We look at
-        the best ``vector_score`` across the whole result set: if even the most
-        semantically-similar chunk falls below the floor, nothing retrieved is relevant
-        enough to answer from. Backends that do not expose ``vector_score`` are skipped.
+        Only applies when there are no structured records (which are trusted). Every
+        returned chunk must have passed the required reranker. If the best reranked chunk
+        is still below the floor, the evidence is not answerable even when dense vector
+        similarity is high.
         """
-        if self.min_relevance <= 0 or retrieval.structured_records or not retrieval.chunks:
+        if retrieval.structured_records or not retrieval.chunks:
+            return False
+        rerank_scores: list[float] = []
+        for chunk in retrieval.chunks:
+            if "rerank_score" not in (chunk.metadata or {}):
+                raise BackendUnavailable("retrieved chunk is missing rerank_score")
+            rerank_scores.append(float(chunk.metadata["rerank_score"]))
+        if self.min_rerank_score > 0 and max(rerank_scores) < self.min_rerank_score:
+            return True
+        if self.min_relevance <= 0:
             return False
         vector_scores = [
             float(chunk.metadata["vector_score"])
@@ -78,4 +94,3 @@ class KnowledgeBasePolicy:
         if self.require_citation and not answer.citations:
             return self.fallback_for_missing_evidence()
         return answer
-

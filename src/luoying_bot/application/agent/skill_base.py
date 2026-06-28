@@ -21,6 +21,7 @@ class SkillResult:
     metadata: Dict[str, Any] = field(default_factory=dict)
     llm_observation: str | None = None
     final_append_text: str = ""
+    final_response: bool = False
 
 class BaseSkill(ABC):
     name: str = ''

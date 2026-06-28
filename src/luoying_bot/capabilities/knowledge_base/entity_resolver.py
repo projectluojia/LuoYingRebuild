@@ -105,12 +105,12 @@ def entity_from_search_item(row: dict[str, Any], query: str) -> EntityMatch:
     aliases = [str(alias) for alias in metadata.get("aliases") or []]
     canonical_name = str(metadata.get("canonical_name") or row.get("title") or "")
     matched_alias = canonical_name
-    score = float(row.get("score") or 0.0)
+    score = min(float(row.get("score") or 0.0), 99.0)
     for alias in [canonical_name, *aliases]:
         alias_norm = normalize_entity_text(alias)
         if alias_norm and alias_norm in query_norm:
             matched_alias = alias
-            score = max(score, 100.0 + len(alias_norm))
+            score = max(float(row.get("score") or 0.0), 100.0 + len(alias_norm))
             break
     return EntityMatch(
         entity_id=str(row["entity_id"]),

@@ -13,7 +13,10 @@ class EmbeddingProvider(Protocol):
     provider_id: str
     model: str
 
-    async def embed_texts(self, texts: list[str]) -> list[list[float]]:
+    async def embed_queries(self, texts: list[str]) -> list[list[float]]:
+        ...
+
+    async def embed_documents(self, texts: list[str]) -> list[list[float]]:
         ...
 
 
@@ -22,11 +25,18 @@ class OpenAICompatibleEmbeddingProvider:
     base_url: str
     api_key: str
     model: str
+    query_instruction: str
     batch_size: int = 32
     timeout_sec: float = 60.0
     provider_id: str = "openai-compatible"
 
-    async def embed_texts(self, texts: list[str]) -> list[list[float]]:
+    async def embed_queries(self, texts: list[str]) -> list[list[float]]:
+        return await self._embed_inputs([format_query_input(self.query_instruction, text) for text in texts])
+
+    async def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return await self._embed_inputs(texts)
+
+    async def _embed_inputs(self, texts: list[str]) -> list[list[float]]:
         clean_texts = [text.strip() for text in texts]
         if any(not text for text in clean_texts):
             raise BackendUnavailable("embedding input cannot be empty")
@@ -71,3 +81,13 @@ class OpenAICompatibleEmbeddingProvider:
 def normalize_vector(vector: list[float]) -> list[float]:
     norm = math.sqrt(sum(value * value for value in vector)) or 1.0
     return [round(value / norm, 8) for value in vector]
+
+
+def format_query_input(instruction: str, text: str) -> str:
+    query = text.strip()
+    clean_instruction = instruction.strip()
+    if not clean_instruction:
+        raise BackendUnavailable("KB query embedding instruction cannot be empty")
+    if "{query}" in clean_instruction:
+        return clean_instruction.format(query=query).strip()
+    return f"{clean_instruction}{query}".strip()

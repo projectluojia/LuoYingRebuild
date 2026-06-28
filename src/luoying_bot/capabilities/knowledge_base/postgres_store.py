@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import math
 import re
 import uuid
 from dataclasses import dataclass
@@ -13,10 +12,11 @@ from urllib.parse import urlparse
 import asyncpg
 
 from luoying_bot.capabilities.knowledge_base.embeddings import EmbeddingProvider
-from luoying_bot.capabilities.knowledge_base.entities import GLOBAL_ENTITY_SPACE_ID, normalize_entity_text
+from luoying_bot.capabilities.knowledge_base.entities import EntityMatch, GLOBAL_ENTITY_SPACE_ID, normalize_entity_text
 from luoying_bot.capabilities.knowledge_base.errors import BackendUnavailable
 from luoying_bot.capabilities.knowledge_base.models import Citation, RetrievedChunk
 from luoying_bot.capabilities.knowledge_base.ports import AnalyticsBackend, EntityBackend, RagBackend, StructuredBackend
+from luoying_bot.capabilities.knowledge_base.rerankers import RerankCandidate, RerankedCandidate, Reranker
 from luoying_bot.capabilities.knowledge_base.semantic_layer import KnowledgeSemanticLayer
 from luoying_bot.capabilities.knowledge_base.text_utils import normalize_alnum_text as compact_text
 
@@ -34,6 +34,30 @@ class IndexedDocument:
     raw_html_path: str
     quality: dict[str, Any]
     markdown: str
+    alias_text: str = ""
+
+
+@dataclass(slots=True)
+class IndexedDocumentLink:
+    site_id: str
+    from_document_id: str
+    to_document_id: str
+    from_url: str
+    to_url: str
+    link_text: str
+    link_type: str = "content_link"
+    metadata: dict[str, Any] | None = None
+
+
+TITLE_RRF_WEIGHT = 1.6
+ENTITY_RRF_WEIGHT = 1.45
+VECTOR_RRF_WEIGHT = 1.0
+BM25_RRF_WEIGHT = 1.25
+DOCUMENT_DEDUP_RERANK_MULTIPLIER = 3
+CONTEXT_NEIGHBOR_RADIUS = 1
+CONTEXT_LINK_LIMIT = 4
+CONTEXT_MAX_CHARS = 4500
+PAGE_CONTEXT_MAX_CHARS = 7000
 
 
 class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, StructuredBackend):
@@ -42,17 +66,23 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
         database_url: str,
         *,
         embedding_provider: EmbeddingProvider,
+        reranker: Reranker,
         embedding_dimensions: int,
+        min_rerank_score: float,
     ):
         self.database_url = database_url
         self.embedding_provider = embedding_provider
+        self.reranker = reranker
         self.embedding_dimensions = embedding_dimensions
+        self.min_rerank_score = min_rerank_score
         self._pool: asyncpg.Pool | None = None
 
     async def ensure_schema(self) -> None:
         pool = await self._get_pool()
         async with pool.acquire() as conn:
             await conn.execute("create extension if not exists vector")
+            await conn.execute("create extension if not exists pg_search")
+            await self._reset_vector_tables_if_embedding_dimensions_changed(conn)
             await conn.execute(
                 f"""
                 create table if not exists kb_documents (
@@ -61,6 +91,7 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
                     site_id text not null,
                     title text not null,
                     source_url text not null,
+                    alias_text text not null default '',
                     published_at text,
                     content_hash text not null,
                     markdown_path text not null,
@@ -73,17 +104,18 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
                 create table if not exists kb_chunks (
                     chunk_id text primary key,
                     document_id text not null references kb_documents(document_id) on delete cascade,
+                    space_id text not null,
                     chunk_index integer not null,
                     title text not null,
                     source_url text not null,
+                    alias_text text not null default '',
                     published_at text,
                     text text not null,
                     search_text text not null,
                     embedding vector({self.embedding_dimensions}) not null,
                     embedding_provider text not null,
                     embedding_model text not null,
-                    embedding_dimensions integer not null,
-                    search_vector tsvector generated always as (to_tsvector('simple', search_text)) stored
+                    embedding_dimensions integer not null
                 );
 
                 create table if not exists kb_events (
@@ -91,6 +123,19 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
                     collection text not null,
                     payload_json jsonb not null,
                     created_at timestamptz not null default now()
+                );
+
+                create table if not exists kb_document_links (
+                    site_id text not null,
+                    from_document_id text not null,
+                    to_document_id text not null,
+                    from_url text not null default '',
+                    to_url text not null default '',
+                    link_text text not null default '',
+                    link_type text not null default 'content_link',
+                    metadata_json jsonb not null default '{{}}'::jsonb,
+                    updated_at timestamptz not null default now(),
+                    primary key(site_id, from_document_id, to_document_id, link_text)
                 );
 
                 create table if not exists kb_entities (
@@ -151,8 +196,7 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
                     embedding_model text not null,
                     embedding_dimensions integer not null,
                     review_status text not null default 'approved',
-                    updated_at timestamptz not null default now(),
-                    search_vector tsvector generated always as (to_tsvector('simple', search_text)) stored
+                    updated_at timestamptz not null default now()
                 );
 
                 create table if not exists admission_plans (
@@ -346,6 +390,20 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
                 );
                 """
             )
+            await conn.execute("drop index if exists kb_chunks_bm25_idx")
+            await conn.execute("alter table kb_chunks add column if not exists space_id text")
+            await conn.execute("alter table kb_documents add column if not exists alias_text text not null default ''")
+            await conn.execute("alter table kb_chunks add column if not exists alias_text text not null default ''")
+            await conn.execute(
+                """
+                update kb_chunks c
+                set space_id = d.space_id
+                from kb_documents d
+                where d.document_id = c.document_id
+                  and (c.space_id is null or c.space_id = '')
+                """
+            )
+            await conn.execute("alter table kb_chunks alter column space_id set not null")
             await conn.execute(
                 "create index if not exists kb_documents_space_status_idx on kb_documents(space_id, status)"
             )
@@ -353,10 +411,29 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
                 "create index if not exists kb_chunks_document_idx on kb_chunks(document_id, chunk_index)"
             )
             await conn.execute(
-                "create index if not exists kb_chunks_search_idx on kb_chunks using gin(search_vector)"
+                "create index if not exists kb_chunks_embedding_idx on kb_chunks using hnsw (embedding vector_cosine_ops)"
             )
             await conn.execute(
-                "create index if not exists kb_chunks_embedding_idx on kb_chunks using hnsw (embedding vector_cosine_ops)"
+                """
+                create index if not exists kb_chunks_bm25_idx on kb_chunks
+                using bm25 (
+                    chunk_id,
+                    space_id,
+                    document_id,
+                    (title::pdb.ngram(2,4)),
+                    (alias_text::pdb.ngram(2,4)),
+                    (search_text::pdb.ngram(2,4)),
+                    source_url,
+                    published_at
+                )
+                with (key_field='chunk_id')
+                """
+            )
+            await conn.execute(
+                "create index if not exists kb_document_links_from_idx on kb_document_links(site_id, from_document_id)"
+            )
+            await conn.execute(
+                "create index if not exists kb_document_links_to_idx on kb_document_links(site_id, to_document_id)"
             )
             await conn.execute(
                 "create index if not exists kb_entities_lookup_idx on kb_entities(space_id, entity_type, review_status)"
@@ -371,10 +448,21 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
                 "create index if not exists kb_search_items_lookup_idx on kb_search_items(space_id, item_type, review_status)"
             )
             await conn.execute(
-                "create index if not exists kb_search_items_search_idx on kb_search_items using gin(search_vector)"
+                "create index if not exists kb_search_items_embedding_idx on kb_search_items using hnsw (embedding vector_cosine_ops)"
             )
             await conn.execute(
-                "create index if not exists kb_search_items_embedding_idx on kb_search_items using hnsw (embedding vector_cosine_ops)"
+                """
+                create index if not exists kb_search_items_bm25_idx on kb_search_items
+                using bm25 (
+                    item_id,
+                    space_id,
+                    item_type,
+                    review_status,
+                    (title::pdb.ngram(2,4)),
+                    (content_text::pdb.ngram(2,4))
+                )
+                with (key_field='item_id')
+                """
             )
             await conn.execute(
                 "create index if not exists admission_plans_lookup_idx on admission_plans(space_id, year, province, subject_type)"
@@ -395,10 +483,38 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
                 "create index if not exists admission_media_items_lookup_idx on admission_media_items(space_id, category_name, review_status)"
             )
 
-    async def upsert_document(self, document: IndexedDocument) -> None:
+    async def close(self) -> None:
+        if self._pool is None:
+            return
+        await self._pool.close()
+        self._pool = None
+
+    async def _reset_vector_tables_if_embedding_dimensions_changed(self, conn: asyncpg.Connection) -> None:
+        for table in ("kb_chunks", "kb_search_items"):
+            row = await conn.fetchrow(
+                """
+                select format_type(a.atttypid, a.atttypmod) as vector_type
+                from pg_attribute a
+                join pg_class c on c.oid = a.attrelid
+                join pg_namespace n on n.oid = c.relnamespace
+                where n.nspname = current_schema()
+                  and c.relname = $1
+                  and a.attname = 'embedding'
+                  and not a.attisdropped
+                """,
+                table,
+            )
+            if row is None:
+                continue
+            if str(row["vector_type"]) != f"vector({self.embedding_dimensions})":
+                await conn.execute(f"drop table if exists {table} cascade")
+
+    async def upsert_document(self, document: IndexedDocument) -> bool:
         chunks = chunk_markdown(document.markdown)
-        embeddings = await self.embedding_provider.embed_texts(
-            [embedding_input(document.title, text) for text in chunks]
+        if await self._document_index_current(document, chunks):
+            return False
+        embeddings = await self.embedding_provider.embed_documents(
+            [embedding_input(document.title, text, alias_text=document.alias_text) for text in chunks]
         )
         self._validate_embeddings(embeddings)
         pool = await self._get_pool()
@@ -407,15 +523,16 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
                 await conn.execute(
                     """
                     insert into kb_documents (
-                        document_id, space_id, site_id, title, source_url, published_at,
+                        document_id, space_id, site_id, title, source_url, alias_text, published_at,
                         content_hash, markdown_path, raw_html_path, quality_json, status, updated_at
                     )
-                    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, 'active', now())
+                    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, 'active', now())
                     on conflict(document_id) do update set
                         space_id=excluded.space_id,
                         site_id=excluded.site_id,
                         title=excluded.title,
                         source_url=excluded.source_url,
+                        alias_text=excluded.alias_text,
                         published_at=excluded.published_at,
                         content_hash=excluded.content_hash,
                         markdown_path=excluded.markdown_path,
@@ -429,6 +546,7 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
                     document.site_id,
                     document.title,
                     document.source_url,
+                    document.alias_text,
                     document.published_at,
                     document.content_hash,
                     document.markdown_path,
@@ -438,28 +556,92 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
                 await conn.execute("delete from kb_chunks where document_id = $1", document.document_id)
                 for index, text in enumerate(chunks):
                     embedding = embeddings[index]
+                    chunk_id = f"{document.document_id}:{index}"
                     await conn.execute(
                         """
                         insert into kb_chunks (
-                            chunk_id, document_id, chunk_index, title, source_url,
-                            published_at, text, search_text, embedding, embedding_provider,
+                            chunk_id, document_id, space_id, chunk_index, title, source_url,
+                            alias_text, published_at, text, search_text, embedding, embedding_provider,
                             embedding_model, embedding_dimensions
                         )
-                        values ($1, $2, $3, $4, $5, $6, $7, $8, $9::vector, $10, $11, $12)
+                        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::vector, $12, $13, $14)
                         """,
-                        f"{document.document_id}:{index}",
+                        chunk_id,
                         document.document_id,
+                        document.space_id,
                         index,
                         document.title,
                         document.source_url,
+                        document.alias_text,
                         document.published_at,
                         text,
-                        searchable_text(f"{document.title}\n{text}"),
+                        searchable_text(f"{document.title}\n{document.alias_text}\n{text}"),
                         vector_literal(embedding),
                         self.embedding_provider.provider_id,
                         self.embedding_provider.model,
                         len(embedding),
                     )
+        return True
+
+    async def _document_index_current(self, document: IndexedDocument, chunks: list[str]) -> bool:
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                select title, source_url, alias_text, published_at, content_hash,
+                       markdown_path, raw_html_path, quality_json, status
+                from kb_documents
+                where document_id = $1
+                """,
+                document.document_id,
+            )
+            if row is None:
+                return False
+            stored_quality = row["quality_json"]
+            if isinstance(stored_quality, str):
+                stored_quality = json.loads(stored_quality)
+            if dict(stored_quality or {}) != document.quality:
+                return False
+            if (
+                str(row["title"]) != document.title
+                or str(row["source_url"]) != document.source_url
+                or str(row["alias_text"] or "") != document.alias_text
+                or row["published_at"] != document.published_at
+                or str(row["content_hash"]) != document.content_hash
+                or str(row["markdown_path"]) != document.markdown_path
+                or str(row["raw_html_path"]) != document.raw_html_path
+                or str(row["status"]) != "active"
+            ):
+                return False
+            chunk_rows = await conn.fetch(
+                """
+                select chunk_index, title, source_url, alias_text, published_at, text,
+                       search_text, embedding_provider, embedding_model, embedding_dimensions
+                from kb_chunks
+                where document_id = $1
+                order by chunk_index
+                """,
+                document.document_id,
+            )
+        if len(chunk_rows) != len(chunks):
+            return False
+        for index, text in enumerate(chunks):
+            row = chunk_rows[index]
+            if int(row["chunk_index"]) != index:
+                return False
+            if (
+                str(row["title"]) != document.title
+                or str(row["source_url"]) != document.source_url
+                or str(row["alias_text"] or "") != document.alias_text
+                or row["published_at"] != document.published_at
+                or str(row["text"]) != text
+                or str(row["search_text"]) != searchable_text(f"{document.title}\n{document.alias_text}\n{text}")
+                or str(row["embedding_provider"]) != self.embedding_provider.provider_id
+                or str(row["embedding_model"]) != self.embedding_provider.model
+                or int(row["embedding_dimensions"]) != self.embedding_dimensions
+            ):
+                return False
+        return True
 
     async def replace_site_documents(self, *, site_id: str, active_document_ids: list[str]) -> None:
         pool = await self._get_pool()
@@ -491,35 +673,83 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
                 stale_ids,
             )
             await conn.execute("delete from kb_chunks where document_id = any($1::text[])", stale_ids)
+            await conn.execute(
+                """
+                delete from kb_document_links
+                where from_document_id = any($1::text[]) or to_document_id = any($1::text[])
+                """,
+                stale_ids,
+            )
+
+    async def replace_site_document_links(self, *, site_id: str, links: list[IndexedDocumentLink]) -> int:
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute("delete from kb_document_links where site_id = $1", site_id)
+                count = 0
+                for link in links:
+                    if not link.from_document_id or not link.to_document_id:
+                        continue
+                    await conn.execute(
+                        """
+                        insert into kb_document_links (
+                            site_id, from_document_id, to_document_id, from_url, to_url,
+                            link_text, link_type, metadata_json, updated_at
+                        )
+                        values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, now())
+                        on conflict(site_id, from_document_id, to_document_id, link_text) do update set
+                            from_url=excluded.from_url,
+                            to_url=excluded.to_url,
+                            link_type=excluded.link_type,
+                            metadata_json=excluded.metadata_json,
+                            updated_at=now()
+                        """,
+                        link.site_id,
+                        link.from_document_id,
+                        link.to_document_id,
+                        link.from_url,
+                        link.to_url,
+                        link.link_text,
+                        link.link_type,
+                        json.dumps(link.metadata or {}, ensure_ascii=False),
+                    )
+                    count += 1
+        return count
 
     async def search(
         self,
         *,
         queries: list[str],
         space_ids: list[str],
+        entity_matches: tuple[EntityMatch, ...],
         top_k: int,
     ) -> list[RetrievedChunk]:
         route_queries = dedupe_queries(queries)
         search_space_ids = dedupe_space_ids(space_ids)
         if not route_queries:
             return []
-        query_vectors = await self.embedding_provider.embed_texts(route_queries)
+        query_vectors = await self.embedding_provider.embed_queries(route_queries)
         self._validate_embeddings(query_vectors)
         candidate_limit = max(50, top_k * 12)
         ranked_lists: list[tuple[str, float, list[dict[str, Any]]]] = []
         pool = await self._get_pool()
         async with pool.acquire() as conn:
             typed_conn = cast(asyncpg.Connection, conn)
+            entity = await self._entity_candidates(
+                typed_conn,
+                entity_matches=entity_matches,
+                space_ids=search_space_ids,
+                limit=candidate_limit,
+            )
+            ranked_lists.append(("entity", ENTITY_RRF_WEIGHT, entity))
             for route_index, (route_query, query_vector) in enumerate(zip(route_queries, query_vectors, strict=True)):
-                query_terms = extract_keyword_terms(route_query)
                 title = await self._title_candidates(
                     typed_conn,
                     query=route_query,
-                    query_terms=query_terms,
                     space_ids=search_space_ids,
                     limit=candidate_limit,
                 )
-                lexical = await self._lexical_candidates(
+                bm25 = await self._bm25_candidates(
                     typed_conn,
                     query=route_query,
                     space_ids=search_space_ids,
@@ -535,9 +765,9 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
                 route_factor = retrieval_route_weight(route_index, route_count=len(route_queries))
                 ranked_lists.extend(
                     [
-                        (f"{route_name}:title", route_factor * 1.35, title),
-                        (f"{route_name}:vector", route_factor * 1.0, vector),
-                        (f"{route_name}:lexical", route_factor * 0.35, lexical),
+                        (f"{route_name}:title", route_factor * TITLE_RRF_WEIGHT, title),
+                        (f"{route_name}:vector", route_factor * VECTOR_RRF_WEIGHT, vector),
+                        (f"{route_name}:bm25", route_factor * BM25_RRF_WEIGHT, bm25),
                     ]
                 )
 
@@ -549,21 +779,76 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
             ),
             reverse=True,
         )
+        scored_for_rerank = diversify_candidates_for_rerank(scored)
         route_metadata = [{"route": f"route_{index + 1}", "query": route_query} for index, route_query in enumerate(route_queries)]
+        reranked = await self.reranker.rerank(
+            question=route_queries[0],
+            candidates=[
+                RerankCandidate(
+                    candidate_id=str(item["chunk_id"]),
+                    title=rerank_title(str(item["title"]), str(item.get("alias_text") or "")),
+                    text=str(item["text"]),
+                    source=str(item["source_url"]),
+                    initial_score=float(item.get("score") or 0.0),
+                )
+                for item in scored_for_rerank
+            ],
+            top_k=min(len(scored), max(top_k * DOCUMENT_DEDUP_RERANK_MULTIPLIER, top_k)),
+        )
+        reranked = [item for item in reranked if item.score >= self.min_rerank_score]
+        by_chunk_id = {str(item["chunk_id"]): item for item in scored}
+        reranked_pages = group_reranks_by_content(reranked, by_chunk_id, top_k=top_k)
+        selected_reranked = [reranked_item for page in reranked_pages for reranked_item in page]
+        context_by_chunk_id = await self._expanded_context_by_chunk(
+            hits=[by_chunk_id[reranked_item.candidate.candidate_id] for reranked_item in selected_reranked],
+            query=route_queries[0],
+            space_ids=search_space_ids,
+        )
         chunks: list[RetrievedChunk] = []
-        for item in scored[:top_k]:
+        for page_reranks in reranked_pages:
+            reranked_item = page_reranks[0]
+            item = by_chunk_id[reranked_item.candidate.candidate_id]
+            page_items = [by_chunk_id[page_item.candidate.candidate_id] for page_item in page_reranks]
+            expanded_text = combine_page_contexts(
+                [
+                    context_by_chunk_id.get(str(page_item["chunk_id"])) or str(page_item["text"])
+                    for page_item in page_items
+                ]
+            )
+            rrf_score = float(item.get("score") or 0.0)
+            item["rrf_score"] = rrf_score
+            item["rerank_score"] = reranked_item.score
+            item["rerank_rationale"] = reranked_item.rationale
+            item["score"] = reranked_item.score
+            item["expanded_text"] = expanded_text
+            item["page_chunk_matches"] = [
+                {
+                    "chunk_id": page_item.candidate.candidate_id,
+                    "chunk_index": by_chunk_id[page_item.candidate.candidate_id].get("chunk_index"),
+                    "rerank_score": page_item.score,
+                    "rerank_rationale": page_item.rationale,
+                }
+                for page_item in page_reranks
+            ]
             metadata = {
                 "document_id": item["document_id"],
+                "content_hash": item.get("content_hash"),
                 "chunk_id": item["chunk_id"],
+                "chunk_index": item.get("chunk_index"),
+                "page_chunk_matches": item["page_chunk_matches"],
                 "score": item["score"],
-                "rrf_score": item["score"],
+                "rrf_score": item["rrf_score"],
+                "rerank_score": item["rerank_score"],
+                "rerank_rationale": item["rerank_rationale"],
                 "title_score": item.get("title_score", 0.0),
-                "lexical_score": item.get("lexical_score", 0.0),
+                "entity_score": item.get("entity_score", 0.0),
+                "bm25_score": item.get("bm25_score", 0.0),
                 "vector_score": item.get("vector_score", 0.0),
                 "best_rank": item.get("best_rank"),
                 "best_raw_score": item.get("best_raw_score", 0.0),
                 "retrieval_space_ids": search_space_ids,
                 "retrieval_routes": route_metadata,
+                "matched_entities": item.get("matched_entities", []),
                 "retrieval_matches": item.get("retrieval_matches", []),
                 "embedding_model": item.get("embedding_model"),
             }
@@ -576,7 +861,7 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
             )
             chunks.append(
                 RetrievedChunk(
-                    text=str(item["text"]),
+                    text=expanded_text,
                     score=float(item["score"]),
                     citation=citation,
                     metadata=dict(item),
@@ -684,42 +969,56 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
         item_types: list[str] | None = None,
         limit: int = 12,
     ) -> list[dict[str, Any]]:
-        query_vector = (await self.embedding_provider.embed_texts([query]))[0]
+        query_vector = (await self.embedding_provider.embed_queries([query]))[0]
         self._validate_embeddings([query_vector])
-        ts_query = build_tsquery(query)
         type_clause = "and (cardinality($2::text[]) = 0 or item_type = any($2::text[]))"
         searchable_space_ids = [space_id]
         if item_types == ["entity"] and space_id != GLOBAL_ENTITY_SPACE_ID:
             searchable_space_ids.append(GLOBAL_ENTITY_SPACE_ID)
-        lexical_sql = ""
-        if ts_query:
-            lexical_sql = f"""
-                union all
-                (
-                    select *, ts_rank_cd(search_vector, to_tsquery('simple', $4)) * 4.0 as score
-                    from kb_search_items
-                    where review_status = 'approved'
-                      and ($1 = '' or space_id = any($6::text[]))
-                      {type_clause}
-                      and search_vector @@ to_tsquery('simple', $4)
-                    limit $3
-                )
-            """
+        normalized_query = normalize_entity_text(query)
         pool = await self._get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch(
                 f"""
-                with candidates as (
-                    (
-                        select *, (1 - (embedding <=> $5::vector)) as score
-                        from kb_search_items
-                        where review_status = 'approved'
-                          and ($1 = '' or space_id = any($6::text[]))
-                          {type_clause}
-                        order by embedding <=> $5::vector
-                        limit $3
-                    )
-                    {lexical_sql}
+                with exact_entity_candidates as (
+                    select distinct on (i.item_id)
+                           i.*,
+                           (10000.0 + length(a.normalized_alias)::float + a.confidence) as score
+                    from kb_entity_aliases a
+                    join kb_search_items i on i.entity_id = a.entity_id and i.item_type = 'entity'
+                    where a.review_status = 'approved'
+                      and i.review_status = 'approved'
+                      and ($1 = '' or i.space_id = any($6::text[]))
+                      and ($7 <> '' and $7 like '%' || a.normalized_alias || '%')
+                      {type_clause}
+                    order by i.item_id, length(a.normalized_alias) desc, a.confidence desc
+                    limit $3
+                ),
+                vector_candidates as (
+                    select *, (1 - (embedding <=> $5::vector)) as score
+                    from kb_search_items
+                    where review_status = 'approved'
+                      and ($1 = '' or space_id = any($6::text[]))
+                      {type_clause}
+                    order by embedding <=> $5::vector
+                    limit $3
+                ),
+                bm25_candidates as (
+                    select *, pdb.score(item_id) as score
+                    from kb_search_items
+                    where review_status = 'approved'
+                      and ($1 = '' or space_id = any($6::text[]))
+                      {type_clause}
+                      and (title ||| $4 or content_text ||| $4)
+                    order by pdb.score(item_id) desc
+                    limit $3
+                ),
+                candidates as (
+                    select * from exact_entity_candidates
+                    union all
+                    select * from vector_candidates
+                    union all
+                    select * from bm25_candidates
                 ),
                 ranked as (
                     select distinct on (item_id) *
@@ -734,9 +1033,10 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
                 space_id,
                 item_types or [],
                 limit,
-                ts_query or "",
+                parade_query_text(query),
                 vector_literal(query_vector),
                 searchable_space_ids,
+                normalized_query,
             )
         return [record_to_dict(row) for row in rows]
 
@@ -777,7 +1077,7 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
     async def upsert_kb_search_items(self, rows: list[dict[str, Any]]) -> int:
         if not rows:
             return 0
-        embeddings = await self.embedding_provider.embed_texts([str(row["content_text"]) for row in rows])
+        embeddings = await self.embedding_provider.embed_documents([str(row["content_text"]) for row in rows])
         self._validate_embeddings(embeddings)
         pool = await self._get_pool()
         count = 0
@@ -1438,7 +1738,6 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
         conn: asyncpg.Connection,
         *,
         query: str,
-        query_terms: list[str],
         space_ids: list[str],
         limit: int,
     ) -> list[dict[str, Any]]:
@@ -1447,8 +1746,8 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
             return []
         rows = await conn.fetch(
             """
-            select c.chunk_id, c.document_id, d.space_id, c.title, c.source_url, c.published_at, c.text,
-                   c.embedding_model
+            select c.chunk_id, c.document_id, d.content_hash, c.chunk_index, d.space_id, c.title, c.source_url, c.published_at, c.text,
+                   c.alias_text, c.embedding_model
             from kb_chunks c
             join kb_documents d on d.document_id = c.document_id
             where c.chunk_index = 0 and d.status = 'active'
@@ -1457,19 +1756,15 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
             space_ids,
         )
         items = [record_to_dict(row) for row in rows]
-        title_frequencies = title_term_frequencies(items, query_terms)
-        title_count = len(items)
         candidates: list[dict[str, Any]] = []
         for item in items:
-            title = compact_text(str(item["title"]))
+            title_text = title_candidate_text(str(item["title"]), str(item.get("alias_text") or ""))
+            title = compact_text(title_text)
             if not title:
                 continue
             overlap = title_overlap_score(
                 query_compact=query_compact,
-                query_terms=query_terms,
                 title=title,
-                title_frequencies=title_frequencies,
-                title_count=title_count,
             )
             if is_site_entry_url(str(item.get("source_url") or "")) and title != query_compact:
                 overlap = min(overlap, 0.8)
@@ -1498,8 +1793,8 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
             return candidates
         rows = await conn.fetch(
             """
-            select c.chunk_id, c.document_id, d.space_id, c.title, c.source_url, c.published_at, c.text,
-                   c.embedding_model
+            select c.chunk_id, c.document_id, d.content_hash, c.chunk_index, d.space_id, c.title, c.source_url, c.published_at, c.text,
+                   c.alias_text, c.embedding_model
             from kb_chunks c
             join kb_documents d on d.document_id = c.document_id
             where c.document_id = any($1::text[]) and c.chunk_index > 0
@@ -1519,7 +1814,66 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
         expanded.sort(key=lambda item: float(item.get("title_score") or 0.0), reverse=True)
         return expanded[:limit]
 
-    async def _lexical_candidates(
+    async def _entity_candidates(
+        self,
+        conn: asyncpg.Connection,
+        *,
+        entity_matches: tuple[EntityMatch, ...],
+        space_ids: list[str],
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        strong_matches = [match for match in entity_matches if is_high_confidence_entity_match(match)]
+        if not strong_matches:
+            return []
+        score_by_entity_id: dict[str, float] = {}
+        matched_entity_by_id: dict[str, dict[str, Any]] = {}
+        for match in strong_matches:
+            score = entity_match_retrieval_score(match)
+            if score <= score_by_entity_id.get(match.entity_id, 0.0):
+                continue
+            score_by_entity_id[match.entity_id] = score
+            matched_entity_by_id[match.entity_id] = {
+                "entity_id": match.entity_id,
+                "entity_type": match.entity_type,
+                "canonical_name": match.canonical_name,
+                "matched_alias": match.matched_alias or match.canonical_name,
+                "alias_type": match.alias_type,
+                "score": match.score,
+            }
+        rows = await conn.fetch(
+            """
+            select distinct on (c.chunk_id)
+                   c.chunk_id, c.document_id, d.content_hash, c.chunk_index, d.space_id, c.title, c.source_url, c.published_at,
+                   c.text, c.alias_text, c.embedding_model, i.entity_id
+            from kb_search_items i
+            join kb_chunks c on (
+                (i.chunk_id is not null and i.chunk_id <> '' and c.chunk_id = i.chunk_id)
+                or
+                ((i.chunk_id is null or i.chunk_id = '') and i.document_id is not null and i.document_id <> '' and c.document_id = i.document_id)
+            )
+            join kb_documents d on d.document_id = c.document_id
+            where i.review_status = 'approved'
+              and i.entity_id = any($1::text[])
+              and d.status = 'active'
+              and (cardinality($2::text[]) = 0 or d.space_id = any($2::text[]))
+            order by c.chunk_id,
+                     case when i.chunk_id = c.chunk_id then 0 else 1 end,
+                     c.chunk_index
+            limit $3
+            """,
+            list(score_by_entity_id),
+            space_ids,
+            limit,
+        )
+        items = [record_to_dict(row) for row in rows]
+        for item in items:
+            entity_id = str(item.get("entity_id") or "")
+            item["entity_score"] = score_by_entity_id.get(entity_id, 0.0)
+            item["matched_entities"] = [matched_entity_by_id[entity_id]] if entity_id in matched_entity_by_id else []
+        items.sort(key=lambda item: float(item.get("entity_score") or 0.0), reverse=True)
+        return items[:limit]
+
+    async def _bm25_candidates(
         self,
         conn: asyncpg.Connection,
         *,
@@ -1527,29 +1881,29 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
         space_ids: list[str],
         limit: int,
     ) -> list[dict[str, Any]]:
-        ts_query = build_tsquery(query)
-        if not ts_query:
+        search_query = parade_query_text(query)
+        if not search_query:
             return []
         rows = await conn.fetch(
             """
-            select c.chunk_id, c.document_id, d.space_id, c.title, c.source_url, c.published_at, c.text,
-                   ts_rank_cd(c.search_vector, to_tsquery('simple', $1)) as lexical_score,
-                   c.embedding_model
+            select c.chunk_id, c.document_id, d.content_hash, c.chunk_index, d.space_id, c.title, c.source_url, c.published_at, c.text,
+                   c.alias_text, c.embedding_model,
+                   pdb.score(c.chunk_id) as bm25_score
             from kb_chunks c
             join kb_documents d on d.document_id = c.document_id
-            where c.search_vector @@ to_tsquery('simple', $1)
-              and d.status = 'active'
-              and (cardinality($2::text[]) = 0 or d.space_id = any($2::text[]))
-            order by lexical_score desc
+            where d.status = 'active'
+              and (cardinality($2::text[]) = 0 or c.space_id = any($2::text[]))
+              and (c.title ||| $1 or c.alias_text ||| $1 or c.search_text ||| $1)
+            order by pdb.score(c.chunk_id) desc
             limit $3
             """,
-            ts_query,
+            search_query,
             space_ids,
             limit,
         )
         items = [record_to_dict(row) for row in rows]
         for item in items:
-            item["lexical_score"] = min(4.0, float(item.get("lexical_score") or 0.0))
+            item["bm25_score"] = float(item.get("bm25_score") or 0.0)
         return items
 
     async def _vector_candidates(
@@ -1562,8 +1916,8 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
     ) -> list[dict[str, Any]]:
         rows = await conn.fetch(
             """
-            select c.chunk_id, c.document_id, d.space_id, c.title, c.source_url, c.published_at, c.text,
-                   c.embedding_model,
+            select c.chunk_id, c.document_id, d.content_hash, c.chunk_index, d.space_id, c.title, c.source_url, c.published_at, c.text,
+                   c.alias_text, c.embedding_model,
                    1 - (c.embedding <=> $1::vector) as vector_score
             from kb_chunks c
             join kb_documents d on d.document_id = c.document_id
@@ -1576,6 +1930,110 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
             space_ids,
             limit,
         )
+        return [record_to_dict(row) for row in rows]
+
+    async def _expanded_context_by_chunk(
+        self,
+        *,
+        hits: list[dict[str, Any]],
+        query: str,
+        space_ids: list[str],
+    ) -> dict[str, str]:
+        if not hits:
+            return {}
+        neighbor_rows = await self._neighbor_context_rows(hits=hits, space_ids=space_ids)
+        linked_rows = await self._linked_context_rows(hits=hits, query=query, space_ids=space_ids)
+        neighbor_by_chunk = group_neighbor_context(hits=hits, rows=neighbor_rows)
+        linked_by_chunk = group_linked_context(hits=hits, rows=linked_rows, query=query)
+        expanded: dict[str, str] = {}
+        for hit in hits:
+            chunk_id = str(hit["chunk_id"])
+            expanded[chunk_id] = build_expanded_chunk_text(
+                hit=hit,
+                neighbors=neighbor_by_chunk.get(chunk_id, []),
+                linked=linked_by_chunk.get(chunk_id, []),
+            )
+        return expanded
+
+    async def _neighbor_context_rows(
+        self,
+        *,
+        hits: list[dict[str, Any]],
+        space_ids: list[str],
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        values: list[Any] = []
+        for hit in hits:
+            document_id = str(hit.get("document_id") or "")
+            chunk_index = int(hit.get("chunk_index") or 0)
+            if not document_id:
+                continue
+            start_index = len(values) + 1
+            values.extend(
+                [
+                    document_id,
+                    max(0, chunk_index - CONTEXT_NEIGHBOR_RADIUS),
+                    chunk_index + CONTEXT_NEIGHBOR_RADIUS,
+                ]
+            )
+            clauses.append(
+                f"(c.document_id = ${start_index} and c.chunk_index between ${start_index + 1} and ${start_index + 2})"
+            )
+        if not clauses:
+            return []
+        values.append(space_ids)
+        space_index = len(values)
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                f"""
+                select c.chunk_id, c.document_id, c.chunk_index, d.space_id, c.title,
+                       c.source_url, c.published_at, c.text
+                from kb_chunks c
+                join kb_documents d on d.document_id = c.document_id
+                where ({' or '.join(clauses)})
+                  and d.status = 'active'
+                  and (cardinality(${space_index}::text[]) = 0 or d.space_id = any(${space_index}::text[]))
+                order by c.document_id, c.chunk_index
+                """,
+                *values,
+            )
+        return [record_to_dict(row) for row in rows]
+
+    async def _linked_context_rows(
+        self,
+        *,
+        hits: list[dict[str, Any]],
+        query: str,
+        space_ids: list[str],
+    ) -> list[dict[str, Any]]:
+        del query
+        document_ids = dedupe_space_ids([str(hit.get("document_id") or "") for hit in hits])
+        if not document_ids:
+            return []
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                select l.site_id, l.from_document_id, l.to_document_id, l.from_url, l.to_url,
+                       l.link_text, l.link_type,
+                       c.chunk_id, c.document_id, c.chunk_index, d.space_id, c.title,
+                       c.source_url, c.published_at, c.text
+                from kb_document_links l
+                join kb_chunks c on (
+                    (l.from_document_id = any($1::text[]) and c.document_id = l.to_document_id and c.chunk_index = 0)
+                    or
+                    (l.to_document_id = any($1::text[]) and c.document_id = l.from_document_id and c.chunk_index = 0)
+                )
+                join kb_documents d on d.document_id = c.document_id
+                where (l.from_document_id = any($1::text[]) or l.to_document_id = any($1::text[]))
+                  and l.link_type = 'content_link'
+                  and d.status = 'active'
+                  and (cardinality($2::text[]) = 0 or d.space_id = any($2::text[]))
+                """,
+                document_ids,
+                space_ids,
+            )
         return [record_to_dict(row) for row in rows]
 
     async def _get_pool(self) -> asyncpg.Pool:
@@ -1625,7 +2083,7 @@ STRUCTURED_FILTER_FIELDS: dict[str, set[str]] = {
 }
 
 
-def chunk_markdown(markdown: str, *, target_chars: int = 1200, overlap_chars: int = 160) -> list[str]:
+def chunk_markdown(markdown: str, *, target_chars: int = 800, overlap_chars: int = 120) -> list[str]:
     sections = split_markdown_sections(markdown)
     chunks: list[str] = []
     current = ""
@@ -1635,10 +2093,12 @@ def chunk_markdown(markdown: str, *, target_chars: int = 1200, overlap_chars: in
             continue
         if current:
             chunks.append(current)
-        while len(section) > target_chars:
-            chunks.append(section[:target_chars].strip())
-            section = section[target_chars - overlap_chars :].strip()
-        current = section
+        split_chunks = split_long_section(section, target_chars=target_chars, overlap_chars=overlap_chars)
+        if len(split_chunks) > 1:
+            chunks.extend(split_chunks)
+            current = ""
+        else:
+            current = split_chunks[0] if split_chunks else ""
     if current:
         chunks.append(current)
     return chunks or [markdown.strip()]
@@ -1658,17 +2118,71 @@ def split_markdown_sections(markdown: str) -> list[str]:
     return [part for part in parts if part]
 
 
-def embedding_input(title: str, text: str) -> str:
-    return f"{title.strip()}\n\n{text.strip()}".strip()
+def split_long_section(section: str, *, target_chars: int, overlap_chars: int) -> list[str]:
+    if len(section) <= target_chars:
+        return [section.strip()]
+    heading = first_markdown_heading(section)
+    body = section.strip()
+    chunks: list[str] = []
+    while len(body) > target_chars:
+        segment = body[:target_chars].strip()
+        chunks.append(with_section_heading(segment, heading))
+        body = body[target_chars - overlap_chars :].strip()
+    if body:
+        chunks.append(with_section_heading(body, heading))
+    return chunks
 
 
-def build_tsquery(query: str) -> str:
-    terms = [
-        compact_text(term)
-        for term in extract_keyword_terms(query)
-        if compact_text(term) and "'" not in term
-    ]
-    return " | ".join(f"{term}:*" for term in terms[:24])
+def first_markdown_heading(text: str) -> str:
+    for line in text.splitlines():
+        clean = line.strip()
+        if clean.startswith("#"):
+            return clean
+    return ""
+
+
+def with_section_heading(text: str, heading: str) -> str:
+    clean = text.strip()
+    if not heading or clean.startswith(heading):
+        return clean
+    return f"{heading}\n\n{clean}".strip()
+
+
+def embedding_input(title: str, text: str, *, alias_text: str = "") -> str:
+    return "\n\n".join(
+        part.strip()
+        for part in (title, alias_text, text)
+        if part and part.strip()
+    ).strip()
+
+
+def title_candidate_text(title: str, alias_text: str) -> str:
+    return "\n".join(
+        part.strip()
+        for part in (title, alias_text)
+        if part and part.strip()
+    )
+
+
+def rerank_title(title: str, alias_text: str) -> str:
+    clean_heading = alias_text.strip()
+    if not clean_heading:
+        return title
+    return f"{title}\n结构入口：{clean_heading[:300]}"
+
+
+def parade_query_text(query: str) -> str:
+    return re.sub(r"\s+", " ", query).strip()[:240]
+
+
+def is_high_confidence_entity_match(match: EntityMatch) -> bool:
+    return match.score >= 100.0 or match.alias_type == "relation_resolution"
+
+
+def entity_match_retrieval_score(match: EntityMatch) -> float:
+    if match.alias_type == "relation_resolution":
+        return 12.0
+    return min(12.0, 8.0 + max(0.0, match.score - 100.0) / 8.0)
 
 
 def dedupe_queries(queries: list[str]) -> list[str]:
@@ -1724,6 +2238,27 @@ def fuse_ranked_candidates(
     return list(combined.values())
 
 
+def diversify_candidates_for_rerank(
+    candidates: list[dict[str, Any]],
+    *,
+    per_content_limit: int = 2,
+) -> list[dict[str, Any]]:
+    primary: list[dict[str, Any]] = []
+    overflow: list[dict[str, Any]] = []
+    counts: dict[str, int] = {}
+    for candidate in candidates:
+        content_hash = str(candidate.get("content_hash") or "").strip()
+        if not content_hash:
+            raise BackendUnavailable("retrieval candidate missing content_hash")
+        count = counts.get(content_hash, 0)
+        counts[content_hash] = count + 1
+        if count < per_content_limit:
+            primary.append(candidate)
+        else:
+            overflow.append(candidate)
+    return [*primary, *overflow]
+
+
 def retrieval_route_weight(route_index: int, *, route_count: int) -> float:
     if route_count <= 1:
         return 1.0
@@ -1732,31 +2267,80 @@ def retrieval_route_weight(route_index: int, *, route_count: int) -> float:
 
 def merge_candidate_fields(item: dict[str, Any], row: dict[str, Any]) -> None:
     for key, value in row.items():
-        if key in {"title_score", "lexical_score", "vector_score"}:
+        if key in {"title_score", "entity_score", "bm25_score", "vector_score"}:
             item[key] = max(float(item.get(key) or 0.0), float(value or 0.0))
+        elif key == "matched_entities":
+            existing = list(item.get("matched_entities") or [])
+            seen = {str(entity.get("entity_id") or "") for entity in existing if isinstance(entity, dict)}
+            for entity in value or []:
+                if not isinstance(entity, dict):
+                    continue
+                entity_id = str(entity.get("entity_id") or "")
+                if entity_id and entity_id not in seen:
+                    existing.append(entity)
+                    seen.add(entity_id)
+            item[key] = existing
         elif key not in item or item[key] in (None, ""):
             item[key] = value
+
+
+def group_reranks_by_content(
+    reranked: list[RerankedCandidate],
+    by_chunk_id: dict[str, dict[str, Any]],
+    *,
+    top_k: int,
+) -> list[list[RerankedCandidate]]:
+    groups: list[list[RerankedCandidate]] = []
+    by_content: dict[str, list[RerankedCandidate]] = {}
+    seen_content: set[str] = set()
+    for item in reranked:
+        chunk_id = item.candidate.candidate_id
+        candidate = by_chunk_id.get(chunk_id)
+        if candidate is None:
+            continue
+        content_key = content_dedup_key(candidate)
+        if content_key not in seen_content:
+            if len(groups) >= top_k:
+                continue
+            seen_content.add(content_key)
+            by_content[content_key] = []
+            groups.append(by_content[content_key])
+        by_content[content_key].append(item)
+    return groups
+
+
+def content_dedup_key(candidate: dict[str, Any]) -> str:
+    value = str(candidate["content_hash"]).strip()
+    if not value:
+        raise BackendUnavailable("retrieval candidate is missing content_hash")
+    return value
+
+
+def combine_page_contexts(contexts: list[str]) -> str:
+    unique_contexts: list[str] = []
+    seen: set[str] = set()
+    for context in contexts:
+        clean = context.strip()
+        key = compact_text(clean)
+        if not clean or not key or key in seen:
+            continue
+        seen.add(key)
+        unique_contexts.append(clean)
+    if len(unique_contexts) == 1:
+        return truncate_context_parts(unique_contexts, max_chars=PAGE_CONTEXT_MAX_CHARS)
+    return truncate_context_parts(
+        [f"【同页命中 {index}】\n{context}" for index, context in enumerate(unique_contexts, start=1)],
+        max_chars=PAGE_CONTEXT_MAX_CHARS,
+    )
 
 
 def candidate_raw_score(row: dict[str, Any]) -> float:
     return max(
         float(row.get("title_score") or 0.0),
-        float(row.get("lexical_score") or 0.0),
+        float(row.get("entity_score") or 0.0),
+        float(row.get("bm25_score") or 0.0),
         float(row.get("vector_score") or 0.0),
     )
-
-
-def extract_keyword_terms(query: str) -> list[str]:
-    compact = compact_text(query)
-    terms = re.findall(r"[A-Za-z0-9]{2,}", query.lower())
-    terms.extend(chinese_ngrams(compact, min_n=2, max_n=4, limit=64))
-    seen: set[str] = set()
-    result: list[str] = []
-    for term in terms:
-        if term and term not in seen:
-            seen.add(term)
-            result.append(term)
-    return result
 
 
 def is_site_entry_url(url: str) -> bool:
@@ -1765,74 +2349,146 @@ def is_site_entry_url(url: str) -> bool:
 
 
 def searchable_text(text: str) -> str:
-    compact = compact_text(text)
-    return " ".join(
-        [
-            text,
-            " ".join(chinese_ngrams(compact, min_n=2, max_n=4, limit=600)),
-        ]
-    )
-
-
-def chinese_ngrams(text: str, *, min_n: int, max_n: int, limit: int) -> list[str]:
-    chinese_runs = re.findall(r"[\u4e00-\u9fff]+", text)
-    grams: list[str] = []
-    for run in chinese_runs:
-        for size in range(min_n, max_n + 1):
-            if len(run) < size:
-                continue
-            for index in range(0, len(run) - size + 1):
-                grams.append(run[index : index + size])
-                if len(grams) >= limit:
-                    return grams
-    return grams
-
-
-def title_term_frequencies(items: list[dict[str, Any]], query_terms: list[str]) -> dict[str, int]:
-    compact_terms = {compact_text(term) for term in query_terms if len(compact_text(term)) >= 2}
-    frequencies = dict.fromkeys(compact_terms, 0)
-    for item in items:
-        title = compact_text(str(item.get("title") or ""))
-        if not title:
-            continue
-        for term in compact_terms:
-            if term in title or title in term:
-                frequencies[term] += 1
-    return frequencies
+    return text.strip()
 
 
 def title_overlap_score(
     *,
     query_compact: str,
-    query_terms: list[str],
     title: str,
-    title_frequencies: dict[str, int],
-    title_count: int,
 ) -> float:
-    compact_terms = [compact_text(term) for term in query_terms if len(compact_text(term)) >= 2]
+    if title == query_compact:
+        return 10.0
     if title in query_compact:
-        frequency = max(title_frequencies.get(title, 0), 1)
-        idf = math.log((title_count + 1) / (frequency + 1)) + 1.0
         query_coverage = len(title) / max(len(query_compact), 1)
-        return min(4.0, max(3.6, 2.4 + idf * math.sqrt(query_coverage)))
-    matches = [term for term in compact_terms if term in title]
-    if not matches:
-        return 0.0
-    covered = [False] * len(title)
-    idf_sum = 0.0
-    for term in matches:
-        frequency = max(title_frequencies.get(term, 0), 1)
-        idf = math.log((title_count + 1) / (frequency + 1)) + 1.0
-        idf_sum += idf * min(len(term), 8)
-        start = title.find(term)
-        while start >= 0:
-            for index in range(start, min(start + len(term), len(title))):
-                covered[index] = True
-            start = title.find(term, start + 1)
-    title_coverage = sum(1 for item in covered if item) / max(len(title), 1)
-    query_span = min(1.0, len(title) / max(len(query_compact), 1) * 4.0)
-    idf_factor = min(1.0, idf_sum / 80.0)
-    return min(4.0, 0.4 + 2.8 * title_coverage * query_span + 0.8 * idf_factor)
+        return min(8.0, max(6.0, 5.0 + 3.0 * query_coverage))
+    if query_compact in title:
+        query_coverage = len(query_compact) / max(len(title), 1)
+        return min(7.0, max(5.5, 4.2 + 2.0 * query_coverage))
+    return 0.0
+
+
+def group_neighbor_context(
+    *,
+    hits: list[dict[str, Any]],
+    rows: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for hit in hits:
+        chunk_id = str(hit["chunk_id"])
+        document_id = str(hit["document_id"])
+        hit_index = int(hit.get("chunk_index") or 0)
+        candidates = [
+            row
+            for row in rows
+            if str(row.get("document_id") or "") == document_id and str(row.get("chunk_id") or "") != chunk_id
+        ]
+        candidates.sort(key=lambda row: (abs(int(row.get("chunk_index") or 0) - hit_index), int(row.get("chunk_index") or 0)))
+        grouped[chunk_id] = candidates
+    return grouped
+
+
+def group_linked_context(
+    *,
+    hits: list[dict[str, Any]],
+    rows: list[dict[str, Any]],
+    query: str,
+) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for hit in hits:
+        chunk_id = str(hit["chunk_id"])
+        document_id = str(hit["document_id"])
+        candidates = [
+            row
+            for row in rows
+            if row.get("from_document_id") == document_id or row.get("to_document_id") == document_id
+        ]
+        candidates.sort(key=lambda row: link_context_score(query=query, row=row, hit_document_id=document_id), reverse=True)
+        seen_docs: set[str] = set()
+        selected: list[dict[str, Any]] = []
+        for row in candidates:
+            linked_document_id = str(row.get("document_id") or "")
+            if not linked_document_id or linked_document_id in seen_docs:
+                continue
+            seen_docs.add(linked_document_id)
+            selected.append(row)
+            if len(selected) >= CONTEXT_LINK_LIMIT:
+                break
+        grouped[chunk_id] = selected
+    return grouped
+
+
+def link_context_score(*, query: str, row: dict[str, Any], hit_document_id: str) -> float:
+    text = compact_text(
+        " ".join(
+            [
+                str(row.get("link_text") or ""),
+                str(row.get("title") or ""),
+                str(row.get("text") or "")[:240],
+            ]
+        )
+    )
+    query_compact = compact_text(query)
+    score = 1.0 if row.get("from_document_id") == hit_document_id else 0.8
+    if query_compact and query_compact in text:
+        score += 6.0
+    for term in exact_query_terms(query):
+        compact_term = compact_text(term)
+        if len(compact_term) >= 2 and compact_term in text:
+            score += min(3.0, len(compact_term) / 2.0)
+    return score
+
+
+def exact_query_terms(query: str) -> list[str]:
+    terms = [query]
+    terms.extend(re.findall(r"[A-Za-z0-9]{2,}|[\u4e00-\u9fff]{2,}", query))
+    seen: set[str] = set()
+    result: list[str] = []
+    for term in terms:
+        compact = compact_text(term)
+        if not compact or compact in seen:
+            continue
+        seen.add(compact)
+        result.append(term)
+    return result
+
+
+def build_expanded_chunk_text(
+    *,
+    hit: dict[str, Any],
+    neighbors: list[dict[str, Any]],
+    linked: list[dict[str, Any]],
+) -> str:
+    parts = [f"【命中片段｜{hit.get('title')}】\n{str(hit.get('text') or '').strip()}"]
+    if neighbors:
+        parts.append(
+            "【同页前后文】\n"
+            + "\n\n".join(
+                f"- chunk {row.get('chunk_index')}：{str(row.get('text') or '').strip()}"
+                for row in sorted(neighbors, key=lambda item: int(item.get("chunk_index") or 0))
+                if str(row.get("text") or "").strip()
+            )
+        )
+    if linked:
+        parts.append(
+            "【链接相关页面】\n"
+            + "\n\n".join(
+                (
+                    f"- {row.get('title')}（{row.get('source_url')}；链接文字：{row.get('link_text') or '无'}）\n"
+                    f"{str(row.get('text') or '').strip()}"
+                )
+                for row in linked
+                if str(row.get("text") or "").strip()
+            )
+        )
+    return truncate_context_parts(parts, max_chars=CONTEXT_MAX_CHARS)
+
+
+def truncate_context_parts(parts: list[str], *, max_chars: int) -> str:
+    text = "\n\n".join(part.strip() for part in parts if part.strip())
+    if len(text) <= max_chars:
+        return text
+    return f"{text[:max_chars].rstrip()}\n\n【上下文已截断】"
 
 
 def normalize_filter(filters: dict[str, Any]) -> dict[str, Any]:

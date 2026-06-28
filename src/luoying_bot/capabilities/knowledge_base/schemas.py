@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field
 
 
 class KnowledgeAnswerRequest(BaseModel):
-    space_id: str | None = None
     question: str
     platform: str | None = None
     conversation_id: str | None = None
@@ -36,7 +35,6 @@ class KnowledgeAnswerResponse(BaseModel):
 
 
 class KnowledgeSearchRequest(BaseModel):
-    space_id: str | None = None
     query: str
     filters: dict[str, Any] = Field(default_factory=dict)
     top_k: int = Field(default=8, ge=1, le=20)

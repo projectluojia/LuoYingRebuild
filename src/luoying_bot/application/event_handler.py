@@ -174,7 +174,10 @@ class EventHandler:
             return Reply(text=''.join(sent_parts))
 
         agent_reply=await self.agent.reply(message)
-        rp_msg=self.risk_control_service.do_output_risk_control(agent_reply.text)
+        if agent_reply.metadata.get("skip_output_risk_control") is True:
+            rp_msg = agent_reply.text
+        else:
+            rp_msg=self.risk_control_service.do_output_risk_control(agent_reply.text)
         reply = Reply(
             text=rp_msg,
             metadata=dict(agent_reply.metadata),

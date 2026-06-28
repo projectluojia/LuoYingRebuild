@@ -25,7 +25,8 @@ from luoying_bot.capabilities.knowledge_base.embeddings import OpenAICompatibleE
 from luoying_bot.capabilities.knowledge_base.entity_resolver import EntityResolver
 from luoying_bot.capabilities.knowledge_base.policy import KnowledgeBasePolicy
 from luoying_bot.capabilities.knowledge_base.postgres_store import PostgresKnowledgeStore
-from luoying_bot.capabilities.knowledge_base.query_agent import KBQueryAgent
+from luoying_bot.capabilities.knowledge_base.query_agent import KBQueryAgent, KBRetrievalPlanner
+from luoying_bot.capabilities.knowledge_base.rerankers import LlmReranker
 from luoying_bot.capabilities.knowledge_base.semantic_layer import KnowledgeSemanticLayer
 from luoying_bot.config import settings
 from luoying_bot.infra.llm.openai_chat import OpenAICompatibleChatModel
@@ -129,20 +130,32 @@ async def _build_container(
             base_url=settings.kb_embedding_base_url,
             api_key=settings.kb_embedding_api_key,
             model=settings.kb_embedding_model,
+            query_instruction=settings.kb_embedding_query_instruction,
             batch_size=settings.kb_embedding_batch_size,
         ),
+        reranker=LlmReranker(
+            model,
+            candidate_limit=settings.kb_rerank_candidate_limit,
+            max_text_chars=settings.kb_rerank_max_text_chars,
+        ),
         embedding_dimensions=settings.kb_embedding_dimensions,
+        min_rerank_score=settings.kb_min_rerank_score,
     )
     await knowledge_store.ensure_schema()
+    knowledge_semantic_layer = KnowledgeSemanticLayer()
     kb_query_agent = KBQueryAgent(
         rag_backend=knowledge_store,
         analytics_engine=KnowledgeAnalyticsEngine(
             backend=knowledge_store,
             value_backend=knowledge_store,
             model=model,
-            semantic_layer=KnowledgeSemanticLayer(),
+            semantic_layer=knowledge_semantic_layer,
         ),
         entity_resolver=EntityResolver(knowledge_store),
+        retrieval_planner=KBRetrievalPlanner(
+            model,
+            semantic_layer=knowledge_semantic_layer,
+        ),
     )
     knowledge_base_service = KnowledgeBaseService(
         structured_backend=knowledge_store,
@@ -151,8 +164,14 @@ async def _build_container(
         config=KnowledgeBaseConfig(
             default_space_id=settings.kb_default_space_id,
             require_citation=settings.kb_require_citation,
+            min_relevance=settings.kb_min_relevance,
+            min_rerank_score=settings.kb_min_rerank_score,
         ),
-        policy=KnowledgeBasePolicy(require_citation=settings.kb_require_citation),
+        policy=KnowledgeBasePolicy(
+            require_citation=settings.kb_require_citation,
+            min_relevance=settings.kb_min_relevance,
+            min_rerank_score=settings.kb_min_rerank_score,
+        ),
     )
     #把以上东西打个包
     services = ServiceHub(

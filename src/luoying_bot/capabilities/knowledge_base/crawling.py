@@ -12,8 +12,13 @@ from luoying_bot.capabilities.knowledge_base.extraction import (
     is_asset_url,
     normalize_url,
 )
-from luoying_bot.capabilities.knowledge_base.postgres_store import IndexedDocument, PostgresKnowledgeStore
+from luoying_bot.capabilities.knowledge_base.postgres_store import IndexedDocument, IndexedDocumentLink, PostgresKnowledgeStore
 from luoying_bot.capabilities.knowledge_base.quality import MarkdownQualityChecker
+from luoying_bot.capabilities.knowledge_base.structure import (
+    document_retrieval_aliases,
+    extract_link_structure_texts,
+    retrieval_alias_text,
+)
 from luoying_bot.capabilities.knowledge_base.text_utils import now_iso, sha256_text
 
 
@@ -261,6 +266,15 @@ class KnowledgeCrawlRecorder:
         updated = 0
         graph_edges: list[dict[str, Any]] = []
         active_document_ids: list[str] = []
+        inbound_structure: dict[str, list[str]] = {}
+        for page_result in result.results:
+            if not page_result.parsed:
+                continue
+            for target_url, phrases in extract_link_structure_texts(
+                html=page_result.parsed.raw_html,
+                base_url=page_result.parsed.url,
+            ).items():
+                inbound_structure.setdefault(stable_document_id(target_url), []).extend(phrases)
         self.artifact_store.write_source(
             {
                 "site_id": config.site_id,
@@ -281,11 +295,17 @@ class KnowledgeCrawlRecorder:
         for page_result in result.results:
             if not page_result.parsed:
                 continue
+            retrieval_aliases = document_retrieval_aliases(
+                inbound_phrases=inbound_structure.get(stable_document_id(page_result.parsed.url), []),
+                excluded_phrases=[page_result.parsed.title],
+            )
             change, edges = await self._upsert_page(
                 config,
                 page_result.parsed,
                 run.get("id"),
                 depth=page_result.depth,
+                alias_text=retrieval_alias_text(retrieval_aliases),
+                retrieval_aliases=retrieval_aliases,
             )
             graph_edges.extend(edges)
             active_document_ids.append(stable_document_id(page_result.parsed.url))
@@ -294,6 +314,10 @@ class KnowledgeCrawlRecorder:
             elif change == "updated":
                 updated += 1
         self.artifact_store.write_graph(site_id=config.site_id, edges=graph_edges)
+        imported_links = await self.store.replace_site_document_links(
+            site_id=config.site_id,
+            links=[document_link_from_graph_edge(edge) for edge in graph_edges],
+        )
         await self.store.replace_site_documents(
             site_id=config.site_id,
             active_document_ids=active_document_ids,
@@ -302,7 +326,7 @@ class KnowledgeCrawlRecorder:
             run = await self.store.update_item(
                 "kb_crawl_runs",
                 str(run["id"]),
-                {"pages_created": created, "pages_updated": updated},
+                {"pages_created": created, "pages_updated": updated, "document_links": imported_links},
             )
         return run
 
@@ -313,6 +337,8 @@ class KnowledgeCrawlRecorder:
         run_id: Any,
         *,
         depth: int,
+        alias_text: str,
+        retrieval_aliases: list[str],
     ) -> tuple[str, list[dict[str, Any]]]:
         del run_id
         existing = await self.store.list_items(
@@ -339,6 +365,7 @@ class KnowledgeCrawlRecorder:
             quality=quality,
             depth=depth,
             links=page.links,
+            retrieval_aliases=retrieval_aliases,
         )
         graph_edges = self.artifact_store.graph_edges_for_page(
             site_id=config.site_id,
@@ -359,6 +386,7 @@ class KnowledgeCrawlRecorder:
                 raw_html_path=str(artifact.raw_html_path),
                 quality=quality,
                 markdown=page.markdown,
+                alias_text=alias_text,
             )
         )
         if current is None:
@@ -366,6 +394,19 @@ class KnowledgeCrawlRecorder:
         if current.get("content_hash") == artifact.metadata["content_hash"]:
             return "unchanged", graph_edges
         return "updated", graph_edges
+
+
+def document_link_from_graph_edge(edge: dict[str, Any]) -> IndexedDocumentLink:
+    return IndexedDocumentLink(
+        site_id=str(edge.get("site_id") or ""),
+        from_document_id=str(edge.get("from_id") or ""),
+        to_document_id=str(edge.get("to_id") or ""),
+        from_url=str(edge.get("from") or ""),
+        to_url=str(edge.get("to") or ""),
+        link_text=str(edge.get("text") or ""),
+        link_type=str(edge.get("type") or "content_link"),
+        metadata=edge,
+    )
 
 
 def apply_markdown_replacements(text: str, replacements: list[MarkdownReplacement]) -> str:

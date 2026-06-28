@@ -519,6 +519,7 @@ class AgentService:
         append_texts: list[str]=[]
         answer=None
         split = False
+        skip_output_risk_control = False
 
         invalid_action_count = 0
         max_invalid_actions = 3
@@ -616,6 +617,12 @@ class AgentService:
                 append_text=self._skill_append_text(skill_result)
                 if append_text:
                     append_texts.append(append_text)
+                if getattr(skill_result, "final_response", False):
+                    answer = str(skill_result.text or "").strip()
+                    skip_output_risk_control = bool(
+                        getattr(skill_result, "metadata", {}).get("skip_output_risk_control")
+                    )
+                    break
             except asyncio.TimeoutError:
                 observation_text = f"技能 {skill_name} 执行超时"
                 logger.warning("技能 %s 执行超时", skill_name, extra=extra)
@@ -648,7 +655,13 @@ class AgentService:
         answer = self._append_skill_texts(answer, append_texts)
         
         self.memory.append_user(message)
-        reply = Reply(text=answer, metadata={"split": split})
+        reply = Reply(
+            text=answer,
+            metadata={
+                "split": split,
+                "skip_output_risk_control": skip_output_risk_control,
+            },
+        )
         self.memory.append_assistant(context, reply)
         await self.skills.services.user_memory_service.record_turn(
             user_id=user_id,
@@ -800,6 +813,10 @@ class AgentService:
                 append_text = self._skill_append_text(skill_result)
                 if append_text:
                     append_texts.append(append_text)
+                if getattr(skill_result, "final_response", False):
+                    answer = str(skill_result.text or "").strip()
+                    yield answer
+                    break
             except asyncio.TimeoutError:
                 observation_text = f"技能 {skill_name} 执行超时"
                 logger.warning("技能 %s 执行超时", skill_name, extra=extra)

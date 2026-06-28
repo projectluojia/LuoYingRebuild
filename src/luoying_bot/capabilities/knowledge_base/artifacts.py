@@ -66,6 +66,7 @@ class MarkdownArtifactStore:
         quality: dict[str, Any],
         depth: int,
         links: list[dict[str, Any]],
+        retrieval_aliases: list[str] | None = None,
     ) -> KnowledgeArtifact:
         document_id = stable_document_id(url)
         source_dir = self._source_dir(site_id)
@@ -85,6 +86,7 @@ class MarkdownArtifactStore:
             "published_at": published_at,
             "content_hash": content_hash,
             "content_type": infer_content_type(url, markdown_body),
+            "retrieval_aliases": retrieval_aliases or [],
             "fetched_at": datetime.now().isoformat(timespec="seconds"),
             "depth": depth,
             "link_count": len(links),
