@@ -9,9 +9,11 @@ import websockets
 import logging
 from PIL import Image
 from luoying_bot.config import Settings
+from luoying_bot.constants import EMOJIS
 from luoying_bot.domain.context import ChannelType, ChatContext, ConversationTarget, Platform, UserIdentity
 from luoying_bot.domain.message import UniMessage
 from luoying_bot.ports.transport import ChatTransport
+
 
 logger = logging.getLogger(__name__)
 MAX_QQ_FILE_DOWNLOAD_BYTES = 25 * 1024 * 1024
@@ -171,7 +173,7 @@ class QQWsTransport(ChatTransport):
                 elif seg_type == 'reply': 
                     segments.append(('reply', {'message_id': str(seg_data.get('id', ''))}))
                 elif seg_type == 'face': 
-                    segments.append(('face', {'face_id': str(seg_data.get('id', ''))}))
+                    segments.append(('face', {'face_id': EMOJIS.get(int(seg_data.get('id', '')))} ))
                 elif seg_type == 'image': 
                     segments.append(('image', {'file': seg_data.get('file', '')}))
                 elif seg_type == 'file':
