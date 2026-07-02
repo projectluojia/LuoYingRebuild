@@ -373,12 +373,13 @@ class WebApiFactory:
             return current
 
         # Register voice router immediately so routes exist before lifespan fires.
+        # No prefix here — voice router already has prefix="/voice", and Vite's
+        # proxy strips the /api prefix from frontend requests (e.g. /api/voice/config → /voice/config).
         app.include_router(
             create_voice_router(
                 container_provider=container,
                 current_user_dependency=get_current_web_user,
             ),
-            prefix="/api",
         )
 
         @app.get("/health")
