@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from luoying_bot.application.agent.agent_service import AgentService
@@ -39,6 +40,7 @@ from luoying_bot.infra.scheduler.async_scheduler import AsyncScheduler
 from luoying_bot.infra.transports.cli_transport import CliTransport
 from luoying_bot.infra.transports.qq_ws_transport import QQWsTransport
 from luoying_bot.infra.transports.web_transport import WebTransport
+from luoying_bot.infra.voice.stub import StubVoiceAdapter
 from luoying_bot.ports.transport import ChatTransport
 
 @dataclass(slots=True)
@@ -124,55 +126,64 @@ async def _build_container(
         settings.openai_enable_thinking,
     )
 
-    knowledge_store = PostgresKnowledgeStore(
-        settings.kb_database_url,
-        embedding_provider=OpenAICompatibleEmbeddingProvider(
-            base_url=settings.kb_embedding_base_url,
-            api_key=settings.kb_embedding_api_key,
-            model=settings.kb_embedding_model,
-            query_instruction=settings.kb_embedding_query_instruction,
-            batch_size=settings.kb_embedding_batch_size,
-        ),
-        reranker=LlmReranker(
-            model,
-            candidate_limit=settings.kb_rerank_candidate_limit,
-            max_text_chars=settings.kb_rerank_max_text_chars,
-        ),
-        embedding_dimensions=settings.kb_embedding_dimensions,
-        min_rerank_score=settings.kb_min_rerank_score,
-    )
-    await knowledge_store.ensure_schema()
-    knowledge_semantic_layer = KnowledgeSemanticLayer()
-    kb_query_agent = KBQueryAgent(
-        rag_backend=knowledge_store,
-        analytics_engine=KnowledgeAnalyticsEngine(
-            backend=knowledge_store,
-            value_backend=knowledge_store,
-            model=model,
-            semantic_layer=knowledge_semantic_layer,
-        ),
-        entity_resolver=EntityResolver(knowledge_store),
-        retrieval_planner=KBRetrievalPlanner(
-            model,
-            semantic_layer=knowledge_semantic_layer,
-        ),
-    )
-    knowledge_base_service = KnowledgeBaseService(
-        structured_backend=knowledge_store,
-        query_agent=kb_query_agent,
-        answer_generator=KnowledgeAnswerGenerator(model),
-        config=KnowledgeBaseConfig(
-            default_space_id=settings.kb_default_space_id,
-            require_citation=settings.kb_require_citation,
-            min_relevance=settings.kb_min_relevance,
+    knowledge_store = None
+    knowledge_base_service = None
+    try:
+        knowledge_store = PostgresKnowledgeStore(
+            settings.kb_database_url,
+            embedding_provider=OpenAICompatibleEmbeddingProvider(
+                base_url=settings.kb_embedding_base_url,
+                api_key=settings.kb_embedding_api_key,
+                model=settings.kb_embedding_model,
+                query_instruction=settings.kb_embedding_query_instruction,
+                batch_size=settings.kb_embedding_batch_size,
+            ),
+            reranker=LlmReranker(
+                model,
+                candidate_limit=settings.kb_rerank_candidate_limit,
+                max_text_chars=settings.kb_rerank_max_text_chars,
+            ),
+            embedding_dimensions=settings.kb_embedding_dimensions,
             min_rerank_score=settings.kb_min_rerank_score,
-        ),
-        policy=KnowledgeBasePolicy(
-            require_citation=settings.kb_require_citation,
-            min_relevance=settings.kb_min_relevance,
-            min_rerank_score=settings.kb_min_rerank_score,
-        ),
-    )
+        )
+        await knowledge_store.ensure_schema()
+        knowledge_semantic_layer = KnowledgeSemanticLayer()
+        kb_query_agent = KBQueryAgent(
+            rag_backend=knowledge_store,
+            analytics_engine=KnowledgeAnalyticsEngine(
+                backend=knowledge_store,
+                value_backend=knowledge_store,
+                model=model,
+                semantic_layer=knowledge_semantic_layer,
+            ),
+            entity_resolver=EntityResolver(knowledge_store),
+            retrieval_planner=KBRetrievalPlanner(
+                model,
+                semantic_layer=knowledge_semantic_layer,
+            ),
+        )
+        knowledge_base_service = KnowledgeBaseService(
+            structured_backend=knowledge_store,
+            query_agent=kb_query_agent,
+            answer_generator=KnowledgeAnswerGenerator(model),
+            config=KnowledgeBaseConfig(
+                default_space_id=settings.kb_default_space_id,
+                require_citation=settings.kb_require_citation,
+                min_relevance=settings.kb_min_relevance,
+                min_rerank_score=settings.kb_min_rerank_score,
+            ),
+            policy=KnowledgeBasePolicy(
+                require_citation=settings.kb_require_citation,
+                min_relevance=settings.kb_min_relevance,
+                min_rerank_score=settings.kb_min_rerank_score,
+            ),
+        )
+    except Exception:
+        logging.warning(
+            "Knowledge Base failed to initialize — search/analytics will be unavailable. "
+            "Ensure PostgreSQL with pgvector and pg_search extensions is running.",
+            exc_info=True,
+        )
     #把以上东西打个包
     services = ServiceHub(
         ops=settings.ops,
@@ -189,6 +200,7 @@ async def _build_container(
         user_memory_service=user_memory_service,
         user_prompt_settings_service=user_prompt_settings_service,
         knowledge_base_service=knowledge_base_service,
+        voice=StubVoiceAdapter(),
     )
 
     #指令
