@@ -294,9 +294,29 @@ GET /download/web-user/aaa/ccc.py
 }
 ```
 
+### POST `/conversations`
+
+创建一个新对话线程，返回其 `thread_id`。默认标题为"新对话"。
+
+请求体：
+
+```json
+{
+  "title": "新对话"
+}
+```
+
+响应（201 Created）：
+
+```json
+{
+  "thread_id": "Platform.WEB:ChannelType.WEB:abc123"
+}
+```
+
 ### GET `/conversations/{thread_id}/messages`
 
-读取指定对话当前会喂给模型的上下文视图。该接口返回的是 `ConversationMemory.read()` 的适配结果：如果线程有压缩摘要，第一条可能是 `role=system` 的摘要，然后是最近保留的用户/助手消息。
+读取指定对话当前会喂给模型的上下文视图。
 
 查询参数：
 
@@ -348,6 +368,58 @@ GET /download/web-user/aaa/ccc.py
 常见错误：
 
 - `403`：无权删除该对话。
+
+### GET `/voice/config`
+
+查询语音功能的可用性状态。
+
+响应：
+
+```json
+{
+  "stt_enabled": true,
+  "tts_enabled": true
+}
+```
+
+`speech_to_text` / `text_to_speech` 均不可用时（`VOICE_PROVIDER` 未配置），返回 503。
+
+### POST `/voice/stt`
+
+将音频字节发送至语音识别服务，返回识别文本。
+
+请求体：`multipart/form-data`，字段名 `file`（音频文件）。
+
+响应（JSON）：
+
+```json
+{
+  "text": "识别出的文字内容"
+}
+```
+
+常见错误：
+
+- `400`：未提供音频文件。
+- `503`：语音服务不可用。
+
+### POST `/voice/tts`
+
+将文本转换为语音流。
+
+请求体：`multipart/form-data`：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `text` | string | 是 | 要转换的文本 |
+| `voice_id` | string | 否 | 音色 ID，默认为 `"default"` |
+
+响应：音频字节流（`audio/*`），由服务端 `text_to_speech` 返回的 chunk 拼接而成。
+
+常见错误：
+
+- `400`：未提供文本。
+- `503`：语音服务不可用。
 
 ### POST `/chat`
 
