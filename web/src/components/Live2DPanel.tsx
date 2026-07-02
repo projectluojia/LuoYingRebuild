@@ -1,4 +1,5 @@
 import { useLive2D } from '../live2d/Live2DContext';
+import { useEffect, useRef } from 'react';
 
 interface Live2DPanelProps {
   /** URL of a Live2D model manifest (e.g. .model3.json). */
@@ -10,7 +11,16 @@ interface Live2DPanelProps {
 
 /** Live2D avatar panel. Renders a placeholder when no model is loaded. */
 export function Live2DPanel({ collapsed = false, onToggleCollapse }: Live2DPanelProps) {
-  const { isLoaded } = useLive2D();
+  const { isLoaded, setCanvas } = useLive2D();
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Attach canvas to the controller as soon as it's mounted
+  useEffect(() => {
+    if (canvasRef.current) {
+      setCanvas(canvasRef.current);
+    }
+    return () => setCanvas(null);
+  }, [setCanvas]);
 
   if (collapsed) {
     return (
@@ -66,7 +76,7 @@ export function Live2DPanel({ collapsed = false, onToggleCollapse }: Live2DPanel
       {/* Canvas / placeholder */}
       <div className="flex-1 flex items-center justify-center relative overflow-hidden">
         {isLoaded ? (
-          <canvas id="live2d-canvas" className="w-full h-full" />
+          <canvas ref={canvasRef} className="w-full h-full" />
         ) : (
           <PlaceholderAvatar />
         )}

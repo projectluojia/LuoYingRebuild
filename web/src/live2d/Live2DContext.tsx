@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useCallback } from 'react';
-import type { Live2DContextValue, Live2DController } from './Live2DController';
+import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import type { Live2DController, Live2DContextValue } from './Live2DController';
+import { PixiLive2DController } from './PixiLive2DController';
 
 /** No-op controller used as the default when no model is loaded. */
 const NullController: Live2DController = {
@@ -10,6 +11,7 @@ const NullController: Live2DController = {
   startLipSync() {},
   stopLipSync() {},
   onTap() {},
+  setCanvas() {},
   destroy() {},
 };
 
@@ -33,10 +35,29 @@ export interface Live2DProviderProps {
 }
 
 export function Live2DProvider({ children, controller: providedController }: Live2DProviderProps) {
-  const [controller] = useState<Live2DController | null>(
-    providedController ?? NullController
-  );
   const [isLoaded, setIsLoaded] = useState(false);
+
+  // Create the Pixi controller once, or use provided controller / NullController
+  const [controller] = useState<Live2DController | null>(() => {
+    if (providedController !== undefined) return providedController;
+    if (import.meta.env.VITE_ENABLE_LIVE2D !== 'true') return NullController;
+    return new PixiLive2DController();
+  });
+
+  // Expose setCanvas so the panel can attach the canvas element
+  const setCanvas = useCallback((canvas: HTMLCanvasElement | null) => {
+    if (canvas && controller instanceof PixiLive2DController) {
+      controller.setCanvas(canvas);
+    }
+  }, [controller]);
+
+  // Auto-load model from env var when Pixi controller is active
+  useEffect(() => {
+    const modelUrl = import.meta.env.VITE_LIVE2D_MODEL_URL as string | undefined;
+    if (modelUrl && controller && !(controller === NullController)) {
+      controller.loadModel(modelUrl).then(() => setIsLoaded(true)).catch(console.error);
+    }
+  }, [controller]);
 
   const loadModel = useCallback(async (url: string) => {
     if (!controller) return;
@@ -58,7 +79,7 @@ export function Live2DProvider({ children, controller: providedController }: Liv
 
   return (
     <Live2DContext.Provider
-      value={{ controller, isLoaded, loadModel, setExpression, startLipSync, stopLipSync }}
+      value={{ controller, isLoaded, loadModel, setExpression, startLipSync, stopLipSync, setCanvas }}
     >
       {children}
     </Live2DContext.Provider>

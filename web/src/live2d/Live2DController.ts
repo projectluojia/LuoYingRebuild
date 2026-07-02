@@ -19,6 +19,9 @@ export interface Live2DController {
   /** Register a tap handler on a named hit area (e.g. "head", "body"). */
   onTap(hitArea: string, handler: () => void): void;
 
+  /** Attach the controller to a canvas element before loading a model. */
+  setCanvas(canvas: HTMLCanvasElement): void;
+
   /** Unload the current model and free resources. */
   destroy(): void;
 }
