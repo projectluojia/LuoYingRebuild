@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from luoying_bot.application.services.user_service import UserService
     from luoying_bot.ports.memory import ConversationMemory
     from luoying_bot.ports.transport import ChatTransport
+    from luoying_bot.ports.voice import VoicePort
 
 
 @dataclass(slots=True)
@@ -32,4 +33,5 @@ class ServiceHub:
     risk_control_service: 'RiskControlService'
     user_memory_service: 'UserMemoryService'
     user_prompt_settings_service: 'UserPromptSettingsService'
-    knowledge_base_service: 'KnowledgeBaseService'
+    knowledge_base_service: 'KnowledgeBaseService | None' = None
+    voice: 'VoicePort' = None  # type: ignore[assignment]
