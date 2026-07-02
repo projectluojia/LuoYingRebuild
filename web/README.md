@@ -17,7 +17,7 @@ npm run dev
 
 然后打开 http://127.0.0.1:5173 。
 
-> 前端开发服务器通过 Vite 代理将 `/api/*` 请求转发到 `http://127.0.0.1:18000`（后端地址），确保 LuoYing 后端已启动。
+> 前端开发服务器通过 Vite 代理将 `/api/*` 请求转发到 `http://127.0.0.1:8000`（后端地址），确保 LuoYing 后端已启动。
 
 ## 常用命令
 
@@ -57,13 +57,13 @@ src/
 
 ## API 代理
 
-开发环境下，Vite 将 `/api/*` 请求代理到后端（默认 `http://127.0.0.1:18000`）。代理规则定义在 `vite.config.ts`：
+开发环境下，Vite 将 `/api/*` 请求代理到后端（默认 `http://127.0.0.1:8000`）。代理规则定义在 `vite.config.ts`：
 
 ```ts
 server: {
   proxy: {
     '/api': {
-      target: 'http://127.0.0.1:18000',
+      target: 'http://127.0.0.1:8000',
       changeOrigin: true,
       rewrite: (path) => path.replace(/^\/api/, ''),
     },

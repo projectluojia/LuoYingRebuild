@@ -382,7 +382,7 @@ GET /download/web-user/aaa/ccc.py
 }
 ```
 
-`speech_to_text` / `text_to_speech` 均不可用时（`VOICE_PROVIDER` 未配置），返回 503。
+`stt_enabled` / `tts_enabled` 为 `false` 时表示对应功能不可用（`VOICE_PROVIDER` 未配置），此时前端应隐藏语音输入/合成按钮。
 
 ### POST `/voice/stt`
 

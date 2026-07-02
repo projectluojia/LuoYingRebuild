@@ -38,6 +38,8 @@ LuoYing 的目标不是只做一个固定功能的聊天机器人，而是提供
 - **多模态输入**：支持图片上传、QQ 图片下载、图片理解、OCR 与截图分析。
 - **外部信息**：天气查询、Tavily / DuckDuckGo 搜索兜底、arXiv 论文检索。
 - **Web API**：提供普通 `/chat` 与实验性 SSE `/chat/stream`。
+- **Web 界面**：React + Vite 前端，支持对话、Voice 语音合成、WebSocket 实时通信。
+- **Live2D 虚拟形象**：集成 pixi-live2d-display，支持模型加载、表情切换、唇形同步（由 TTS 音频驱动）。
 - **兼容模型服务**：可接入 DeepSeek、DashScope、OpenAI 或其他 OpenAI-compatible 服务。
 
 ## 项目状态

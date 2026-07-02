@@ -195,3 +195,15 @@ Test cases:
 - The `web/` directory should be added to the project's `.gitignore` for `node_modules/` and `dist/`. The existing `.gitignore` only covers Python artifacts.
 - The reference design repo (`LuoYing-Frontend`) is a static HTML/CSS/JS mockup with Arknights-inspired aesthetics. The chat frontend adapts its color palette and interaction patterns (directional shadows, cubic-bezier easing, hover lift effects) but does not replicate its game-specific layout or canvas particle effects.
 - The `MessageSegment(type="audio")` convention does not require a migration. It works immediately because `MessageSegment.type` is an unconstrained string and `_segment_to_llm_text` has a catch-all branch for unknown types. This means existing QQ and CLI pipelines ignore audio segments gracefully.
+
+---
+
+## 实现状态（截至 2026-07-02）
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| Phase 1 | 基础 Web 界面（对话、消息列表、输入区） | ✅ 已完成 |
+| Phase 2 | 语音功能（VoicePort 架构、`/voice/config`、`/voice/stt`、`/voice/tts`、前端录音/TTS 播放） | ✅ 已完成（STT/TTS 为 stub，端口已就绪） |
+| Phase 3 | WebSocket 实时通信 | ✅ 已完成 |
+| Phase 4 | Live2D 虚拟形象（Controller 接口、`PixiLive2DController`、`Live2DContext`、Panel、表情切换、唇形同步） | ✅ 已完成 |
+
