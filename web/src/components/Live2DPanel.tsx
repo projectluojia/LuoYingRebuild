@@ -1,26 +1,62 @@
 import { useLive2D } from '../live2d/Live2DContext';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 
 interface Live2DPanelProps {
-  /** URL of a Live2D model manifest (e.g. .model3.json). */
-  modelUrl?: string | null;
   /** Whether the panel is collapsed (thin strip). */
   collapsed?: boolean;
   onToggleCollapse?: () => void;
 }
 
-/** Live2D avatar panel. Renders a placeholder when no model is loaded. */
+/**
+ * Live2D avatar panel.
+ *
+ * When a model URL is configured via VITE_LIVE2D_MODEL_URL, the PIXI canvas
+ * is mounted and the Live2D model is loaded. Otherwise a CSS placeholder
+ * animation is shown.
+ */
 export function Live2DPanel({ collapsed = false, onToggleCollapse }: Live2DPanelProps) {
-  const { isLoaded, setCanvas } = useLive2D();
+  const { isLoaded, mount, controller } = useLive2D();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const mountedRef = useRef(false);
 
-  // Attach canvas to the controller as soon as it's mounted
+  // Mount / destroy PIXI lifecycle — runs whenever the panel becomes visible
   useEffect(() => {
-    if (canvasRef.current) {
-      setCanvas(canvasRef.current);
+    if (collapsed) {
+      // Clean up when collapsed
+      if (controller) {
+        controller.destroy();
+      }
+      mountedRef.current = false;
+      return;
     }
-    return () => setCanvas(null);
-  }, [setCanvas]);
+
+    if (mountedRef.current || !canvasRef.current) return;
+    mountedRef.current = true;
+
+    const canvas = canvasRef.current;
+    mount(canvas).catch((err) => {
+      console.error('[Live2DPanel] mount failed:', err);
+    });
+
+    return () => {
+      // Only destroy if the controller is PixiLive2DController
+      // (NullController.destroy is a no-op so this is safe)
+      controller?.destroy();
+      mountedRef.current = false;
+    };
+    // mount is stable (useCallback in context) — only re-run on prop change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collapsed]);
+
+  // Re-mount if canvas becomes available after initial render
+  useEffect(() => {
+    if (!collapsed && !mountedRef.current && canvasRef.current) {
+      mountedRef.current = true;
+      mount(canvasRef.current).catch((err) => {
+        console.error('[Live2DPanel] mount failed:', err);
+      });
+    }
+  }, [collapsed, mount]);
 
   if (collapsed) {
     return (
@@ -37,7 +73,10 @@ export function Live2DPanel({ collapsed = false, onToggleCollapse }: Live2DPanel
             borderRight: '1px solid rgba(255, 145, 164, 0.3)',
           }}
         >
-          <span className="text-2xl" style={{ transform: 'rotate(-90deg)', whiteSpace: 'nowrap', color: 'var(--color-pink-primary)' }}>
+          <span
+            className="text-2xl"
+            style={{ transform: 'rotate(-90deg)', whiteSpace: 'nowrap', color: 'var(--color-pink-primary)' }}
+          >
             🎭
           </span>
         </div>
@@ -73,10 +112,14 @@ export function Live2DPanel({ collapsed = false, onToggleCollapse }: Live2DPanel
         </button>
       </div>
 
-      {/* Canvas / placeholder */}
+      {/* Canvas area — always rendered so PIXI has a DOM node to attach to */}
       <div className="flex-1 flex items-center justify-center relative overflow-hidden">
         {isLoaded ? (
-          <canvas ref={canvasRef} className="w-full h-full" />
+          <canvas
+            ref={canvasRef}
+            className="w-full h-full"
+            style={{ display: 'block' }}
+          />
         ) : (
           <PlaceholderAvatar />
         )}

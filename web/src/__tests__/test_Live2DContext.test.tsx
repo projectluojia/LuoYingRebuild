@@ -1,5 +1,35 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
+
+// Stub window.Live2D before any module in the import chain tries to access it.
+// pixi-live2d-display checks this synchronously at module evaluation time (line ~1550).
+if (typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).Live2D = {};
+}
+
+vi.mock('pixi-live2d-display', () => ({
+  Live2DModel: {
+    from: vi.fn().mockResolvedValue({
+      on: vi.fn(),
+      once: vi.fn(),
+      expression: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      internalModel: { settings: {} },
+    }),
+  },
+}));
+
+vi.mock('pixi.js', () => ({
+  Application: vi.fn().mockImplementation(() => ({
+    init: vi.fn().mockResolvedValue(undefined),
+    stage: { removeChildren: vi.fn(), addChild: vi.fn() },
+    destroy: vi.fn(),
+  })),
+  Container: class MockContainer {},
+}));
+
+vi.mock('@pixi/react', () => ({}));
+
 import { Live2DProvider, useLive2D } from '../live2d/Live2DContext';
 import type { Live2DController } from '../live2d/Live2DController';
 

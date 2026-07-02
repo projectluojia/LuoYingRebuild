@@ -1,9 +1,10 @@
-import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import type { Live2DController, Live2DContextValue } from './Live2DController';
 import { PixiLive2DController } from './PixiLive2DController';
 
 /** No-op controller used as the default when no model is loaded. */
 const NullController: Live2DController = {
+  get isLoaded() { return false; },
   async loadModel() {
     console.warn('[Live2D] No model loaded — call setController() first');
   },
@@ -12,6 +13,7 @@ const NullController: Live2DController = {
   stopLipSync() {},
   onTap() {},
   setCanvas() {},
+  async mount() {},
   destroy() {},
 };
 
@@ -22,6 +24,8 @@ const Live2DContext = createContext<Live2DContextValue>({
   setExpression: () => {},
   startLipSync: () => {},
   stopLipSync: () => {},
+  setCanvas: () => {},
+  mount: async () => {},
 });
 
 export function useLive2D(): Live2DContextValue {
@@ -46,16 +50,34 @@ export function Live2DProvider({ children, controller: providedController }: Liv
 
   // Expose setCanvas so the panel can attach the canvas element
   const setCanvas = useCallback((canvas: HTMLCanvasElement | null) => {
-    if (canvas && controller instanceof PixiLive2DController) {
+    if (canvas && controller) {
       controller.setCanvas(canvas);
     }
   }, [controller]);
 
-  // Auto-load model from env var when Pixi controller is active
-  useEffect(() => {
+  /**
+   * Mount the controller on a canvas — this is the preferred entry point.
+   * Calls setCanvas + mount() + loadModel() in sequence.
+   */
+  const mount = useCallback(async (canvas: HTMLCanvasElement) => {
+    if (!controller) return;
+    controller.setCanvas(canvas);
+    await controller.mount(canvas);
     const modelUrl = import.meta.env.VITE_LIVE2D_MODEL_URL as string | undefined;
-    if (modelUrl && controller && !(controller === NullController)) {
-      controller.loadModel(modelUrl).then(() => setIsLoaded(true)).catch(console.error);
+    if (modelUrl) {
+      await controller.loadModel(modelUrl);
+    }
+    setIsLoaded(controller.isLoaded);
+  }, [controller]);
+
+  // Auto-load model from env var when Pixi controller is active (backward compat)
+  useEffect(() => {
+    if (!controller || controller === NullController) return;
+    const modelUrl = import.meta.env.VITE_LIVE2D_MODEL_URL as string | undefined;
+    if (modelUrl && !controller.isLoaded) {
+      controller.loadModel(modelUrl)
+        .then(() => setIsLoaded(controller.isLoaded))
+        .catch(console.error);
     }
   }, [controller]);
 
@@ -79,7 +101,7 @@ export function Live2DProvider({ children, controller: providedController }: Liv
 
   return (
     <Live2DContext.Provider
-      value={{ controller, isLoaded, loadModel, setExpression, startLipSync, stopLipSync, setCanvas }}
+      value={{ controller, isLoaded, loadModel, setExpression, startLipSync, stopLipSync, setCanvas, mount }}
     >
       {children}
     </Live2DContext.Provider>
