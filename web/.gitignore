@@ -29,3 +29,13 @@ coverage/
 test-results/
 playwright-report/
 *.trace
+
+# Live2D large assets (deploy separately)
+public/live2d-libs/*.wasm
+public/live2d-libs/*.onnx
+public/live2d-models/*/runtime/*.moc3
+public/live2d-models/*/runtime/**/*.png
+public/live2d/libs/*.wasm
+public/live2d/libs/*.onnx
+public/live2d/models/*/runtime/*.moc3
+public/live2d/models/*/**/*.png
