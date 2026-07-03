@@ -54,7 +54,12 @@ export function ConversationList({ activeId, onSelect }: ConversationListProps) 
     <div className="space-y-1 p-2">
       <button
         onClick={handleNew}
-        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all hover-lift"
+        style={{
+          background: 'rgba(74, 169, 255, 0.12)',
+          border: '1px solid rgba(74, 169, 255, 0.25)',
+          color: 'var(--color-blue-deep)',
+        }}
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -63,22 +68,37 @@ export function ConversationList({ activeId, onSelect }: ConversationListProps) 
       </button>
 
       {loading && (
-        <div className="px-3 py-2 text-xs text-gray-400">加载中...</div>
+        <div className="px-3 py-2 text-xs animate-pulse" style={{ color: 'var(--color-blue-deep)', opacity: 0.5 }}>
+          加载中...
+        </div>
       )}
 
       {!loading && conversations.length === 0 && (
-        <div className="px-3 py-2 text-xs text-gray-400">暂无对话</div>
+        <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-blue-deep)', opacity: 0.5 }}>
+          暂无对话
+        </div>
       )}
 
       {conversations.map((conv) => (
         <div
           key={conv.thread_id}
           onClick={() => onSelect(conv.thread_id)}
-          className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors ${
-            conv.thread_id === activeId
-              ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+          className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm cursor-pointer transition-all hover-lift ${
+            conv.thread_id === activeId ? 'animate-spring' : ''
           }`}
+          style={
+            conv.thread_id === activeId
+              ? {
+                  background: 'rgba(255, 145, 164, 0.15)',
+                  borderLeft: '3px solid var(--color-pink-primary)',
+                  color: 'var(--color-blue-deep)',
+                  fontWeight: 500,
+                }
+              : {
+                  color: 'var(--color-blue-deep)',
+                  opacity: 0.7,
+                }
+          }
         >
           <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -86,10 +106,14 @@ export function ConversationList({ activeId, onSelect }: ConversationListProps) 
           <span className="flex-1 truncate">{conv.title || '无标题对话'}</span>
           <button
             onClick={(e) => handleDelete(e, conv.thread_id)}
-            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 transition-opacity"
+            className="opacity-0 group-hover:opacity-100 p-1 rounded transition-all hover-scale"
+            style={{
+              background: 'rgba(229, 62, 62, 0.1)',
+              color: '#e53e3e',
+            }}
             aria-label="Delete conversation"
           >
-            <svg className="w-3.5 h-3.5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>

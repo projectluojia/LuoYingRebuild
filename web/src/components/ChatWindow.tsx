@@ -18,7 +18,7 @@ export function ChatWindow({ messages, isStreaming, onSend }: ChatWindowProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -92,7 +92,7 @@ export function ChatWindow({ messages, isStreaming, onSend }: ChatWindowProps) {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
         {messages.length === 0 && (
-          <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+          <div className="flex items-center justify-center h-full text-sm" style={{ color: '#8fa8c8' }}>
             开始聊天吧
           </div>
         )}
@@ -109,14 +109,14 @@ export function ChatWindow({ messages, isStreaming, onSend }: ChatWindowProps) {
       </div>
 
       {/* Input area */}
-      <form onSubmit={handleSubmit} className="border-t border-gray-200 dark:border-gray-700 p-4 space-y-3">
+      <form onSubmit={handleSubmit} className="p-4 space-y-3" style={{ borderTop: '1px solid rgba(74, 169, 255, 0.2)' }}>
         {/* Pending attachments preview */}
         {pendingAttachments.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {pendingAttachments.map((att) => (
               <div
                 key={att.id}
-                className="relative group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs"
+                className="relative group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-all hover-lift"
                 style={{
                   background: 'rgba(74, 169, 255, 0.12)',
                   border: '1px solid rgba(74, 169, 255, 0.3)',
@@ -157,7 +157,7 @@ export function ChatWindow({ messages, isStreaming, onSend }: ChatWindowProps) {
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isStreaming || uploading}
-                className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-105 disabled:opacity-40"
+                className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover-lift disabled:opacity-40"
                 style={{
                   background: 'rgba(74, 169, 255, 0.12)',
                   border: '1px solid rgba(74, 169, 255, 0.3)',
@@ -180,7 +180,7 @@ export function ChatWindow({ messages, isStreaming, onSend }: ChatWindowProps) {
                 type="button"
                 onClick={() => imageInputRef.current?.click()}
                 disabled={isStreaming || uploading}
-                className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-xs shadow-sm transition-all hover:scale-110 disabled:opacity-40"
+                className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-xs shadow-sm transition-all hover-scale disabled:opacity-40"
                 style={{
                   background: 'var(--color-pink-primary)',
                   color: 'white',
@@ -216,13 +216,35 @@ export function ChatWindow({ messages, isStreaming, onSend }: ChatWindowProps) {
             onKeyDown={handleKeyDown}
             placeholder="输入消息..."
             rows={1}
-            className="flex-1 resize-none rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 resize-none rounded-xl px-4 py-2.5 text-sm placeholder-gray-400 transition-all outline-none"
+            style={{
+              background: 'rgba(255, 255, 255, 0.85)',
+              border: '1px solid rgba(74, 169, 255, 0.3)',
+              borderLeft: '3px solid var(--color-blue-light)',
+              color: 'var(--color-blue-deep)',
+              boxShadow: 'var(--shadow-panel-sm)',
+            }}
+            onFocus={(e) => {
+              e.target.style.background = 'rgba(255, 255, 255, 0.95)';
+              e.target.style.borderColor = 'var(--color-blue-light)';
+              e.target.style.boxShadow = 'var(--shadow-panel-hover), var(--shadow-glow-blue)';
+            }}
+            onBlur={(e) => {
+              e.target.style.background = 'rgba(255, 255, 255, 0.85)';
+              e.target.style.borderColor = 'rgba(74, 169, 255, 0.3)';
+              e.target.style.boxShadow = 'var(--shadow-panel-sm)';
+            }}
             disabled={isStreaming}
           />
           <button
             type="submit"
             disabled={(!input.trim() && pendingAttachments.length === 0) || isStreaming || uploading}
-            className="shrink-0 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="shrink-0 rounded-xl px-4 py-2.5 text-sm font-medium text-white transition-all hover-lift disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              background: isStreaming || (!input.trim() && pendingAttachments.length === 0)
+                ? 'rgba(74, 169, 255, 0.5)'
+                : 'var(--color-blue-light)',
+            }}
           >
             {isStreaming ? '...' : '发送'}
           </button>

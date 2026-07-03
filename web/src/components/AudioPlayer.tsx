@@ -17,11 +17,22 @@ export function AudioPlayer({ text, voiceId, className = '' }: AudioPlayerProps)
     <button
       type="button"
       onClick={speaking ? stopSpeaking : () => speak(text, voiceId)}
-      className={`p-2 rounded-full transition-colors ${className} ${
-        speaking
-          ? 'bg-blue-100 hover:bg-blue-200 text-blue-500 animate-pulse'
-          : 'bg-blue-50 hover:bg-blue-100 text-blue-400'
+      className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all hover-lift hover-scale ${className} ${
+        speaking ? 'animate-pulse' : ''
       }`}
+      style={
+        speaking
+          ? {
+              background: 'linear-gradient(135deg, rgba(255, 145, 164, 0.25), rgba(74, 169, 255, 0.25))',
+              color: 'var(--color-pink-primary)',
+              boxShadow: 'var(--shadow-glow-pink)',
+            }
+          : {
+              background: 'rgba(74, 169, 255, 0.12)',
+              border: '1px solid rgba(74, 169, 255, 0.25)',
+              color: 'var(--color-blue-light)',
+            }
+      }
       aria-label={speaking ? 'Stop speaking' : 'Play voice'}
     >
       {speaking ? (

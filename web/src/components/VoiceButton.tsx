@@ -37,11 +37,22 @@ export function VoiceButton({ onTranscript, className = '' }: VoiceButtonProps) 
       type="button"
       onClick={handleClick}
       disabled={transcribing}
-      className={`p-2 rounded-full transition-colors ${className} ${
-        recording
-          ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
-          : 'bg-pink-100 hover:bg-pink-200 text-pink-500'
+      className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all hover-lift hover-scale ${className} ${
+        recording ? 'animate-pulse' : ''
       }`}
+      style={
+        recording
+          ? {
+              background: 'linear-gradient(135deg, rgba(229, 62, 62, 0.9), rgba(245, 101, 101, 0.85))',
+              color: 'white',
+              boxShadow: 'var(--shadow-glow-pink)',
+            }
+          : {
+              background: 'rgba(255, 145, 164, 0.15)',
+              border: '1px solid rgba(255, 145, 164, 0.3)',
+              color: 'var(--color-pink-primary)',
+            }
+      }
       aria-label={recording ? 'Stop recording' : 'Start voice input'}
     >
       {recording ? (

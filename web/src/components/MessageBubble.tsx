@@ -15,13 +15,26 @@ export function MessageBubble({ role, content, attachments, isStreaming }: Messa
   const isUser = role === 'user';
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-spring`}>
       <div
-        className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
+        className={`max-w-[80%] rounded-2xl px-4 py-3 ${
           isUser
-            ? 'bg-blue-600 text-white rounded-br-md'
-            : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-md'
+            ? 'rounded-br-md'
+            : 'rounded-bl-md'
         }`}
+        style={{
+          background: isUser
+            ? 'linear-gradient(135deg, var(--color-blue-light) 0%, #6bbfff 100%)'
+            : 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(232, 243, 255, 0.90) 100%)',
+          color: isUser ? 'white' : 'var(--color-blue-deep)',
+          boxShadow: isUser
+            ? '-4px 4px 15px rgba(74, 169, 255, 0.35)'
+            : 'var(--shadow-panel-sm)',
+          border: isUser
+            ? 'none'
+            : '1px solid rgba(74, 169, 255, 0.15)',
+          borderLeft: isUser ? 'none' : '3px solid var(--color-pink-primary)',
+        }}
       >
         {/* Attachments for user messages */}
         {isUser && attachments && attachments.length > 0 && (
@@ -60,7 +73,7 @@ export function MessageBubble({ role, content, attachments, isStreaming }: Messa
         {isUser ? (
           <p className="whitespace-pre-wrap text-sm leading-relaxed">{content}</p>
         ) : (
-          <div className="prose prose-sm dark:prose-invert max-w-none">
+          <div className="prose prose-sm max-w-none">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeHighlight, rehypeRaw]}
@@ -68,7 +81,7 @@ export function MessageBubble({ role, content, attachments, isStreaming }: Messa
               {content}
             </ReactMarkdown>
             {isStreaming && (
-              <span className="inline-block ml-1 animate-pulse">▌</span>
+              <span className="inline-block ml-1 animate-pulse" style={{ color: 'var(--color-pink-primary)' }}>▌</span>
             )}
           </div>
         )}

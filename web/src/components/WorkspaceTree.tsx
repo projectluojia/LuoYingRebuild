@@ -42,8 +42,11 @@ function TreeNode({ node, depth }: TreeNodeProps) {
   return (
     <div>
       <div
-        className="flex items-center gap-1.5 py-1 px-2 rounded-lg cursor-pointer hover:bg-blue-50/60 transition-colors group"
-        style={{ paddingLeft: indent + 8 }}
+        className="relative flex items-center gap-1.5 py-1.5 px-2 rounded-lg cursor-pointer transition-all hover-lift group"
+        style={{
+          paddingLeft: indent + 8,
+          background: 'transparent',
+        }}
         onClick={handleClick}
         title={node.path}
       >
@@ -51,19 +54,21 @@ function TreeNode({ node, depth }: TreeNodeProps) {
         {Array.from({ length: depth }).map((_, i) => (
           <div
             key={i}
-            className="absolute w-px bg-blue-200/50"
+            className="absolute w-px bg-pink-200/30"
             style={{ left: indent - (depth - i - 1) * 16 + 16, height: '100%' }}
           />
         ))}
 
         {/* Expand/collapse icon */}
         <span
-          className={`w-4 h-4 flex items-center justify-center text-xs transition-transform ${
-            node.type === 'directory' ? 'opacity-100' : 'opacity-0'
-          }`}
-          style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)' }}
+          className="w-4 h-4 flex items-center justify-center text-xs transition-transform duration-200"
+          style={{
+            opacity: node.type === 'directory' ? 1 : 0,
+            transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
+            color: 'var(--color-pink-primary)',
+          }}
         >
-          {node.type === 'directory' ? '▶' : '📄'}
+          ▶
         </span>
 
         {/* Icon */}
@@ -82,17 +87,20 @@ function TreeNode({ node, depth }: TreeNodeProps) {
 
         {/* Size */}
         {node.size != null && node.type === 'file' && (
-          <span className="text-xs opacity-50">{formatSize(node.size)}</span>
+          <span className="text-xs opacity-50" style={{ color: 'var(--color-blue-deep)' }}>
+            {formatSize(node.size)}
+          </span>
         )}
 
         {/* Download button for files */}
         {node.type === 'file' && node.url && (
           <button
             onClick={handleDownload}
-            className="opacity-0 group-hover:opacity-100 px-1.5 py-0.5 rounded text-xs transition-opacity"
+            className="opacity-0 group-hover:opacity-100 px-1.5 py-0.5 rounded text-xs transition-all hover-scale"
             style={{
               background: 'rgba(74, 169, 255, 0.15)',
               color: 'var(--color-blue-deep)',
+              border: '1px solid rgba(74, 169, 255, 0.25)',
             }}
             title="下载"
           >
@@ -162,19 +170,23 @@ export function WorkspaceTree() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="w-5 h-5 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--color-blue-light)', borderTopColor: 'transparent' }} />
+        <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--color-pink-primary)', borderTopColor: 'transparent' }} />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="text-center py-4 text-xs" style={{ color: '#e53e3e' }}>
+      <div className="text-center py-4 text-xs animate-spring" style={{ color: '#e53e3e' }}>
         <div className="mb-2">⚠️ {error}</div>
         <button
           onClick={() => setRefreshKey((k) => k + 1)}
-          className="px-3 py-1 rounded text-xs transition-opacity hover:opacity-80"
-          style={{ background: 'rgba(229, 62, 62, 0.1)', color: '#e53e3e' }}
+          className="px-3 py-1.5 rounded-lg text-xs transition-all hover-lift"
+          style={{
+            background: 'rgba(229, 62, 62, 0.1)',
+            color: '#e53e3e',
+            border: '1px solid rgba(229, 62, 62, 0.3)',
+          }}
         >
           重试
         </button>
@@ -193,13 +205,17 @@ export function WorkspaceTree() {
   return (
     <div className="space-y-0.5">
       {/* Root label + refresh */}
-      <div className="flex items-center justify-between px-2 py-1 mb-1">
-        <span className="text-xs font-semibold uppercase tracking-wider opacity-50" style={{ color: 'var(--color-blue-deep)' }}>
+      <div className="flex items-center justify-between px-2 py-2 mb-2 rounded-lg" style={{ background: 'rgba(74, 169, 255, 0.08)' }}>
+        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-blue-deep)', opacity: 0.7 }}>
           {tree.name}
         </span>
         <button
           onClick={() => setRefreshKey((k) => k + 1)}
-          className="w-5 h-5 rounded flex items-center justify-center text-xs opacity-40 hover:opacity-80 transition-opacity"
+          className="w-6 h-6 rounded-lg flex items-center justify-center text-xs transition-all hover-scale"
+          style={{
+            background: 'rgba(74, 169, 255, 0.1)',
+            color: 'var(--color-blue-deep)',
+          }}
           title="刷新"
         >
           ↻
