@@ -590,6 +590,29 @@ class WebApiFactory:
                 deleted=current.services.memory.delete_thread(thread_id)
             )
 
+        @app.get("/events")
+        async def events_stream(
+            user: WebCurrentUser = Depends(get_current_web_user),
+        ) -> StreamingResponse:
+            """SSE endpoint for push notifications (reminders, alerts).
+
+            The web frontend (useReminderSSE) opens an EventSource to this
+            endpoint to receive reminder toast notifications.  Currently
+            delivers a keepalive heartbeat; reminder events will be routed
+            here once the WebTransport dispatches them to a per-user queue.
+            """
+
+            async def event_generator():
+                yield _sse("connected", {"user_id": user.user_id})
+                while True:
+                    try:
+                        await asyncio.sleep(30.0)
+                        yield ": keepalive\n\n"
+                    except asyncio.CancelledError:
+                        break
+
+            return StreamingResponse(event_generator(), media_type="text/event-stream")
+
         @app.post("/chat/stream")
         async def chat_stream(
             req: ChatRequest,
