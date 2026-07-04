@@ -57,7 +57,7 @@ export default function ChatMessage({ message, isGenerating = false }: ChatMessa
         </div>
       ) : (
         <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-white ring-1 ring-[#0067B1]/15">
-          <img src="/images/sai-whu-emblem.png" alt="珞樱" className="h-full w-full object-contain p-0.5" />
+          <img src="/public/images/sai-whu-emblem.png" alt="珞樱" className="h-full w-full object-contain p-0.5" />
           {isStreaming && isGenerating && (
             <span className="absolute inset-0 rounded-full ring-2 ring-[#0067B1]/30 animate-pulse" />
           )}

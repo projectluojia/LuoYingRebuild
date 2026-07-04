@@ -95,7 +95,7 @@ export default function Chat() {
   return (
     <div className="relative min-h-[100dvh] overflow-hidden bg-[#f8fafc] pt-16 text-[#1e293b]">
       <img
-        src="/images/luoying-campus-ai-bg.png"
+        src="/public/images/luoying-campus-ai-bg.png"
         alt=""
         className="pointer-events-none fixed inset-0 h-full w-full object-cover opacity-[0.06]"
       />
@@ -215,7 +215,7 @@ export default function Chat() {
                 className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center text-center"
               >
                 <div className="mb-5 grid h-14 w-14 place-items-center rounded-full bg-[#f0f7ff] ring-1 ring-[#0067B1]/10">
-                  <img src="/images/sai-whu-emblem.png" alt="武汉大学人工智能学院" className="h-10 w-10 object-contain" />
+                  <img src="/public/images/sai-whu-emblem.png" alt="武汉大学人工智能学院" className="h-10 w-10 object-contain" />
                 </div>
                 <h2 className="font-display text-2xl font-semibold text-[#1e293b]">
                   你好，我是珞樱

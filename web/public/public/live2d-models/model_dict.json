@@ -2,7 +2,7 @@
     {
         "name": "mao_pro",
         "description": "",
-        "url": "/live2d-models/mao_pro/runtime/mao_pro.model3.json",
+        "url": "/public/live2d-models/mao_pro/runtime/mao_pro.model3.json",
         "kScale": 0.5,
         "initialXshift": 0,
         "initialYshift": 0,

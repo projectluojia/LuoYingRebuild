@@ -1,4 +1,4 @@
-import { Github, Mail, FileText } from 'lucide-react'
+import { Code2, Mail, FileText } from 'lucide-react'
 
 const HELP_URL = 'https://www.cnblogs.com/mornhus-xsylf-123/p/19731597'
 const GITHUB_URL = 'https://github.com/mornhussakuyo-hub/Luoying-V1-Structure'
@@ -9,7 +9,7 @@ export default function Footer() {
       <div className="mx-auto max-w-7xl px-5 py-10 sm:px-8 lg:px-10">
         <div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-end">
           <div className="flex items-center gap-4">
-            <img src="/images/sai-whu-horizontal.png" alt="武汉大学人工智能学院" className="h-12 w-auto max-w-[260px] object-contain" />
+            <img src="/public/images/sai-whu-horizontal.png" alt="武汉大学人工智能学院" className="h-12 w-auto max-w-[260px] object-contain" />
             <div className="border-l border-[#0067B1]/16 pl-4">
               <p className="font-display text-2xl font-semibold">珞樱 Luo Ying</p>
               <p className="mt-2 text-sm text-[#49627d]">武汉大学人工智能学院校园智能体系统</p>
@@ -42,7 +42,7 @@ export default function Footer() {
           <p>© 2026 珞樱项目组 · <a href="https://sai.whu.edu.cn/" target="_blank" rel="noopener noreferrer" className="transition hover:text-[#0067B1]">武汉大学人工智能学院</a></p>
           <div className="flex items-center gap-4">
             <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" aria-label="GitHub" className="transition hover:text-[#0067B1]">
-              <Github size={18} />
+              <Code2 size={18} />
             </a>
             <a href={HELP_URL} target="_blank" rel="noopener noreferrer" aria-label="帮助文档" className="transition hover:text-[#0067B1]">
               <FileText size={18} />

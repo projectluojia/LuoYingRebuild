@@ -22,6 +22,16 @@ type ChartContextProps = {
   config: ChartConfig
 }
 
+type ChartPayloadItem = {
+  color?: string
+  dataKey?: string | number
+  fill?: string
+  name?: string | number
+  payload?: Record<string, unknown> & { fill?: string }
+  type?: string
+  value?: string | number | Array<string | number>
+}
+
 const ChartContext = React.createContext<ChartContextProps | null>(null)
 
 function useChart() {
@@ -118,13 +128,28 @@ function ChartTooltipContent({
   color,
   nameKey,
   labelKey,
-}: React.ComponentProps<typeof RechartsPrimitive.Tooltip> &
-  React.ComponentProps<"div"> & {
+}: React.ComponentProps<"div"> & {
+    active?: boolean
+    color?: string
+    formatter?: (
+      value: NonNullable<ChartPayloadItem["value"]>,
+      name: NonNullable<ChartPayloadItem["name"]>,
+      item: ChartPayloadItem,
+      index: number,
+      payload: ChartPayloadItem["payload"]
+    ) => React.ReactNode
     hideLabel?: boolean
     hideIndicator?: boolean
     indicator?: "line" | "dot" | "dashed"
-    nameKey?: string
+    label?: React.ReactNode
+    labelClassName?: string
+    labelFormatter?: (
+      value: React.ReactNode,
+      payload: ChartPayloadItem[]
+    ) => React.ReactNode
     labelKey?: string
+    nameKey?: string
+    payload?: ChartPayloadItem[]
   }) {
   const { config } = useChart()
 
@@ -184,7 +209,7 @@ function ChartTooltipContent({
           .map((item, index) => {
             const key = `${nameKey || item.name || item.dataKey || "value"}`
             const itemConfig = getPayloadConfigFromPayload(config, item, key)
-            const indicatorColor = color || item.payload.fill || item.color
+            const indicatorColor = color || item.payload?.fill || item.color
 
             return (
               <div
@@ -258,10 +283,11 @@ function ChartLegendContent({
   payload,
   verticalAlign = "bottom",
   nameKey,
-}: React.ComponentProps<"div"> &
-  Pick<RechartsPrimitive.LegendProps, "payload" | "verticalAlign"> & {
+}: React.ComponentProps<"div"> & {
     hideIcon?: boolean
     nameKey?: string
+    payload?: ChartPayloadItem[]
+    verticalAlign?: "top" | "bottom"
   }) {
   const { config } = useChart()
 
@@ -285,7 +311,7 @@ function ChartLegendContent({
 
           return (
             <div
-              key={item.value}
+              key={String(item.value)}
               className={cn(
                 "[&>svg]:text-muted-foreground flex items-center gap-1.5 [&>svg]:h-3 [&>svg]:w-3"
               )}

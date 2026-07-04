@@ -14,7 +14,7 @@ interface Live2DPanelProps {
   isMobile?: boolean
 }
 
-const MODEL_URL = '/live2d/models/mao_pro/mao_pro.model3.json'
+const MODEL_URL = '/public/live2d/models/mao_pro/mao_pro.model3.json'
 type ViewMode = 'bust' | 'full'
 
 const MOOD_LABELS: Record<Live2DMood, string> = {
@@ -256,7 +256,7 @@ export default function Live2DPanel({
         const app = new PIXI.Application({
           width: container.clientWidth,
           height: container.clientHeight,
-          transparent: true,
+          backgroundAlpha: 0,
           antialias: true,
           autoDensity: true,
           resolution: window.devicePixelRatio || 1,

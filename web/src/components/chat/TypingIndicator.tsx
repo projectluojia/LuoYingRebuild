@@ -9,7 +9,7 @@ export default function TypingIndicator() {
       className="flex items-start gap-3 mb-4"
     >
       <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-white ring-1 ring-[#0067B1]/15">
-        <img src="/images/sai-whu-emblem.png" alt="珞樱" className="h-full w-full object-contain p-0.5" />
+        <img src="/public/images/sai-whu-emblem.png" alt="珞樱" className="h-full w-full object-contain p-0.5" />
       </div>
 
       <div className="rounded-2xl rounded-bl-md border border-[#e2e8f0] bg-white px-5 py-3.5 shadow-sm">

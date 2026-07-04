@@ -41,7 +41,7 @@ export default function ChatSidebar({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="grid h-9 w-9 place-items-center rounded-full bg-[#f0f7ff]">
-              <img src="/images/sai-whu-emblem.png" alt="武汉大学人工智能学院" className="h-7 w-7 object-contain" />
+              <img src="/public/images/sai-whu-emblem.png" alt="武汉大学人工智能学院" className="h-7 w-7 object-contain" />
             </div>
             <div>
               <h2 className="font-display text-base font-semibold text-[#1e293b]">珞樱</h2>

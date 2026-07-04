@@ -191,7 +191,7 @@ export default function Home() {
           className="absolute inset-0 scale-105 bg-cover bg-center"
           style={{
             y: heroImageY,
-            backgroundImage: 'url(/images/luoying-campus-ai-bg.png)',
+            backgroundImage: 'url(/public/images/luoying-campus-ai-bg.png)',
           }}
         />
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(0,43,85,0.78)_0%,rgba(0,103,177,0.34)_48%,rgba(255,255,255,0.05)_100%)]" />
@@ -209,7 +209,7 @@ export default function Home() {
               transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
               className="mb-5 flex items-center gap-3 text-xs uppercase tracking-[0.34em] text-white/70"
             >
-              <img src="/images/sai-whu-emblem.png" alt="武汉大学人工智能学院院徽" className="h-9 w-9 object-contain" />
+              <img src="/public/images/sai-whu-emblem.png" alt="武汉大学人工智能学院院徽" className="h-9 w-9 object-contain" />
               <a href="https://sai.whu.edu.cn/" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">武汉大学人工智能学院</a>
             </motion.p>
 
@@ -412,7 +412,7 @@ export default function Home() {
           <Reveal>
             <div className="relative overflow-hidden border border-[#0067B1]/14 bg-white/56">
               <img
-                src="/images/luoying-campus-ai-bg.png"
+                src="/public/images/luoying-campus-ai-bg.png"
                 alt="珞樱视觉设定"
                 className="aspect-[4/5] w-full object-cover object-center opacity-90"
               />

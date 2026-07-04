@@ -52,7 +52,7 @@ export default function Navbar() {
     >
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8 lg:px-10">
         <Link to="/" className="group flex items-center gap-3" onClick={() => setMobileOpen(false)}>
-          <img src="/images/sai-whu-emblem.png" alt="武汉大学人工智能学院院徽" className="h-10 w-10 object-contain" />
+          <img src="/public/images/sai-whu-emblem.png" alt="武汉大学人工智能学院院徽" className="h-10 w-10 object-contain" />
           <span className="leading-none">
             <span className={`block font-display text-lg font-semibold ${isDarkBar ? 'text-[#0067B1]' : 'text-white'}`}>珞樱</span>
             <span className={`block pt-1 text-[10px] uppercase tracking-[0.26em] ${isDarkBar ? 'text-[#0067B1]/62' : 'text-white/62'}`}>Luo Ying</span>
