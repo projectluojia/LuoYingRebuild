@@ -1,6 +1,6 @@
 ﻿import { useCallback, useMemo, useRef, useState } from 'react'
 import { pinyin } from 'pinyin-pro'
-import type { ChatSession, FileAttachment, Live2DAudioEvent, Live2DMood, Live2DViseme, Live2DVisemeFrame, Message } from '../types/chat'
+import type { ChatSession, FileAttachment, Live2DAudioEvent, Live2DMood, Live2DViseme, Live2DVisemeFrame, Message, ThinkingStep } from '../types/chat'
 
 const API_BASE = import.meta.env.DEV ? '/api' : ''
 const TEXT_DRIP_INTERVAL = 46
@@ -65,11 +65,6 @@ function estimateAudioDuration(event: Live2DAudioEvent): number {
   const fromVolumes = event.volumes.length * Math.max(event.chunkMs || 20, 12)
   const fromText = Math.max(event.text.length * 115, 650)
   return Math.max(fromVolumes || 0, fromText)
-}
-
-function textStepDelay(text: string, durationMs: number): number {
-  const chars = Math.max(Array.from(text).length, 1)
-  return Math.max(32, Math.min(150, durationMs / chars))
 }
 
 function splitRevealText(text: string): string[] {
@@ -149,6 +144,7 @@ export function useChat() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>('welcome')
   const [isGenerating, setIsGenerating] = useState(false)
   const [currentAiText, setCurrentAiText] = useState('')
+  const [currentThinkingSteps, setCurrentThinkingSteps] = useState<ThinkingStep[]>([])
   const [live2dVisible, setLive2dVisible] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [liveMood, setLiveMood] = useState<Live2DMood>('gentle')
@@ -156,12 +152,11 @@ export function useChat() {
   const abortRef = useRef<AbortController | null>(null)
   const visibleTextRef = useRef('')
   const rawTextRef = useRef('')
-  const unsyncedTextRef = useRef('')
+  const currentThinkingStepsRef = useRef<ThinkingStep[]>([])
   const speechQueueRef = useRef<SpeechQueueItem[]>([])
   const speechLoopRef = useRef<Promise<void> | null>(null)
-  const fallbackTextLoopRef = useRef<Promise<void> | null>(null)
+  const textRenderLoopRef = useRef<Promise<void> | null>(null)
   const generationTokenRef = useRef(0)
-  const gotAudioRef = useRef(false)
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) ?? null,
@@ -172,47 +167,56 @@ export function useChat() {
     generationTokenRef.current += 1
     visibleTextRef.current = ''
     rawTextRef.current = ''
-    unsyncedTextRef.current = ''
     speechQueueRef.current = []
     speechLoopRef.current = null
-    fallbackTextLoopRef.current = null
-    gotAudioRef.current = false
+    textRenderLoopRef.current = null
+    currentThinkingStepsRef.current = []
     setCurrentAiText('')
+    setCurrentThinkingSteps([])
     setLiveAudioEvent(undefined)
   }, [])
 
-  const revealText = useCallback(async (text: string, durationMs: number, token: number) => {
-    const chars = splitRevealText(text)
-    const delay = textStepDelay(text, durationMs)
-    for (const char of chars) {
-      if (generationTokenRef.current !== token || abortRef.current?.signal.aborted) return
-      visibleTextRef.current += char
-      setCurrentAiText(visibleTextRef.current)
-      if (/[,，。.!！？?]$/.test(char)) {
-        await sleep(Math.min(delay * 3, 280))
-      } else {
-        await sleep(delay)
-      }
-    }
+  const syncVisibleText = useCallback((token: number) => {
+    if (generationTokenRef.current !== token || abortRef.current?.signal.aborted) return
+    visibleTextRef.current = rawTextRef.current
+    setCurrentAiText(visibleTextRef.current)
   }, [])
 
-  const runFallbackTextLoop = useCallback((token: number) => {
-    if (fallbackTextLoopRef.current) return
-    fallbackTextLoopRef.current = (async () => {
-      await sleep(260)
-      while (generationTokenRef.current === token && (unsyncedTextRef.current || isGenerating)) {
-        if (!gotAudioRef.current && unsyncedTextRef.current) {
-          const next = splitRevealText(unsyncedTextRef.current).shift() ?? ''
-          unsyncedTextRef.current = unsyncedTextRef.current.slice(next.length)
-          visibleTextRef.current += next
-          setCurrentAiText(visibleTextRef.current)
+  const runTextRenderLoop = useCallback((token: number) => {
+    if (textRenderLoopRef.current) return textRenderLoopRef.current
+
+    const loop = (async () => {
+      while (generationTokenRef.current === token && !abortRef.current?.signal.aborted) {
+        const target = rawTextRef.current
+        const visible = visibleTextRef.current
+        if (visible === target) {
+          await sleep(TEXT_DRIP_INTERVAL)
+          if (visibleTextRef.current === rawTextRef.current) break
+          continue
         }
-        await sleep(TEXT_DRIP_INTERVAL)
-        if (!unsyncedTextRef.current && !gotAudioRef.current) await sleep(120)
+
+        if (!target.startsWith(visible)) {
+          visibleTextRef.current = target
+          setCurrentAiText(target)
+          break
+        }
+
+        const next = splitRevealText(target.slice(visible.length))[0]
+        if (!next) break
+        visibleTextRef.current = visible + next
+        setCurrentAiText(visibleTextRef.current)
+
+        const delay = /[,，。.!！？?]$/.test(next) ? Math.min(TEXT_DRIP_INTERVAL * 3, 280) : TEXT_DRIP_INTERVAL
+        await sleep(delay)
       }
-      fallbackTextLoopRef.current = null
+      if (generationTokenRef.current === token) {
+        textRenderLoopRef.current = null
+      }
     })()
-  }, [isGenerating])
+
+    textRenderLoopRef.current = loop
+    return textRenderLoopRef.current
+  }, [])
 
   const runSpeechQueue = useCallback((token: number) => {
     if (speechLoopRef.current) return speechLoopRef.current
@@ -223,26 +227,21 @@ export function useChat() {
         if (!item) break
         setLiveMood(item.audioEvent.emotion)
         setLiveAudioEvent({ ...item.audioEvent, id: generateId() })
-        await Promise.all([
-          revealText(item.text, item.durationMs, token),
-          sleep(item.durationMs + 120),
-        ])
+        await sleep(item.durationMs + 120)
         await sleep(AUDIO_SAFETY_GAP)
       }
       speechLoopRef.current = null
     })()
 
     return speechLoopRef.current
-  }, [revealText])
+  }, [])
 
   const enqueueSpeech = useCallback((audioEvent: Live2DAudioEvent, explicitText: string, token: number) => {
 
-    gotAudioRef.current = true
-    const text = explicitText || unsyncedTextRef.current || audioEvent.text
-    if (text && unsyncedTextRef.current.startsWith(text)) {
-      unsyncedTextRef.current = unsyncedTextRef.current.slice(text.length)
-    } else if (text && unsyncedTextRef.current) {
-      unsyncedTextRef.current = ''
+    const text = explicitText || audioEvent.text
+    if (text && !rawTextRef.current.includes(text)) {
+      rawTextRef.current += text
+      runTextRenderLoop(token)
     }
 
     const durationMs = estimateAudioDuration({ ...audioEvent, text })
@@ -256,13 +255,7 @@ export function useChat() {
       durationMs,
     })
     void runSpeechQueue(token)
-  }, [runSpeechQueue])
-
-  const flushRemainingText = useCallback(async (token: number) => {
-    while (speechLoopRef.current) await speechLoopRef.current
-    const remaining = rawTextRef.current.slice(visibleTextRef.current.length)
-    if (remaining) await revealText(remaining, Math.max(remaining.length * 70, 500), token)
-  }, [revealText])
+  }, [runSpeechQueue, runTextRenderLoop])
 
   const createNewSession = useCallback(() => {
     abortRef.current?.abort()
@@ -309,6 +302,19 @@ export function useChat() {
     )
   }, [])
 
+  const appendThinkingStep = useCallback((step: Omit<ThinkingStep, 'id' | 'timestamp'>) => {
+    const nextStep = {
+      ...step,
+      id: generateId(),
+      timestamp: Date.now(),
+    }
+    currentThinkingStepsRef.current = [...currentThinkingStepsRef.current, nextStep]
+    setCurrentThinkingSteps((prev) => [
+      ...prev,
+      nextStep,
+    ])
+  }, [])
+
   const ensureSession = useCallback(
     (text: string) => {
       if (activeSessionId) return activeSessionId
@@ -338,8 +344,9 @@ export function useChat() {
 
       setLiveMood('thinking')
       rawTextRef.current = reply
-      unsyncedTextRef.current = reply
-      await revealText(reply, Math.max(reply.length * 72, 1400), token)
+      runTextRenderLoop(token)
+      await sleep(Math.min(Math.max(reply.length * 24, 700), 1800))
+      syncVisibleText(token)
 
       appendMessage(sessionId, {
         id: generateId(),
@@ -350,7 +357,7 @@ export function useChat() {
       })
       setLiveMood('gentle')
     },
-    [appendMessage, revealText]
+    [appendMessage, runTextRenderLoop, syncVisibleText]
   )
 
   const sendMessage = useCallback(
@@ -416,14 +423,19 @@ export function useChat() {
             if (event === 'text_delta') {
               const delta = String(data.text ?? '')
               rawTextRef.current += delta
-              unsyncedTextRef.current += delta
-              if (!gotAudioRef.current) runFallbackTextLoop(token)
+              runTextRenderLoop(token)
               if (rawTextRef.current.length > 12) setLiveMood('gentle')
             } else if (event === 'expression') {
               setLiveMood(normalizeMood(data.emotion))
             } else if (event === 'track') {
-              // LuoYingRebuild backend sends 'track' events for status updates.
-              // Treat as expression change when mood info is present.
+              const trackText = String(data.text ?? '').trim()
+              if (trackText) {
+                appendThinkingStep({
+                  kind: String(data.kind ?? 'track'),
+                  text: trackText,
+                  metadata: (data.metadata && typeof data.metadata === 'object' ? data.metadata : undefined) as Record<string, unknown> | undefined,
+                })
+              }
               if (data.emotion) setLiveMood(normalizeMood(data.emotion))
             } else if (event === 'audio') {
               const audioEvent: Live2DAudioEvent = {
@@ -441,6 +453,7 @@ export function useChat() {
               const finalText = String(data.reply ?? rawTextRef.current)
               if (finalText && finalText.length >= rawTextRef.current.length) {
                 rawTextRef.current = finalText
+                runTextRenderLoop(token)
               }
             } else if (event === 'error') {
               throw new Error(String(data.error ?? '后端流式接口错误'))
@@ -455,7 +468,7 @@ export function useChat() {
           throw new Error('后端没有推送事件')
         }
 
-        await flushRemainingText(token)
+        syncVisibleText(token)
         const finalContent = rawTextRef.current.trim() || '后端已完成处理，但没有返回文本内容。'
         appendMessage(sessionId, {
           id: generateId(),
@@ -463,6 +476,7 @@ export function useChat() {
           content: finalContent,
           timestamp: Date.now(),
           status: 'sent',
+          thinkingSteps: currentThinkingStepsRef.current,
         })
         setLiveMood('gentle')
       } catch (error) {
@@ -474,9 +488,10 @@ export function useChat() {
         setIsGenerating(false)
         await sleep(240)
         setCurrentAiText('')
+        setCurrentThinkingSteps([])
       }
     },
-    [appendMessage, enqueueSpeech, ensureSession, flushRemainingText, isGenerating, resetTimeline, runFallbackStream, runFallbackTextLoop]
+    [appendMessage, appendThinkingStep, enqueueSpeech, ensureSession, isGenerating, resetTimeline, runFallbackStream, runTextRenderLoop, syncVisibleText]
   )
 
   return {
@@ -488,6 +503,7 @@ export function useChat() {
     sendMessage,
     isGenerating,
     currentAiText,
+    currentThinkingSteps,
     live2dVisible,
     liveMood,
     liveAudioEvent,

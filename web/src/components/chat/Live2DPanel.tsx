@@ -66,9 +66,11 @@ const MOUTH_FORM_BY_VISEME: Record<Live2DViseme, number> = {
 
 type PixiApp = {
   stage: { addChild: (child: unknown) => void; removeChildren?: () => void }
-  view: HTMLCanvasElement
+  canvas?: HTMLCanvasElement
+  view?: HTMLCanvasElement
   renderer: { resize: (width: number, height: number) => void }
   ticker: { add: (fn: () => void) => void; remove: (fn: () => void) => void }
+  init?: (options: Record<string, unknown>) => Promise<void>
   destroy: (removeView?: boolean, options?: unknown) => void
 }
 
@@ -253,28 +255,40 @@ export default function Live2DPanel({
         const PIXI = await import('pixi.js')
         ;(window as unknown as { PIXI?: unknown }).PIXI = PIXI
         const live2d = await import('pixi-live2d-display/cubism4')
-        const app = new PIXI.Application({
+        const appOptions = {
           width: container.clientWidth,
           height: container.clientHeight,
           backgroundAlpha: 0,
           antialias: true,
           autoDensity: true,
           resolution: window.devicePixelRatio || 1,
-        }) as unknown as PixiApp
+        }
+        const appPrototype = PIXI.Application.prototype as { init?: unknown }
+        const app = typeof appPrototype.init === 'function'
+          ? new PIXI.Application() as unknown as PixiApp
+          : new PIXI.Application(appOptions) as unknown as PixiApp
+        if (typeof app.init === 'function') {
+          await app.init(appOptions)
+        }
 
         if (disposed) {
           app.destroy(true)
           return
         }
 
+        const canvas = app.canvas ?? app.view
+        if (!canvas) {
+          throw new Error('Pixi application did not expose a canvas.')
+        }
+
         container.innerHTML = ''
-        container.appendChild(app.view)
-        app.view.style.width = '100%'
-        app.view.style.height = '100%'
-        app.view.style.display = 'block'
-        app.view.style.position = 'absolute'
-        app.view.style.inset = '0'
-        app.view.style.zIndex = '1'
+        container.appendChild(canvas)
+        canvas.style.width = '100%'
+        canvas.style.height = '100%'
+        canvas.style.display = 'block'
+        canvas.style.position = 'absolute'
+        canvas.style.inset = '0'
+        canvas.style.zIndex = '1'
         appRef.current = app
 
         const model = (await live2d.Live2DModel.from(MODEL_URL, {

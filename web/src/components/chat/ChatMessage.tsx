@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Check, Copy, Download, FileText, User } from 'lucide-react'
+import { Check, Copy, Download, FileText, ListChecks, User } from 'lucide-react'
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
@@ -12,6 +12,7 @@ import 'highlight.js/styles/github.min.css'
 interface ChatMessageProps {
   message: Message
   isGenerating?: boolean
+  showThinking?: boolean
 }
 
 function formatFileSize(bytes: number): string {
@@ -33,10 +34,11 @@ function formatTime(ts: number): string {
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
 }
 
-export default function ChatMessage({ message, isGenerating = false }: ChatMessageProps) {
+export default function ChatMessage({ message, isGenerating = false, showThinking = false }: ChatMessageProps) {
   const isUser = message.role === 'user'
   const [copied, setCopied] = useState(false)
   const isStreaming = message.status === 'streaming'
+  const thinkingSteps = !isUser && showThinking ? message.thinkingSteps ?? [] : []
 
   const handleCopy = () => {
     void navigator.clipboard.writeText(message.content)
@@ -90,6 +92,25 @@ export default function ChatMessage({ message, isGenerating = false }: ChatMessa
                     className="max-h-[300px] max-w-full rounded border border-white/70 object-contain"
                   />
                 ))}
+            </div>
+          )}
+
+          {thinkingSteps.length > 0 && (
+            <div className={message.content ? "mb-3 border-b border-[#e2e8f0] pb-3" : ""}>
+              <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-[#64748b]">
+                <ListChecks size={13} className="text-[#0067B1]" />
+                处理过程
+              </div>
+              <ol className="space-y-1.5">
+                {thinkingSteps.map((step, index) => (
+                  <li key={step.id} className="flex gap-2 text-xs leading-5 text-[#475569]">
+                    <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-[#f0f7ff] text-[10px] text-[#0067B1]">
+                      {index + 1}
+                    </span>
+                    <span className="min-w-0 whitespace-pre-wrap break-words">{step.text}</span>
+                  </li>
+                ))}
+              </ol>
             </div>
           )}
 

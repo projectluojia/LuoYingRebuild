@@ -13,6 +13,14 @@ export interface FileAttachment {
 export type MessageRole = 'user' | 'assistant'
 export type MessageStatus = 'sending' | 'sent' | 'error' | 'streaming'
 
+export interface ThinkingStep {
+  id: string
+  kind: string
+  text: string
+  timestamp: number
+  metadata?: Record<string, unknown>
+}
+
 export interface Message {
   id: string
   role: MessageRole
@@ -20,6 +28,7 @@ export interface Message {
   timestamp: number
   attachments?: FileAttachment[]
   status?: MessageStatus
+  thinkingSteps?: ThinkingStep[]
 }
 
 export interface ChatSession {

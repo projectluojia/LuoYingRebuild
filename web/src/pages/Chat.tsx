@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Bot, ChevronDown, Menu } from 'lucide-react'
+import { Bot, ChevronDown, ListChecks, Menu } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import ChatInput from '../components/chat/ChatInput'
 import ChatMessage from '../components/chat/ChatMessage'
@@ -31,6 +31,7 @@ export default function Chat() {
     sendMessage,
     isGenerating,
     currentAiText,
+    currentThinkingSteps,
     live2dVisible,
     liveMood,
     liveAudioEvent,
@@ -44,6 +45,7 @@ export default function Chat() {
   const [showNewMsgIndicator, setShowNewMsgIndicator] = useState(false)
   const [userScrolledUp, setUserScrolledUp] = useState(false)
   const [isCompactLayout, setIsCompactLayout] = useState(false)
+  const [showThinking, setShowThinking] = useState(false)
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(max-width: 1023px)')
@@ -194,6 +196,21 @@ export default function Chat() {
             </div>
 
             <button
+              onClick={() => setShowThinking((value) => !value)}
+              className={`mr-2 inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs transition-colors ${
+                showThinking
+                  ? 'border-[#0067B1]/35 bg-[#f0f7ff] text-[#0067B1]'
+                  : 'border-[#e2e8f0] bg-white text-[#64748b] hover:bg-[#f8fafc] hover:text-[#0067B1]'
+              }`}
+              aria-pressed={showThinking}
+              aria-label={showThinking ? '隐藏处理过程' : '显示处理过程'}
+              title={showThinking ? '隐藏处理过程' : '显示处理过程'}
+            >
+              <ListChecks size={15} />
+              <span className="hidden sm:inline">过程</span>
+            </button>
+
+            <button
               onClick={toggleLive2D}
               className="rounded-lg border border-[#e2e8f0] p-2 text-[#64748b] transition-colors hover:bg-[#f8fafc] hover:text-[#0067B1] lg:hidden"
               aria-label="打开助手面板"
@@ -241,10 +258,17 @@ export default function Chat() {
             )}
 
             <div className="mx-auto flex max-w-3xl flex-col gap-1">
-              {activeSession?.messages.map((message) => <ChatMessage key={message.id} message={message} isGenerating={isGenerating} />)}
+              {activeSession?.messages.map((message) => (
+                <ChatMessage
+                  key={message.id}
+                  message={message}
+                  isGenerating={isGenerating}
+                  showThinking={showThinking}
+                />
+              ))}
 
               {isGenerating ? (
-                currentAiText ? (
+                currentAiText || currentThinkingSteps.length > 0 ? (
                   <ChatMessage
                     message={{
                       id: 'streaming',
@@ -252,8 +276,10 @@ export default function Chat() {
                       content: currentAiText,
                       timestamp: Date.now(),
                       status: 'streaming',
+                      thinkingSteps: currentThinkingSteps,
                     }}
                     isGenerating={isGenerating}
+                    showThinking={showThinking}
                   />
                 ) : (
                   <TypingIndicator />
