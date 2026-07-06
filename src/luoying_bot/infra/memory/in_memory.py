@@ -1,7 +1,7 @@
 from __future__ import annotations
 from collections import defaultdict,deque
 from datetime import datetime, timedelta, timezone
-from luoying_bot.domain.context import ChatContext, UserIdentity
+from luoying_bot.domain.context import ChannelType, ChatContext, Platform, UserIdentity
 from luoying_bot.domain.message import UniMessage
 from luoying_bot.domain.result import Reply
 from luoying_bot.ports.memory import ConversationMemory, ConversationThread
@@ -49,6 +49,26 @@ class InMemoryConversationMemory(ConversationMemory):
                 messages.append({"role": role, "content": content})
         return messages
     
+    def create_thread(self, thread_id: str, user: UserIdentity, title: str = "新对话") -> ConversationThread:
+        now = self._now()
+        context = ChatContext(
+            user=user,
+            target=ConversationTarget(
+                channel_type=ChannelType.WEB,
+                conversation_id=thread_id,
+                platform=Platform.WEB,
+            ),
+        )
+        thread = ConversationThread(
+            thread_id=thread_id,
+            context=context,
+            title=title or "新对话",
+            created_at=now,
+            updated_at=now,
+        )
+        self._threads[thread_id] = thread
+        return thread
+
     def ensure_thread(self, context: ChatContext, title_hint: str = "") -> ConversationThread:
         thread_id = context.thread_id
         existing = self._threads.get(thread_id)

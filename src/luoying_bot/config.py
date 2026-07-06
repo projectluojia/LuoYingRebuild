@@ -101,6 +101,14 @@ class Settings:
     qq_private_user_ids: List[str] = field(default_factory=lambda: _split_csv(os.getenv('QQ_PRIVATE_USER_IDS', '')))
     trigger_prefix: List[str] = field(default_factory=lambda: _split_csv(os.getenv('TRIGGER_PREFIX', '/,!')))
 
+    # Voice settings
+    voice_stt_base_url: str = os.getenv('VOICE_STT_BASE_URL', '')
+    voice_stt_api_key: str = os.getenv('VOICE_STT_API_KEY', '')
+    voice_stt_model: str = os.getenv('VOICE_STT_MODEL', '')
+    voice_tts_base_url: str = os.getenv('VOICE_TTS_BASE_URL', '')
+    voice_tts_api_key: str = os.getenv('VOICE_TTS_API_KEY', '')
+    voice_tts_model: str = os.getenv('VOICE_TTS_MODEL', '')
+
 settings = Settings()
 
 #别的文件只需要import这个就能拿到配置

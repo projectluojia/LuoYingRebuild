@@ -1,0 +1,41 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Test artifacts
+coverage/
+test-results/
+playwright-report/
+*.trace
+
+# Live2D large assets (deploy separately)
+public/live2d-libs/*.wasm
+public/live2d-libs/*.onnx
+public/live2d-models/*/runtime/*.moc3
+public/live2d-models/*/runtime/**/*.png
+public/live2d/libs/*.wasm
+public/live2d/libs/*.onnx
+public/live2d/models/*/runtime/*.moc3
+public/live2d/models/*/**/*.png

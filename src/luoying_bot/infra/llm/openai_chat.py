@@ -23,8 +23,11 @@ class OpenAICompatibleChatModel(ChatModel):
         self.default_temperature = default_temperature
         self.enable_thinking = enable_thinking
 
+        # Pass a placeholder key so AsyncOpenAI doesn't reject empty string at construction time.
+        # The chat() / chat_stream() methods still return stub replies when api_key is empty.
+        _client_key = api_key or "sk-placeholder"
         self.client = client or AsyncOpenAI(
-            api_key=api_key,
+            api_key=_client_key,
             base_url=self.base_url,
             timeout=60.0,
             max_retries=2,

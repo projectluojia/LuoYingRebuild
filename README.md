@@ -38,6 +38,8 @@ LuoYing 的目标不是只做一个固定功能的聊天机器人，而是提供
 - **多模态输入**：支持图片上传、QQ 图片下载、图片理解、OCR 与截图分析。
 - **外部信息**：天气查询、Tavily / DuckDuckGo 搜索兜底、arXiv 论文检索。
 - **Web API**：提供普通 `/chat` 与实验性 SSE `/chat/stream`。
+- **Web 界面**：React + Vite 前端，支持对话、Voice 语音合成、WebSocket 实时通信。
+- **Live2D 虚拟形象**：集成 pixi-live2d-display，支持模型加载、表情切换、唇形同步（由 TTS 音频驱动）。
 - **兼容模型服务**：可接入 DeepSeek、DashScope、OpenAI 或其他 OpenAI-compatible 服务。
 
 ## 项目状态
@@ -261,6 +263,19 @@ uv run --frozen python scripts/diagnose_memobase.py \
 | `TAVILY_API_KEY` | Tavily 搜索 API Key；未配置时会尝试 DuckDuckGo HTML 兜底。 |
 | `IMAGE_API_KEY` / `IMAGE_BASE_URL` / `IMAGE_MODEL` | 预留图片生成配置。 |
 
+### 语音配置（可选）
+
+配置 STT/TTS 后可启用 `/voice/stt` 和 `/voice/tts` 端点；未配置时返回 503。
+
+| 变量 | 说明 |
+| --- | --- |
+| `VOICE_STT_BASE_URL` | 语音识别服务地址。 |
+| `VOICE_STT_API_KEY` | 语音识别 API Key。 |
+| `VOICE_STT_MODEL` | 语音识别模型。 |
+| `VOICE_TTS_BASE_URL` | 语音合成服务地址。 |
+| `VOICE_TTS_API_KEY` | 语音合成 API Key。 |
+| `VOICE_TTS_MODEL` | 语音合成模型。 |
+
 ### 运行限制
 
 | 变量 | 默认值 | 说明 |
@@ -282,6 +297,7 @@ uv run --frozen python scripts/diagnose_memobase.py \
 | `GET` | `/health` | 健康检查。 |
 | `GET` | `/` | 内置 Web 页面。 |
 | `GET` | `/conversations` | 列出当前 Web 用户的对话。 |
+| `POST` | `/conversations` | 创建新对话，返回 `thread_id`。 |
 | `GET` | `/conversations/{thread_id}/messages` | 读取指定对话的模型上下文视图。 |
 | `PATCH` | `/conversations/{thread_id}/archive` | 归档对话。 |
 | `PATCH` | `/conversations/{thread_id}/restore` | 恢复归档对话。 |
@@ -290,6 +306,9 @@ uv run --frozen python scripts/diagnose_memobase.py \
 | `POST` | `/chat/stream` | 实验性 SSE 流式聊天。 |
 | `POST` | `/uploads/images` | 上传图片，最大 10 MB。 |
 | `POST` | `/uploads/files` | 上传普通文件，最大 25 MB。 |
+| `GET` | `/voice/config` | 查询语音功能可用性。 |
+| `POST` | `/voice/stt` | 语音转文字。 |
+| `POST` | `/voice/tts` | 文字转语音。 |
 | `GET` | `/workspace/tree` | 获取当前 Web 用户工作区文件树。 |
 | `GET` | `/download/{user_id}/{file_path}` | 下载工作区文件。 |
 

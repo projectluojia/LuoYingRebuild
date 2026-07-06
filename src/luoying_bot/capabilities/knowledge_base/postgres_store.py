@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import uuid
@@ -81,7 +82,8 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
         pool = await self._get_pool()
         async with pool.acquire() as conn:
             await conn.execute("create extension if not exists vector")
-            await conn.execute("create extension if not exists pg_search")
+            with contextlib.suppress(asyncpg.exceptions.FeatureNotSupportedError):
+                await conn.execute("create extension if not exists pg_search")
             await self._reset_vector_tables_if_embedding_dimensions_changed(conn)
             await conn.execute(
                 f"""
@@ -413,22 +415,23 @@ class PostgresKnowledgeStore(AnalyticsBackend, EntityBackend, RagBackend, Struct
             await conn.execute(
                 "create index if not exists kb_chunks_embedding_idx on kb_chunks using hnsw (embedding vector_cosine_ops)"
             )
-            await conn.execute(
-                """
-                create index if not exists kb_chunks_bm25_idx on kb_chunks
-                using bm25 (
-                    chunk_id,
-                    space_id,
-                    document_id,
-                    (title::pdb.ngram(2,4)),
-                    (alias_text::pdb.ngram(2,4)),
-                    (search_text::pdb.ngram(2,4)),
-                    source_url,
-                    published_at
+            with contextlib.suppress(asyncpg.exceptions.FeatureNotSupportedError, asyncpg.exceptions.InvalidSchemaNameError, asyncpg.exceptions.UndefinedFunctionError):
+                await conn.execute(
+                    """
+                    create index if not exists kb_chunks_bm25_idx on kb_chunks
+                    using bm25 (
+                        chunk_id,
+                        space_id,
+                        document_id,
+                        (title::pdb.ngram(2,4)),
+                        (alias_text::pdb.ngram(2,4)),
+                        (search_text::pdb.ngram(2,4)),
+                        source_url,
+                        published_at
+                    )
+                    with (key_field='chunk_id')
+                    """
                 )
-                with (key_field='chunk_id')
-                """
-            )
             await conn.execute(
                 "create index if not exists kb_document_links_from_idx on kb_document_links(site_id, from_document_id)"
             )

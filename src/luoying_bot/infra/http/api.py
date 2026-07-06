@@ -22,6 +22,7 @@ from luoying_bot.config import settings
 from luoying_bot.domain.context import UserIdentity
 from luoying_bot.domain.message import UniMessage
 from luoying_bot.infra.http.knowledge_base_api import create_knowledge_base_router
+from luoying_bot.infra.http.voice_api import create_voice_router
 from luoying_bot.infra.transports.web_transport import WebTransport
 from luoying_bot.ports.memory import ConversationThread
 
@@ -74,6 +75,14 @@ class ConversationMessagesResponse(BaseModel):
 
 class ConversationDeleteResponse(BaseModel):
     deleted: bool
+
+
+class ConversationCreateRequest(BaseModel):
+    title: str = "新对话"
+
+
+class ConversationCreateResponse(BaseModel):
+    thread_id: str
 
 
 class WebCurrentUser(BaseModel):
@@ -339,6 +348,7 @@ class WebApiFactory:
                 name="luoying-web-scheduler",
             )
             app.state.container = container
+
             try:
                 yield
             finally:
@@ -362,11 +372,14 @@ class WebApiFactory:
                 raise HTTPException(status_code=503, detail="Web Agent 尚未启动完成")
             return current
 
+        # Register voice router immediately so routes exist before lifespan fires.
+        # No prefix here — voice router already has prefix="/voice", and Vite's
+        # proxy strips the /api prefix from frontend requests (e.g. /api/voice/config → /voice/config).
         app.include_router(
-            create_knowledge_base_router(
+            create_voice_router(
                 container_provider=container,
                 current_user_dependency=get_current_web_user,
-            )
+            ),
         )
 
         @app.get("/health")
@@ -485,6 +498,20 @@ class WebApiFactory:
             reply = await container().message_processor.process(message)
             return ChatResponse(reply=reply.text)
 
+        @app.post("/conversations", response_model=ConversationCreateResponse)
+        async def create_conversation(
+            req: ConversationCreateRequest,
+            user: WebCurrentUser = Depends(get_current_web_user),
+        ) -> ConversationCreateResponse:
+            current = container()
+            thread_id = f"web-{uuid.uuid4().hex[:12]}"
+            current.services.memory.create_thread(
+                thread_id=thread_id,
+                user=UserIdentity(user_id=user.user_id, user_name=user.user_name),
+                title=req.title,
+            )
+            return ConversationCreateResponse(thread_id=thread_id)
+
         @app.get("/conversations", response_model=ConversationListResponse)
         async def list_conversations(
             limit: int = 50,
@@ -563,6 +590,29 @@ class WebApiFactory:
                 deleted=current.services.memory.delete_thread(thread_id)
             )
 
+        @app.get("/events")
+        async def events_stream(
+            user: WebCurrentUser = Depends(get_current_web_user),
+        ) -> StreamingResponse:
+            """SSE endpoint for push notifications (reminders, alerts).
+
+            The web frontend (useReminderSSE) opens an EventSource to this
+            endpoint to receive reminder toast notifications.  Currently
+            delivers a keepalive heartbeat; reminder events will be routed
+            here once the WebTransport dispatches them to a per-user queue.
+            """
+
+            async def event_generator():
+                yield _sse("connected", {"user_id": user.user_id})
+                while True:
+                    try:
+                        await asyncio.sleep(30.0)
+                        yield ": keepalive\n\n"
+                    except asyncio.CancelledError:
+                        break
+
+            return StreamingResponse(event_generator(), media_type="text/event-stream")
+
         @app.post("/chat/stream")
         async def chat_stream(
             req: ChatRequest,
@@ -624,3 +674,6 @@ class WebApiFactory:
             return StreamingResponse(events(), media_type="text/event-stream")
 
         return app
+
+
+app = WebApiFactory().create()
