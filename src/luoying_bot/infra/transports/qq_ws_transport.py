@@ -310,9 +310,80 @@ class QQWsTransport(ChatTransport):
             data.get("sub_type"),
         )
         return UniMessage(platform=Platform.QQ, raw_event=data)
+
+    def _markdown_to_qq_plain(self, text: str) -> str:
+        if not text:
+            return text
+
+        cq_segments: list[str] = []
+        plain_segments: list[str] = []
+
+        def stash_cq(match: re.Match[str]) -> str:
+            cq_segments.append(match.group(0))
+            return f"@@QQCQ{len(cq_segments) - 1}@@"
+
+        def stash_plain(value: str) -> str:
+            plain_segments.append(value)
+            return f"@@QQPLAIN{len(plain_segments) - 1}@@"
+
+        text = re.sub(r"\[CQ:[^\]]+\]", stash_cq, text)
+        text = re.sub(
+            r"(?ms)^[ \t]*(```|~~~)[^\n]*\n(?P<body>.*?)(?:\n[ \t]*\1[ \t]*(?=\n|$))",
+            lambda match: stash_plain(match.group("body").strip("\n")),
+            text,
+        )
+        text = re.sub(r"`([^`\n]+)`", lambda match: stash_plain(match.group(1)), text)
+
+        text = re.sub(r"(?m)^[ \t]{0,3}#{1,6}[ \t]+", "", text)
+        text = re.sub(r"(?m)^[ \t]*>[ \t]?", "", text)
+        text = re.sub(r"(?m)^[ \t]*[-*_]{3,}[ \t]*$", "", text)
+        text = re.sub(r"(?m)^[ \t]*[-*+][ \t]+", "- ", text)
+
+        text = re.sub(r"(?m)^[ \t]*\[[^\]]+\]:[ \t]*\S+.*$", "", text)
+        text = re.sub(
+            r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)",
+            lambda match: f"{match.group(1).strip()} ({match.group(2).strip()})".strip(),
+            text,
+        )
+        text = re.sub(
+            r"\[([^\]]+)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)",
+            lambda match: f"{match.group(1).strip()} ({match.group(2).strip()})".strip(),
+            text,
+        )
+        text = re.sub(r"\[([^\]]+)\]\[[^\]]*\]", r"\1", text)
+        text = re.sub(r"<(https?://[^>\s]+)>", r"\1", text)
+
+        text = re.sub(r"(?m)^[ \t]*\|?[ \t]*:?-{3,}:?[ \t]*(?:\|[ \t]*:?-{3,}:?[ \t]*)+\|?[ \t]*$", "", text)
+        text = re.sub(
+            r"(?m)^[ \t]*\|.+\|[ \t]*$",
+            lambda match: "  ".join(cell.strip() for cell in match.group(0).strip().strip("|").split("|") if cell.strip()),
+            text,
+        )
+
+        for pattern in (
+            r"\*\*\*([^*\n]+)\*\*\*",
+            r"(?<!\w)___([^_\n]+)___(?!\w)",
+            r"\*\*([^*\n]+)\*\*",
+            r"(?<!\w)__([^_\n]+)__(?!\w)",
+            r"\*([^*\n]+)\*",
+            r"(?<!\w)_([^_\n]+)_(?!\w)",
+            r"~~([^~\n]+)~~",
+        ):
+            text = re.sub(pattern, r"\1", text)
+
+        text = re.sub(r"\\([\\`*_{}\[\]()#+\-.!|>~])", r"\1", text)
+
+        for index, value in enumerate(plain_segments):
+            text = text.replace(f"@@QQPLAIN{index}@@", value)
+        for index, value in enumerate(cq_segments):
+            text = text.replace(f"@@QQCQ{index}@@", value)
+
+        lines = [re.sub(r"[ \t]+$", "", line) for line in text.splitlines()]
+        return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
     
     #发送纯文本
     async def send_text(self, context: ChatContext, text: str, *, split: bool = False) -> None:
+        text = self._markdown_to_qq_plain(text)
         if split:
             messages = [message.strip() for message in re.split(r'\r\n|\r|\n', text) if message.strip()]
         else:
