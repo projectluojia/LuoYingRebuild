@@ -39,13 +39,29 @@ class KnowledgeBaseSkill(BaseSkill):
             top_k=self._top_k(req.payload.get("top_k")),
             request_uid=context.request_uid,
         )
+        if answer.fallback_reason is not None:
+            observation = (
+                "知识库没有找到可直接回答该问题的可靠材料。"
+                f"fallback_reason={answer.fallback_reason}。"
+                "请不要把知识库拒答文案直接发给用户；可以尝试其他技能，"
+                "或基于已有上下文给出非知识库结论并说明不确定性。"
+            )
+            return SkillResult(
+                text=observation,
+                data={
+                    "ok": False,
+                    **answer.to_dict(),
+                },
+                llm_observation=observation,
+                final_response=False,
+            )
         return SkillResult(
             text=answer.answer,
             data={
-                "ok": answer.fallback_reason is None,
+                "ok": True,
                 **answer.to_dict(),
             },
-            metadata={"skip_output_risk_control": answer.fallback_reason is None and bool(answer.citations)},
+            metadata={"skip_output_risk_control": bool(answer.citations)},
             llm_observation=answer.answer,
             final_append_text=answer.source_links_text(),
             final_response=True,

@@ -14,39 +14,26 @@ src/luoying_bot/          # Python 后端（主业务逻辑）
       voice_api.py        # Voice router（prefix="/voice"）
     voice/                # VoicePort 实现（TTS/STT）
   services/               # Agent、ReAct、Skill 系统
-web/                      # React 前端（React + TypeScript + Vite）
-  src/
-    live2d/               # Live2D 虚拟形象（Controller 接口、PIXI 实现、Context）
-    voice/                # 前端语音（录音、TTS 播放、WebSocket）
-    api/                  # Axios API 客户端
 docs/                     # 架构文档、API 参考、PRD
 ```
 
+React + TypeScript + Vite 前端不放在本仓库内；请在同级独立仓库 `../LuoYing-Frontend/` 维护。
+
 ## 关键约定
 
-### Live2D 控制器接口
+### 前端边界
 
-所有 Live2D 实现必须满足 `src/live2d/Live2DController.ts` 接口（`loadModel`, `setExpression`, `startLipSync`, `stopLipSync`, `onTap`, `destroy`）。`web/src/live2d/Live2DContext.tsx` 通过 `NullController` 优雅降级——无需空值判断。
-
-`PixiLive2DController.ts` 使用动态 `import('pixi-live2d-display')` 避免模块级 WebGL 初始化错误，**禁止使用顶层静态 import**。
+本仓库只维护后端 API、VoicePort、Web transport 和后端测试。Live2D、Vite 代理、浏览器语音交互、前端组件和前端构建配置都属于 `../LuoYing-Frontend/`。
 
 ### VoicePort 架构
 
-后端 `VoicePort` 定义在 `src/luoying_bot/infra/voice/`。前端 API 客户端在 `web/src/api/voice.ts`。Voice router 的 `prefix="/voice"` 已是完整路径，`include_router()` 时**不要**再加 `prefix="/api"`（Vite 代理已处理路径重写）。
+后端 `VoicePort` 定义在 `src/luoying_bot/infra/voice/`。前端 API 客户端在 `../LuoYing-Frontend/src/` 下。Voice router 的 `prefix="/voice"` 已是完整路径，`include_router()` 时**不要**再加 `prefix="/api"`（前端开发代理会处理路径重写）。
 
 ### API 路由注册
 
 `api.py` 中 `include_router()` 调用时：
 - Voice router：无需额外 prefix（已有 `prefix="/voice"`）
 - 其他 router：若需 prefix，确保与 Vite 代理 rewrite 规则一致（`/api` 前缀由代理 stripped）
-
-### 前端环境变量
-
-| 变量 | 说明 |
-|------|------|
-| `VITE_LIVE2D_MODEL_URL` | Live2D 模型 `.model3.json` 地址 |
-| `VITE_ENABLE_LIVE2D` | `true` 时启用 Live2D 面板 |
-| `VITE_WS_URL` | WebSocket 连接地址（默认同域） |
 
 后端代理端口：`8000`（**不是 `18000`**）。
 

@@ -37,9 +37,8 @@ LuoYing 的目标不是只做一个固定功能的聊天机器人，而是提供
 - **文件工作区**：上传文档、读取常见文件、生成脚本、运行 Python、下载工作区文件。
 - **多模态输入**：支持图片上传、QQ 图片下载、图片理解、OCR 与截图分析。
 - **外部信息**：天气查询、Tavily / DuckDuckGo 搜索兜底、arXiv 论文检索。
-- **Web API**：提供普通 `/chat` 与实验性 SSE `/chat/stream`。
-- **Web 界面**：React + Vite 前端，支持对话、Voice 语音合成、WebSocket 实时通信。
-- **Live2D 虚拟形象**：集成 pixi-live2d-display，支持模型加载、表情切换、唇形同步（由 TTS 音频驱动）。
+- **Web API**：提供普通 `/chat`、实验性 SSE `/chat/stream`、工作区、Voice 配置和事件推送接口。
+- **前端集成能力**：React/Vite 前端、Live2D 资源和浏览器语音交互在独立仓库 `../LuoYing-Frontend/` 维护；本仓库只保留后端能力。
 - **兼容模型服务**：可接入 DeepSeek、DashScope、OpenAI 或其他 OpenAI-compatible 服务。
 
 ## 项目状态
@@ -400,7 +399,7 @@ src/luoying_bot/
 │   ├── repos/          # 本地持久化实现
 │   ├── scheduler/      # 异步调度器
 │   ├── transports/     # QQ / Web / CLI transport
-│   └── web/            # FastAPI 应用和内置 Web 页面
+│   └── web/            # Web transport / FastAPI 入口相关后端代码
 ├── ports/              # 抽象接口
 ├── bootstrap.py        # 依赖装配
 ├── config.py           # 环境变量配置
